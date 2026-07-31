@@ -3,6 +3,9 @@
 ~*/
 .vscode/
 *.service
+!tools/systemd/*.service
+
+node_modules/
 
 audio_cache/
 dectalk/

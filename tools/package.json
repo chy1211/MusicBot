@@ -1,0 +1,13 @@
+{
+  "name": "musicbot-cookie-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Syncs YouTube auth cookies from a live logged-in Chrome/Chromium session into MusicBot's cookies.txt",
+  "main": "sync_cookies.js",
+  "scripts": {
+    "sync": "node sync_cookies.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
