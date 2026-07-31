@@ -110,7 +110,7 @@ class SearchView(discord.ui.View):
         # descriptions at 100 chars, and total options at 25.
         options = []
         for i, entry in enumerate(entries[:25]):
-            title = entry["title"] or "Unknown title"
+            title = entry["title"] or "未知標題"
             url = entry["url"]
             duration = ""
             try:
@@ -131,7 +131,7 @@ class SearchView(discord.ui.View):
             )
 
         select = discord.ui.Select(
-            placeholder="Pick a result to queue…",
+            placeholder="選一個結果加入播放佇列…",
             min_values=1,
             max_values=1,
             options=options,
@@ -140,19 +140,19 @@ class SearchView(discord.ui.View):
         self.add_item(select)
 
         cancel = discord.ui.Button(
-            label="Cancel",
+            label="取消",
             style=discord.ButtonStyle.secondary,
         )
         cancel.callback = self._on_cancel
         self.add_item(cancel)
 
     def _label(self) -> str:
-        return f"Search results from **{self.service_label}**"
+        return f"來自 **{self.service_label}** 的搜尋結果"
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author.id:
             await interaction.response.send_message(
-                "Only the person who ran `/search` can pick a result.", ephemeral=True
+                "只有下 `/search` 指令的人可以選擇結果。", ephemeral=True
             )
             return False
         return True
@@ -166,7 +166,7 @@ class SearchView(discord.ui.View):
 
         self._disable_all()
         await interaction.edit_original_response(
-            content=f"⏳ Queuing **{title}**…", view=self
+            content=f"⏳ 正在加入 **{title}**…", view=self
         )
 
         try:
@@ -180,7 +180,7 @@ class SearchView(discord.ui.View):
                 leftover_args=[],
                 song_url=url,
             )
-            content = _content(resp) if resp else f"✅ **{title}** added to the queue."
+            content = _content(resp) if resp else f"✅ **{title}** 已加入播放佇列。"
         except Exception as e:
             msg = getattr(e, "message", str(e))
             fmt = getattr(e, "fmt_args", {})
@@ -198,7 +198,7 @@ class SearchView(discord.ui.View):
     async def _on_cancel(self, interaction: discord.Interaction) -> None:
         self._disable_all()
         self.stop()
-        await interaction.response.edit_message(content="Search cancelled.", view=None)
+        await interaction.response.edit_message(content="已取消搜尋。", view=None)
 
     def _disable_all(self) -> None:
         for item in self.children:
@@ -258,7 +258,7 @@ class QueueView(discord.ui.View):
         total_entry_count = len(player.playlist.entries)
 
         if not total_entry_count:
-            return "There are no songs queued! Queue something with a play command."
+            return "目前佇列是空的！用播放指令加點歌曲吧。"
 
         current_progress = ""
         if player.is_playing and player.current_entry:
@@ -266,15 +266,15 @@ class QueueView(discord.ui.View):
             song_total = (
                 format_song_duration(player.current_entry.duration_td)
                 if player.current_entry.duration is not None
-                else "(unknown duration)"
+                else "（未知長度）"
             )
-            added_by = "[autoplaylist]"
+            added_by = "〔自動播放清單〕"
             if player.current_entry.channel and player.current_entry.author:
                 added_by = player.current_entry.author.name
             current_progress = (
-                f"Currently playing: `{player.current_entry.title}`\n"
-                f"Added by: `{added_by}`\n"
-                f"Progress: `[{song_progress}/{song_total}]`\n\n"
+                f"正在播放：`{player.current_entry.title}`\n"
+                f"加入者：`{added_by}`\n"
+                f"進度：`[{song_progress}/{song_total}]`\n\n"
             )
 
         start_index = self.bot.config.queue_length * self.page
@@ -286,19 +286,19 @@ class QueueView(discord.ui.View):
         for idx, item in enumerate(queue_segment, starting_at):
             if item == player.current_entry:
                 continue
-            added_by = "[autoplaylist]"
+            added_by = "〔自動播放清單〕"
             if item.channel and item.author:
                 added_by = item.author.name
             title = item.title[:40] + " ..." if len(item.title) > 40 else item.title
-            entry_str = f"**#{idx}:** `{title}` — added by `{added_by}`\n"
+            entry_str = f"**#{idx}:** `{title}` — 加入者 `{added_by}`\n"
             if len(tracks_list) + len(entry_str) < 1800:
                 tracks_list += entry_str
 
-        page_info = f"Page **{self.page + 1}/{self.pages_total}**"
+        page_info = f"第 **{self.page + 1}/{self.pages_total}** 頁"
         return (
-            f"**Songs in queue** — {page_info}\n\n"
+            f"**佇列中的歌曲** — {page_info}\n\n"
             f"{current_progress}"
-            f"There are `{total_entry_count}` entries total.\n\n"
+            f"共 `{total_entry_count}` 首。\n\n"
             f"{tracks_list}"
         )
 
@@ -329,7 +329,7 @@ class QueueView(discord.ui.View):
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
-        await interaction.response.edit_message(content="Queue closed.", view=None)
+        await interaction.response.edit_message(content="佇列顯示已關閉。", view=None)
 
     async def on_timeout(self) -> None:
         for item in self.children:
@@ -383,7 +383,7 @@ class SlashCommands(commands.Cog):
         """
         if not isinstance(interaction.user, discord.Member):
             await interaction.followup.send(
-                "This command must be used in a server.", ephemeral=True
+                "這個指令只能在伺服器中使用。", ephemeral=True
             )
             return False
         perms: PermissionGroup = self.bot.permissions.for_user(interaction.user)
@@ -392,7 +392,7 @@ class SlashCommands(commands.Cog):
             and not perms.can_use_command(command_name, sub_cmd)
         ):
             await interaction.followup.send(
-                f"Your permissions group (`{perms.name}`) is not allowed to use `/{command_name}`.",
+                f"你的權限群組（`{perms.name}`）不能使用 `/{command_name}`。",
                 ephemeral=True,
             )
             return False
@@ -407,10 +407,10 @@ class SlashCommands(commands.Cog):
         """
         user = interaction.user
         if not isinstance(user, discord.Member) or not interaction.guild:
-            raise exceptions.CommandError("This command requires a server context.")
+            raise exceptions.CommandError("這個指令必須在伺服器中使用。")
         if not user.voice or not user.voice.channel:
             raise exceptions.CommandError(
-                "This command requires you to be in a Voice channel."
+                "使用這個指令前，你必須先加入一個語音頻道。"
             )
         perms: PermissionGroup = self.bot.permissions.for_user(user)
         return await self.bot.get_player(
@@ -447,7 +447,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="resetplaylist",
-        description="Reload a fresh copy of this server's autoplaylist into the player.",
+        description="重新載入這個伺服器的自動播放清單。",
     )
     async def slash_resetplaylist(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -455,7 +455,7 @@ class SlashCommands(commands.Cog):
             return
         try:
             if not interaction.guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_resetplaylist(
@@ -473,9 +473,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="help",
-        description="Show bot commands or get details on a specific command.",
+        description="顯示機器人指令列表，或查詢特定指令的詳細說明。",
     )
-    @app_commands.describe(command="Command name for details, or 'all' for the full list.")
+    @app_commands.describe(command="要查詢的指令名稱，或輸入 'all' 顯示完整列表。")
     async def slash_help(
         self,
         interaction: discord.Interaction,
@@ -487,24 +487,34 @@ class SlashCommands(commands.Cog):
             if command:
                 cmd_name = command.lower()
                 cmd_fn = getattr(self.bot, f"cmd_{cmd_name}", None)
-                if not cmd_fn:
+                uid = interaction.user.id
+                is_dev_or_owner = (
+                    uid == self.bot.config.owner_id or uid in self.bot.config.dev_ids
+                )
+                # Mirror cmd_help's gate: dev-only commands are treated as
+                # nonexistent for anyone who isn't owner/dev, so their
+                # existence/usage isn't leaked to regular users either.
+                if not cmd_fn or (hasattr(cmd_fn, "dev_cmd") and not is_dev_or_owner):
                     await interaction.followup.send(
-                        f"No command named `{cmd_name}`.", ephemeral=True
+                        f"沒有名為 `{cmd_name}` 的指令。", ephemeral=True
                     )
                     return
                 help_text = await self.bot.gen_cmd_help(cmd_name, guild)
                 await interaction.followup.send(help_text, ephemeral=True)
             else:
+                # Exclude @dev_cmd-marked commands, same as gen_cmd_list().
                 nat_cmds = sorted(
                     c.replace("cmd_", "")
                     for c in dir(self.bot)
-                    if c.startswith("cmd_") and not c.startswith("cmd__")
+                    if c.startswith("cmd_")
+                    and not c.startswith("cmd__")
+                    and not hasattr(getattr(self.bot, c), "dev_cmd")
                 )
                 prefix = self.bot.config.command_prefix
                 body = (
-                    f"**Available commands** *(prefix: `{prefix}`)*\n"
+                    f"**可用指令** *（前綴：`{prefix}`）*\n"
                     f"```{', '.join(nat_cmds)}```\n"
-                    f"For details: `/help command:<name>`"
+                    f"查看詳細說明：`/help command:<指令名稱>`"
                 )
                 await interaction.followup.send(body, ephemeral=True)
         except Exception as e:
@@ -516,12 +526,12 @@ class SlashCommands(commands.Cog):
 
     blockuser = app_commands.Group(
         name="blockuser",
-        description="Manage the user block list.",
+        description="管理使用者封鎖名單。",
         default_permissions=discord.Permissions(manage_guild=True),
     )
 
-    @blockuser.command(name="add", description="Block a user from using the bot.")
-    @app_commands.describe(user="The member to block.")
+    @blockuser.command(name="add", description="封鎖某位使用者，禁止其使用機器人。")
+    @app_commands.describe(user="要封鎖的成員。")
     async def slash_blockuser_add(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
@@ -539,8 +549,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @blockuser.command(name="remove", description="Unblock a user.")
-    @app_commands.describe(user="The member to unblock.")
+    @blockuser.command(name="remove", description="解除封鎖某位使用者。")
+    @app_commands.describe(user="要解除封鎖的成員。")
     async def slash_blockuser_remove(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
@@ -558,8 +568,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @blockuser.command(name="status", description="Check if a user is blocked.")
-    @app_commands.describe(user="The member to check.")
+    @blockuser.command(name="status", description="查詢某位使用者是否被封鎖。")
+    @app_commands.describe(user="要查詢的成員。")
     async def slash_blockuser_status(
         self, interaction: discord.Interaction, user: discord.Member
     ) -> None:
@@ -583,13 +593,13 @@ class SlashCommands(commands.Cog):
 
     blocksong = app_commands.Group(
         name="blocksong",
-        description="Manage the song block list.",
+        description="管理歌曲封鎖名單。",
         default_permissions=discord.Permissions(manage_guild=True),
     )
 
-    @blocksong.command(name="add", description="Block a song by URL or keyword.")
+    @blocksong.command(name="add", description="用網址或關鍵字封鎖一首歌曲。")
     @app_commands.describe(
-        subject="URL or phrase to block. Leave empty to block the currently playing song."
+        subject="要封鎖的網址或字詞。留空則封鎖目前正在播放的歌曲。"
     )
     async def slash_blocksong_add(
         self,
@@ -614,8 +624,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @blocksong.command(name="remove", description="Unblock a song by URL or keyword.")
-    @app_commands.describe(subject="URL or phrase to remove from the block list.")
+    @blocksong.command(name="remove", description="用網址或關鍵字解除封鎖一首歌曲。")
+    @app_commands.describe(subject="要從封鎖名單移除的網址或字詞。")
     async def slash_blocksong_remove(
         self,
         interaction: discord.Interaction,
@@ -645,7 +655,7 @@ class SlashCommands(commands.Cog):
 
     autoplaylist = app_commands.Group(
         name="autoplaylist",
-        description="Manage the server autoplaylist.",
+        description="管理伺服器的自動播放清單。",
     )
 
     async def _ap(
@@ -661,7 +671,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             _player = self.bot.get_player_in(guild)
@@ -682,48 +692,48 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @autoplaylist.command(name="add", description="Add a song to the autoplaylist.")
-    @app_commands.describe(url="Song URL. Leave empty to add the currently playing song.")
+    @autoplaylist.command(name="add", description="把一首歌加入自動播放清單。")
+    @app_commands.describe(url="歌曲網址。留空則加入目前正在播放的歌曲。")
     async def slash_ap_add(self, interaction: discord.Interaction, url: Optional[str] = None) -> None:
         await interaction.response.defer()
         await self._ap(interaction, "add", url or "")
 
-    @autoplaylist.command(name="remove", description="Remove a song from the autoplaylist.")
-    @app_commands.describe(url="Song URL. Leave empty to remove the currently playing song.")
+    @autoplaylist.command(name="remove", description="從自動播放清單移除一首歌。")
+    @app_commands.describe(url="歌曲網址。留空則移除目前正在播放的歌曲。")
     async def slash_ap_remove(self, interaction: discord.Interaction, url: Optional[str] = None) -> None:
         await interaction.response.defer()
         await self._ap(interaction, "remove", url or "")
 
-    @autoplaylist.command(name="restart", description="Reload the autoplaylist from disk into the player.")
+    @autoplaylist.command(name="restart", description="從硬碟重新載入自動播放清單。")
     async def slash_ap_restart(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         await self._ap(interaction, "restart")
 
-    @autoplaylist.command(name="show", description="List available autoplaylist files on this server.")
+    @autoplaylist.command(name="show", description="列出這個伺服器可用的自動播放清單檔案。")
     async def slash_ap_show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._ap(interaction, "show")
 
-    @autoplaylist.command(name="set", description="Switch the server autoplaylist to a different file.")
-    @app_commands.describe(filename="Playlist filename, e.g. mylist.txt")
+    @autoplaylist.command(name="set", description="切換伺服器使用的自動播放清單檔案。")
+    @app_commands.describe(filename="播放清單檔名，例如 mylist.txt")
     async def slash_ap_set(self, interaction: discord.Interaction, filename: str) -> None:
         await interaction.response.defer()
         await self._ap(interaction, "set", filename)
 
-    @autoplaylist.command(name="clear", description="Clear all tracks from a playlist file.")
-    @app_commands.describe(filename="Playlist filename. Leave empty to clear the current server playlist.")
+    @autoplaylist.command(name="clear", description="清空某個播放清單檔案裡的所有曲目。")
+    @app_commands.describe(filename="播放清單檔名。留空則清空目前伺服器使用的清單。")
     async def slash_ap_clear(self, interaction: discord.Interaction, filename: Optional[str] = None) -> None:
         await interaction.response.defer()
         await self._ap(interaction, "clear", filename or "")
 
-    @autoplaylist.command(name="queue", description="Dump all tracks from a playlist into the queue.")
-    @app_commands.describe(filename="Playlist filename. Leave empty to use the current server playlist.")
+    @autoplaylist.command(name="queue", description="把播放清單裡的所有曲目倒進播放佇列。")
+    @app_commands.describe(filename="播放清單檔名。留空則使用目前伺服器使用的清單。")
     async def slash_ap_queue(self, interaction: discord.Interaction, filename: Optional[str] = None) -> None:
         await interaction.response.defer()
         await self._ap(interaction, "queue", filename or "")
 
-    @autoplaylist.command(name="reload", description="Hot-reload a playlist file from disk.")
-    @app_commands.describe(filename="Playlist filename. Leave empty to reload the current server playlist.")
+    @autoplaylist.command(name="reload", description="從硬碟熱重載播放清單檔案。")
+    @app_commands.describe(filename="播放清單檔名。留空則重載目前伺服器使用的清單。")
     async def slash_ap_reload(self, interaction: discord.Interaction, filename: Optional[str] = None) -> None:
         await interaction.response.defer()
         await self._ap(interaction, "reload", filename or "")
@@ -734,12 +744,12 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="joinserver",
-        description="Generate an OAuth invite link for this bot. (Owner only)",
+        description="產生這個機器人的 OAuth 邀請連結。（僅限擁有者）",
     )
     async def slash_joinserver(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if interaction.user.id != self.bot.config.owner_id:
-            await interaction.followup.send("This command is restricted to the bot owner.", ephemeral=True)
+            await interaction.followup.send("這個指令僅限機器人擁有者使用。", ephemeral=True)
             return
         try:
             resp = await self.bot.cmd_joinserver(ssd_=self._ssd(interaction))
@@ -753,7 +763,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="karaoke",
-        description="Toggle karaoke mode — only karaoke-permitted members may queue songs while active.",
+        description="切換卡拉OK模式——開啟時只有具備卡拉OK權限的成員可以加歌。",
     )
     async def slash_karaoke(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -775,10 +785,10 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="play",
-        description="Add a song to the queue. Accepts a URL or a search query.",
+        description="把一首歌加入播放佇列。可以是網址或搜尋字詞。",
     )
     @app_commands.describe(
-        query="YouTube/Spotify URL, any yt-dlp supported URL, or a search term."
+        query="YouTube/Spotify 網址、任何 yt-dlp 支援的網址，或搜尋字詞。"
     )
     async def slash_play(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
@@ -788,7 +798,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_play(
@@ -811,9 +821,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="shuffleplay",
-        description="Add a playlist to the queue with entries shuffled before insertion.",
+        description="把一個播放清單洗牌後加入播放佇列。",
     )
-    @app_commands.describe(url="Playlist URL to shuffle into the queue.")
+    @app_commands.describe(url="要洗牌加入佇列的播放清單網址。")
     async def slash_shuffleplay(self, interaction: discord.Interaction, url: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "shuffleplay"):
@@ -822,7 +832,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_shuffleplay(
@@ -846,9 +856,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="playnext",
-        description="Queue a song to play immediately after the current one.",
+        description="把一首歌插入佇列，緊接在目前歌曲之後播放。",
     )
-    @app_commands.describe(query="URL or search term.")
+    @app_commands.describe(query="網址或搜尋字詞。")
     async def slash_playnext(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "playnext"):
@@ -857,7 +867,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_playnext(
@@ -885,9 +895,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="playnow",
-        description="Skip the current song and play this immediately.",
+        description="跳過目前歌曲，立刻播放這首。",
     )
-    @app_commands.describe(query="URL or search term.")
+    @app_commands.describe(query="網址或搜尋字詞。")
     async def slash_playnow(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "playnow"):
@@ -896,7 +906,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_playnow(
@@ -919,9 +929,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="seek",
-        description="Seek to a position in the current song. Prefix with + or - for relative seek.",
+        description="跳到目前歌曲的指定時間點。前面加 + 或 - 可做相對跳轉。",
     )
-    @app_commands.describe(time="Time in seconds, e.g. 90, 1:30, +30, -15")
+    @app_commands.describe(time="以秒為單位的時間，例如 90、1:30、+30、-15")
     async def slash_seek(self, interaction: discord.Interaction, time: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "seek"):
@@ -929,7 +939,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_seek(
@@ -949,16 +959,16 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="repeat",
-        description="Toggle repeat mode. No option = cycle through modes.",
+        description="切換循環播放模式。不帶參數 = 依序切換各模式。",
     )
     @app_commands.describe(
-        mode="song = loop current song | playlist = loop queue | on/off = explicit toggle"
+        mode="song = 循環目前歌曲 | playlist = 循環整個佇列 | on/off = 直接開關"
     )
     @app_commands.choices(mode=[
-        app_commands.Choice(name="song",     value="song"),
-        app_commands.Choice(name="playlist", value="playlist"),
-        app_commands.Choice(name="on",       value="on"),
-        app_commands.Choice(name="off",      value="off"),
+        app_commands.Choice(name="單曲循環",   value="song"),
+        app_commands.Choice(name="佇列循環", value="playlist"),
+        app_commands.Choice(name="開啟",       value="on"),
+        app_commands.Choice(name="關閉",      value="off"),
     ])
     async def slash_repeat(
         self,
@@ -985,11 +995,11 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="move",
-        description="Move a song from one queue position to another. Use /queue to see positions.",
+        description="把一首歌從佇列中的一個位置移到另一個位置。用 /queue 查看位置編號。",
     )
     @app_commands.describe(
-        from_pos="Current position of the song in the queue.",
-        to_pos="Target position to move the song to.",
+        from_pos="歌曲目前在佇列中的位置。",
+        to_pos="要移到的目標位置。",
     )
     async def slash_move(
         self,
@@ -1003,7 +1013,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_move(
@@ -1024,9 +1034,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="stream",
-        description="Add a URL to the queue as a live stream without downloading.",
+        description="把一個網址加入佇列，以直播串流方式播放（不下載）。",
     )
-    @app_commands.describe(url="Direct stream URL (Twitch, YouTube live, shoutcast, etc.)")
+    @app_commands.describe(url="直接串流網址（Twitch、YouTube 直播、shoutcast 等）")
     async def slash_stream(self, interaction: discord.Interaction, url: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "stream"):
@@ -1035,7 +1045,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_stream(
@@ -1057,15 +1067,15 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="search",
-        description="Search for songs and pick from a dropdown of results.",
+        description="搜尋歌曲，從結果下拉選單中選一首。",
     )
     @app_commands.describe(
-        query="Search query.",
-        service="Service to search (yt, sc, yh, gv, nv, bb). Defaults to bot config.",
-        results="Number of results to show (default 5, max set by your permissions).",
+        query="搜尋字詞。",
+        service="要搜尋的服務（yt、sc、yh、gv、nv、bb）。預設依照機器人設定。",
+        results="要顯示的結果數量（預設 5，上限依你的權限而定）。",
     )
     @app_commands.choices(service=[
-        app_commands.Choice(name="YouTube (default)", value="yt"),
+        app_commands.Choice(name="YouTube（預設）", value="yt"),
         app_commands.Choice(name="SoundCloud",        value="sc"),
         app_commands.Choice(name="Yahoo Video",       value="yh"),
         app_commands.Choice(name="Google Video",      value="gv"),
@@ -1086,7 +1096,7 @@ class SlashCommands(commands.Cog):
         guild = interaction.guild
         user = interaction.user
         if not guild or not isinstance(user, discord.Member):
-            await interaction.followup.send("Guild only.", ephemeral=True)
+            await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
             return
 
         try:
@@ -1099,14 +1109,14 @@ class SlashCommands(commands.Cog):
 
         if perms.max_songs and player.playlist.count_for_user(user) > perms.max_songs:
             await interaction.followup.send(
-                f"❌ You have reached your playlist item limit ({perms.max_songs}).",
+                f"❌ 你已達到播放清單項目上限（{perms.max_songs}）。",
                 ephemeral=True,
             )
             return
 
         if player.karaoke_mode and not perms.bypass_karaoke_mode:
             await interaction.followup.send(
-                "❌ Karaoke mode is enabled.", ephemeral=True
+                "❌ 卡拉OK模式目前是開啟的。", ephemeral=True
             )
             return
 
@@ -1127,7 +1137,7 @@ class SlashCommands(commands.Cog):
             await self._err(interaction, e)
             return
 
-        await interaction.followup.send(f"🔍 Searching **{svc_label}** for `{query}`…")
+        await interaction.followup.send(f"🔍 正在 **{svc_label}** 搜尋 `{query}`…")
 
         try:
             info = await self.bot.downloader.extract_info(
@@ -1138,12 +1148,12 @@ class SlashCommands(commands.Cog):
             return
 
         if not info:
-            await interaction.edit_original_response(content="No results found.")
+            await interaction.edit_original_response(content="沒有找到結果。")
             return
 
         entries = info.get_entries_objects()
         if not entries:
-            await interaction.edit_original_response(content="No results found.")
+            await interaction.edit_original_response(content="沒有找到結果。")
             return
 
         view = SearchView(
@@ -1158,7 +1168,7 @@ class SlashCommands(commands.Cog):
         )
 
         await interaction.edit_original_response(
-            content=f"**Search results from {svc_label}** — pick one to queue:",
+            content=f"**來自 {svc_label} 的搜尋結果** — 選一首加入佇列：",
             view=view,
         )
 
@@ -1171,7 +1181,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="np",
-        description="Show what's currently playing.",
+        description="顯示目前正在播放的歌曲。",
     )
     async def slash_np(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -1180,7 +1190,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             await self.bot.cmd_np(
@@ -1199,7 +1209,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="summon",
-        description="Tell MusicBot to join your current voice channel.",
+        description="叫機器人加入你目前所在的語音頻道。",
     )
     async def slash_summon(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -1209,7 +1219,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             resp = await self.bot.cmd_summon(
                 ssd_=self._ssd(interaction),
@@ -1227,9 +1237,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="follow",
-        description="Make MusicBot follow you between voice channels. Run again to unfollow.",
+        description="讓機器人跟著你在語音頻道間移動。再打一次可取消跟隨。",
     )
-    @app_commands.describe(user="Owner only: follow a specific member instead of yourself.")
+    @app_commands.describe(user="僅限擁有者：跟隨指定成員而非自己。")
     async def slash_follow(
         self,
         interaction: discord.Interaction,
@@ -1242,7 +1252,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             author = interaction.user
             if not guild or not isinstance(author, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             mentions = [user] if user else []
             resp = await self.bot.cmd_follow(
@@ -1261,7 +1271,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="pause",
-        description="Pause the currently playing track.",
+        description="暫停目前播放的曲目。",
     )
     async def slash_pause(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -1287,7 +1297,7 @@ class SlashCommands(commands.Cog):
     # /resume
     # -----------------------------------------------------------------------
 
-    @app_commands.command(name="resume", description="Resume a paused player.")
+    @app_commands.command(name="resume", description="繼續播放已暫停的曲目。")
     async def slash_resume(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "resume"):
@@ -1306,7 +1316,7 @@ class SlashCommands(commands.Cog):
     # /shuffle
     # -----------------------------------------------------------------------
 
-    @app_commands.command(name="shuffle", description="Shuffle all tracks currently in the queue.")
+    @app_commands.command(name="shuffle", description="把目前佇列裡的所有曲目洗牌。")
     async def slash_shuffle(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "shuffle"):
@@ -1326,7 +1336,7 @@ class SlashCommands(commands.Cog):
     # /clear
     # -----------------------------------------------------------------------
 
-    @app_commands.command(name="clear", description="Remove all songs from the queue.")
+    @app_commands.command(name="clear", description="清空佇列裡的所有歌曲。")
     async def slash_clear(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "clear"):
@@ -1334,7 +1344,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             _player = self.bot.get_player_in(guild)
             resp = await self.bot.cmd_clear(
@@ -1354,12 +1364,12 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="remove",
-        description="Remove a song from the queue by position, range, or user.",
+        description="依位置、範圍或使用者，從佇列移除歌曲。",
     )
     @app_commands.describe(
-        position="Queue position to remove (omit to remove last item).",
-        to_position="End of range — removes FROM position through this one.",
-        user="Remove all songs queued by this member.",
+        position="要移除的佇列位置（留空則移除最後一項）。",
+        to_position="範圍結尾——會移除從 position 到這個位置之間的所有歌曲。",
+        user="移除這位成員加入的所有歌曲。",
     )
     async def slash_remove(
         self,
@@ -1374,7 +1384,7 @@ class SlashCommands(commands.Cog):
         try:
             author = interaction.user
             if not isinstance(author, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             perms = self.bot.permissions.for_user(author)
@@ -1409,9 +1419,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="skip",
-        description="Skip or vote to skip the current song.",
+        description="跳過目前歌曲，或發起投票跳過。",
     )
-    @app_commands.describe(force="Force skip — requires InstaSkip permission.")
+    @app_commands.describe(force="強制跳過——需要 InstaSkip 權限。")
     async def slash_skip(
         self,
         interaction: discord.Interaction,
@@ -1424,7 +1434,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             voice_channel = user.voice.channel if user.voice else None
@@ -1449,9 +1459,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="volume",
-        description="Set or show the playback volume (1–100). Prefix with + or - for relative.",
+        description="設定或顯示播放音量（1–100）。前面加 + 或 - 可做相對調整。",
     )
-    @app_commands.describe(level="Volume level 1–100. Use +10 or -10 for relative change.")
+    @app_commands.describe(level="音量大小 1–100。用 +10 或 -10 做相對調整。")
     async def slash_volume(
         self,
         interaction: discord.Interaction,
@@ -1477,9 +1487,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="speed",
-        description="Change playback speed of the current track (0.5–100.0).",
+        description="調整目前曲目的播放速度（0.5–100.0）。",
     )
-    @app_commands.describe(rate="Playback rate, e.g. 1.5 for 50% faster, 0.75 for slower.")
+    @app_commands.describe(rate="播放速率，例如 1.5 代表快 50%，0.75 代表變慢。")
     async def slash_speed(
         self,
         interaction: discord.Interaction,
@@ -1491,7 +1501,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             resp = await self.bot.cmd_speed(
@@ -1510,23 +1520,23 @@ class SlashCommands(commands.Cog):
 
     setalias = app_commands.Group(
         name="setalias",
-        description="Manage bot command aliases. Owner only.",
+        description="管理機器人指令別名。僅限擁有者。",
         default_permissions=discord.Permissions(administrator=True),
     )
 
     async def _owner_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.bot.config.owner_id:
             await interaction.followup.send(
-                "This command is restricted to the bot owner.", ephemeral=True
+                "這個指令僅限機器人擁有者使用。", ephemeral=True
             )
             return False
         return True
 
-    @setalias.command(name="add", description="Add a new alias for a command.")
+    @setalias.command(name="add", description="為指令新增一個別名。")
     @app_commands.describe(
-        alias="The alias name to create.",
-        command="The command the alias maps to.",
-        args="Optional arguments to bake into the alias.",
+        alias="要建立的別名名稱。",
+        command="這個別名對應到的指令。",
+        args="要內建進別名的參數（選填）。",
     )
     async def slash_setalias_add(
         self,
@@ -1550,8 +1560,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @setalias.command(name="remove", description="Remove an existing alias.")
-    @app_commands.describe(alias="The alias name to remove.")
+    @setalias.command(name="remove", description="移除一個現有的別名。")
+    @app_commands.describe(alias="要移除的別名名稱。")
     async def slash_setalias_remove(
         self,
         interaction: discord.Interaction,
@@ -1572,7 +1582,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @setalias.command(name="save", description="Save current aliases to the config file.")
+    @setalias.command(name="save", description="把目前的別名儲存到設定檔。")
     async def slash_setalias_save(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1587,7 +1597,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @setalias.command(name="load", description="Reload aliases from the config file.")
+    @setalias.command(name="load", description="從設定檔重新載入別名。")
     async def slash_setalias_load(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1608,11 +1618,11 @@ class SlashCommands(commands.Cog):
 
     config = app_commands.Group(
         name="config",
-        description="Manage bot configuration. Owner only.",
+        description="管理機器人設定。僅限擁有者。",
         default_permissions=discord.Permissions(administrator=True),
     )
 
-    @config.command(name="missing", description="Show any missing config options.")
+    @config.command(name="missing", description="顯示缺少的設定選項。")
     async def slash_config_missing(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1627,7 +1637,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @config.command(name="diff", description="List options changed since last config load.")
+    @config.command(name="diff", description="列出自上次載入設定以來變更過的選項。")
     async def slash_config_diff(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1642,7 +1652,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @config.command(name="list", description="List all available config options.")
+    @config.command(name="list", description="列出所有可用的設定選項。")
     async def slash_config_list(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1657,7 +1667,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @config.command(name="reload", description="Reload options.ini from disk.")
+    @config.command(name="reload", description="從硬碟重新載入 options.ini。")
     async def slash_config_reload(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1672,8 +1682,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @config.command(name="help", description="Show help text for a specific config option.")
-    @app_commands.describe(option="Option name (section can be omitted if unambiguous).")
+    @config.command(name="help", description="顯示特定設定選項的說明文字。")
+    @app_commands.describe(option="選項名稱（若不會混淆可省略區段名）。")
     async def slash_config_help(self, interaction: discord.Interaction, option: str) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1688,8 +1698,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @config.command(name="show", description="Show the current value of a config option.")
-    @app_commands.describe(option="Option name (section can be omitted if unambiguous).")
+    @config.command(name="show", description="顯示某個設定選項目前的值。")
+    @app_commands.describe(option="選項名稱（若不會混淆可省略區段名）。")
     async def slash_config_show(self, interaction: discord.Interaction, option: str) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1704,10 +1714,10 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @config.command(name="set", description="Set a config option for this session (not saved to file).")
+    @config.command(name="set", description="設定一個選項的值，僅在本次執行期間生效（不寫入檔案）。")
     @app_commands.describe(
-        option="Option name (section can be omitted if unambiguous).",
-        value="New value to set.",
+        option="選項名稱（若不會混淆可省略區段名）。",
+        value="要設定的新值。",
     )
     async def slash_config_set(
         self, interaction: discord.Interaction, option: str, value: str
@@ -1725,8 +1735,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @config.command(name="save", description="Save the current value of a config option to disk.")
-    @app_commands.describe(option="Option name (section can be omitted if unambiguous).")
+    @config.command(name="save", description="把某個設定選項目前的值寫入硬碟。")
+    @app_commands.describe(option="選項名稱（若不會混淆可省略區段名）。")
     async def slash_config_save(self, interaction: discord.Interaction, option: str) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1741,8 +1751,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @config.command(name="reset", description="Reset a config option to its default value.")
-    @app_commands.describe(option="Option name (section can be omitted if unambiguous).")
+    @config.command(name="reset", description="把某個設定選項重設為預設值。")
+    @app_commands.describe(option="選項名稱（若不會混淆可省略區段名）。")
     async def slash_config_reset(self, interaction: discord.Interaction, option: str) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1763,12 +1773,12 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="option",
-        description="Deprecated. Use /config instead.",
+        description="已淘汰，請改用 /config。",
     )
     async def slash_option(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         await interaction.followup.send(
-            "❌ The `option` command is deprecated. Use `/config` instead.",
+            "❌ `option` 指令已淘汰，請改用 `/config`。",
             ephemeral=True,
         )
 
@@ -1784,11 +1794,11 @@ class SlashCommands(commands.Cog):
 
     cache = app_commands.Group(
         name="cache",
-        description="Manage the audio file cache. Owner only.",
+        description="管理音訊檔案快取。僅限擁有者。",
         default_permissions=discord.Permissions(administrator=True),
     )
 
-    @cache.command(name="info", description="Show current cache size and settings.")
+    @cache.command(name="info", description="顯示目前快取大小與設定。")
     async def slash_cache_info(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1799,7 +1809,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @cache.command(name="update", description="Scan the cache folder then show info.")
+    @cache.command(name="update", description="掃描快取資料夾後顯示資訊。")
     async def slash_cache_update(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1810,7 +1820,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @cache.command(name="clear", description="Clear the audio cache according to configured limits.")
+    @cache.command(name="clear", description="依照設定的上限清理音訊快取。")
     async def slash_cache_clear(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -1828,9 +1838,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="queue",
-        description="Show the current song queue with pagination.",
+        description="顯示目前的播放佇列，支援分頁瀏覽。",
     )
-    @app_commands.describe(page="Queue page number to start on.")
+    @app_commands.describe(page="要從第幾頁開始顯示。")
     async def slash_queue(
         self,
         interaction: discord.Interaction,
@@ -1842,7 +1852,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             player = await self._get_player(interaction)
             ssd = self._ssd(interaction)
@@ -1850,7 +1860,7 @@ class SlashCommands(commands.Cog):
             import math
             total = len(player.playlist.entries)
             pages_total = math.ceil(total / self.bot.config.queue_length) if total else 1
-            start_page = max(0, (page or 1) - 1)
+            start_page = min(max(0, (page or 1) - 1), pages_total - 1)
 
             view = QueueView(
                 bot=self.bot,
@@ -1879,9 +1889,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="clean",
-        description="Delete bot messages and command invocations from this channel.",
+        description="刪除這個頻道裡機器人的訊息與指令呼叫紀錄。",
     )
-    @app_commands.describe(range="Number of messages to search through (default 50, max 500).")
+    @app_commands.describe(range="要搜尋的訊息數量（預設 50，上限 500）。")
     async def slash_clean(
         self,
         interaction: discord.Interaction,
@@ -1894,7 +1904,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             resp = await self.bot.cmd_clean(
                 ssd_=self._ssd(interaction),
@@ -1916,9 +1926,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="pldump",
-        description="Dump all URLs from a playlist to a text file.",
+        description="把播放清單裡的所有網址匯出成文字檔。",
     )
-    @app_commands.describe(url="Playlist URL to dump.")
+    @app_commands.describe(url="要匯出的播放清單網址。")
     async def slash_pldump(self, interaction: discord.Interaction, url: str) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._check_perms(interaction, "pldump"):
@@ -1926,7 +1936,7 @@ class SlashCommands(commands.Cog):
         try:
             user = interaction.user
             if not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             resp = await self.bot.cmd_pldump(
                 ssd_=self._ssd(interaction),
@@ -1948,9 +1958,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="id",
-        description="Show your Discord user ID, or the ID of another member.",
+        description="顯示你的 Discord 使用者 ID，或其他成員的 ID。",
     )
-    @app_commands.describe(user="Member to look up (omit to show your own ID).")
+    @app_commands.describe(user="要查詢的成員（留空則顯示你自己的 ID）。")
     async def slash_id(
         self,
         interaction: discord.Interaction,
@@ -1962,7 +1972,7 @@ class SlashCommands(commands.Cog):
         try:
             author = interaction.user
             if not isinstance(author, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             resp = await self.bot.cmd_id(
                 ssd_=self._ssd(interaction),
@@ -1979,14 +1989,14 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="listids",
-        description="Dump Discord IDs for this server's users, roles, and channels to a file.",
+        description="把這個伺服器的使用者、身分組、頻道 ID 匯出成檔案。",
     )
-    @app_commands.describe(category="Which IDs to include (default: all).")
+    @app_commands.describe(category="要包含哪些類型的 ID（預設：全部）。")
     @app_commands.choices(category=[
-        app_commands.Choice(name="All",      value="all"),
-        app_commands.Choice(name="Users",    value="users"),
-        app_commands.Choice(name="Roles",    value="roles"),
-        app_commands.Choice(name="Channels", value="channels"),
+        app_commands.Choice(name="全部",   value="all"),
+        app_commands.Choice(name="使用者", value="users"),
+        app_commands.Choice(name="身分組", value="roles"),
+        app_commands.Choice(name="頻道",   value="channels"),
     ])
     async def slash_listids(
         self,
@@ -2000,7 +2010,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             user = interaction.user
             if not guild or not isinstance(user, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             cat = category.value if category else "all"
             resp = await self.bot.cmd_listids(
@@ -2025,9 +2035,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="perms",
-        description="Show your MusicBot permissions, or another member's.",
+        description="顯示你的 MusicBot 權限，或其他成員的權限。",
     )
-    @app_commands.describe(user="Member to check (omit to check your own permissions).")
+    @app_commands.describe(user="要查詢的成員（留空則查詢你自己的權限）。")
     async def slash_perms(
         self,
         interaction: discord.Interaction,
@@ -2040,7 +2050,7 @@ class SlashCommands(commands.Cog):
             guild = interaction.guild
             author = interaction.user
             if not guild or not isinstance(author, discord.Member):
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             resp = await self.bot.cmd_perms(
                 ssd_=self._ssd(interaction),
@@ -2068,7 +2078,7 @@ class SlashCommands(commands.Cog):
 
     setperms = app_commands.Group(
         name="setperms",
-        description="Manage permissions.ini configuration. Owner only.",
+        description="管理 permissions.ini 設定。僅限擁有者。",
         default_permissions=discord.Permissions(administrator=True),
     )
 
@@ -2092,53 +2102,53 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @setperms.command(name="list", description="Show loaded groups and available permission options.")
+    @setperms.command(name="list", description="顯示已載入的群組與可用的權限選項。")
     async def slash_setperms_list(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._sp(interaction, "list")
 
-    @setperms.command(name="reload", description="Reload permissions from permissions.ini.")
+    @setperms.command(name="reload", description="從 permissions.ini 重新載入權限設定。")
     async def slash_setperms_reload(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._sp(interaction, "reload")
 
-    @setperms.command(name="add", description="Add a new permissions group with defaults.")
-    @app_commands.describe(group="Name of the new group to create.")
+    @setperms.command(name="add", description="新增一個使用預設值的權限群組。")
+    @app_commands.describe(group="要建立的新群組名稱。")
     async def slash_setperms_add(self, interaction: discord.Interaction, group: str) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._sp(interaction, "add", [group])
 
-    @setperms.command(name="remove", description="Remove an existing permissions group.")
-    @app_commands.describe(group="Name of the group to remove.")
+    @setperms.command(name="remove", description="移除一個現有的權限群組。")
+    @app_commands.describe(group="要移除的群組名稱。")
     async def slash_setperms_remove(self, interaction: discord.Interaction, group: str) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._sp(interaction, "remove", [group])
 
-    @setperms.command(name="save", description="Save a permissions group to file.")
-    @app_commands.describe(group="Name of the group to save.")
+    @setperms.command(name="save", description="把某個權限群組儲存到檔案。")
+    @app_commands.describe(group="要儲存的群組名稱。")
     async def slash_setperms_save(self, interaction: discord.Interaction, group: str) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._sp(interaction, "save", [group])
 
-    @setperms.command(name="help", description="Show help text for a permission option.")
-    @app_commands.describe(permission="Permission option name.")
+    @setperms.command(name="help", description="顯示某個權限選項的說明文字。")
+    @app_commands.describe(permission="權限選項名稱。")
     async def slash_setperms_help(self, interaction: discord.Interaction, permission: str) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._sp(interaction, "help", [permission])
 
-    @setperms.command(name="show", description="Show the current value of a permission for a group.")
-    @app_commands.describe(group="Group name.", permission="Permission option name.")
+    @setperms.command(name="show", description="顯示某個群組的權限目前的值。")
+    @app_commands.describe(group="群組名稱。", permission="權限選項名稱。")
     async def slash_setperms_show(
         self, interaction: discord.Interaction, group: str, permission: str
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         await self._sp(interaction, "show", [group, permission])
 
-    @setperms.command(name="set", description="Set a permission value for a group.")
+    @setperms.command(name="set", description="設定某個群組的權限值。")
     @app_commands.describe(
-        group="Group name.",
-        permission="Permission option name.",
-        value="Value to set.",
+        group="群組名稱。",
+        permission="權限選項名稱。",
+        value="要設定的值。",
     )
     async def slash_setperms_set(
         self, interaction: discord.Interaction, group: str, permission: str, value: str
@@ -2152,9 +2162,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="setname",
-        description="Change the bot's Discord username. Limited to twice per hour.",
+        description="更改機器人的 Discord 使用者名稱。每小時最多改兩次。",
     )
-    @app_commands.describe(name="New username for the bot.")
+    @app_commands.describe(name="機器人的新使用者名稱。")
     async def slash_setname(self, interaction: discord.Interaction, name: str) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -2175,9 +2185,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="setnick",
-        description="Change the bot's nickname in this server.",
+        description="更改機器人在這個伺服器裡的暱稱。",
     )
-    @app_commands.describe(nick="New nickname for the bot.")
+    @app_commands.describe(nick="機器人的新暱稱。")
     async def slash_setnick(self, interaction: discord.Interaction, nick: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "setnick"):
@@ -2185,7 +2195,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             resp = await self.bot.cmd_setnick(
                 ssd_=self._ssd(interaction),
@@ -2204,9 +2214,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="setprefix",
-        description="Set or clear a per-server command prefix. Requires EnablePrefixPerGuild.",
+        description="設定或清除這個伺服器專屬的指令前綴。需要開啟 EnablePrefixPerGuild。",
     )
-    @app_commands.describe(prefix="New prefix, or 'clear' to remove the server prefix.")
+    @app_commands.describe(prefix="新的前綴，或輸入 'clear' 移除伺服器專屬前綴。")
     async def slash_setprefix(self, interaction: discord.Interaction, prefix: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "setprefix"):
@@ -2226,10 +2236,10 @@ class SlashCommands(commands.Cog):
 
     language = app_commands.Group(
         name="language",
-        description="Manage the bot's language for this server.",
+        description="管理機器人在這個伺服器使用的語言。",
     )
 
-    @language.command(name="show", description="Show the current language and available options.")
+    @language.command(name="show", description="顯示目前語言與可用的選項。")
     async def slash_language_show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._check_perms(interaction, "language"):
@@ -2243,8 +2253,8 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @language.command(name="set", description="Set the language for this server.")
-    @app_commands.describe(locale="Language code, e.g. en_US, de_DE.")
+    @language.command(name="set", description="設定這個伺服器使用的語言。")
+    @app_commands.describe(locale="語言代碼，例如 en_US、zh_TW。")
     async def slash_language_set(self, interaction: discord.Interaction, locale: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "language"):
@@ -2259,7 +2269,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @language.command(name="reset", description="Reset this server's language to the bot default.")
+    @language.command(name="reset", description="把這個伺服器的語言重設為機器人預設語言。")
     async def slash_language_reset(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "language"):
@@ -2279,11 +2289,11 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="setavatar",
-        description="Change the bot's avatar. Provide a URL or attach an image.",
+        description="更改機器人的頭像。提供網址或附加一張圖片。",
     )
     @app_commands.describe(
-        url="Direct image URL.",
-        attachment="Upload an image file directly.",
+        url="直接的圖片網址。",
+        attachment="直接上傳一個圖片檔案。",
     )
     async def slash_setavatar(
         self,
@@ -2296,7 +2306,7 @@ class SlashCommands(commands.Cog):
             return
         if not url and not attachment:
             await interaction.followup.send(
-                "❌ You must provide a URL or attach an image.", ephemeral=True
+                "❌ 你必須提供網址或附加一張圖片。", ephemeral=True
             )
             return
         try:
@@ -2306,10 +2316,8 @@ class SlashCommands(commands.Cog):
             if self.bot.user and self.bot.session:
                 async with self.bot.session.get(thing, timeout=timeout) as res:
                     await self.bot.user.edit(avatar=await res.read())
-            ssd = self._ssd(interaction)
-            from .i18n import _D
             await interaction.followup.send(
-                _D("Changed the bot's avatar.", ssd), ephemeral=True
+                "已更改機器人的頭像。", ephemeral=True
             )
         except Exception as e:
             await self._err(interaction, e)
@@ -2320,7 +2328,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="disconnect",
-        description="Force MusicBot to disconnect from voice in this server.",
+        description="強制讓機器人斷開這個伺服器的語音連線。",
     )
     async def slash_disconnect(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -2329,7 +2337,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             resp = await self.bot.cmd_disconnect(guild=guild)
             await self._send(interaction, resp)
@@ -2342,7 +2350,7 @@ class SlashCommands(commands.Cog):
 
     restart = app_commands.Group(
         name="restart",
-        description="Restart the bot in various ways. Owner only.",
+        description="以不同方式重啟機器人。僅限擁有者。",
         default_permissions=discord.Permissions(administrator=True),
     )
 
@@ -2351,7 +2359,7 @@ class SlashCommands(commands.Cog):
             return
         guild = interaction.guild
         if not guild:
-            await interaction.followup.send("Guild only.", ephemeral=True)
+            await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
             return
         _player = self.bot.get_player_in(guild)
         try:
@@ -2366,34 +2374,34 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @restart.command(name="soft", description="Reload the bot without a full process restart.")
+    @restart.command(name="soft", description="重新載入機器人，不做完整的程序重啟。")
     async def slash_restart_soft(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("♻️ Restarting (soft)…", ephemeral=True)
+        await interaction.followup.send("♻️ 重啟中（軟重啟）…", ephemeral=True)
         await self._restart(interaction, "soft")
 
-    @restart.command(name="full", description="Fully restart the bot process.")
+    @restart.command(name="full", description="完整重啟機器人程序。")
     async def slash_restart_full(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("♻️ Restarting (full)…", ephemeral=True)
+        await interaction.followup.send("♻️ 重啟中（完整重啟）…", ephemeral=True)
         await self._restart(interaction, "full")
 
-    @restart.command(name="uppip", description="Update pip packages then fully restart.")
+    @restart.command(name="uppip", description="更新 pip 套件後完整重啟。")
     async def slash_restart_uppip(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("📦 Updating pip and restarting…", ephemeral=True)
+        await interaction.followup.send("📦 正在更新 pip 並重啟…", ephemeral=True)
         await self._restart(interaction, "uppip")
 
-    @restart.command(name="upgit", description="Update bot code with git then fully restart.")
+    @restart.command(name="upgit", description="用 git 更新機器人程式碼後完整重啟。")
     async def slash_restart_upgit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("🔄 Updating via git and restarting…", ephemeral=True)
+        await interaction.followup.send("🔄 正在透過 git 更新並重啟…", ephemeral=True)
         await self._restart(interaction, "upgit")
 
-    @restart.command(name="upgrade", description="Update everything (pip + git) then fully restart.")
+    @restart.command(name="upgrade", description="更新所有東西（pip + git）後完整重啟。")
     async def slash_restart_upgrade(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("⬆️ Upgrading everything and restarting…", ephemeral=True)
+        await interaction.followup.send("⬆️ 正在升級所有東西並重啟…", ephemeral=True)
         await self._restart(interaction, "upgrade")
 
     # -----------------------------------------------------------------------
@@ -2402,7 +2410,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="shutdown",
-        description="Disconnect from all voice channels and shut down the bot.",
+        description="斷開所有語音頻道連線並關閉機器人。",
     )
     async def slash_shutdown(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -2410,9 +2418,9 @@ class SlashCommands(commands.Cog):
             return
         guild = interaction.guild
         if not guild:
-            await interaction.followup.send("Guild only.", ephemeral=True)
+            await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
             return
-        await interaction.followup.send("👋 Shutting down…", ephemeral=True)
+        await interaction.followup.send("👋 關閉中…", ephemeral=True)
         try:
             await self.bot.cmd_shutdown(guild=guild, channel=interaction.channel)
         except exceptions.TerminateSignal:
@@ -2424,9 +2432,9 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="leaveserver",
-        description="Force the bot to leave a server by name or ID.",
+        description="用名稱或 ID 強制讓機器人離開某個伺服器。",
     )
-    @app_commands.describe(server="Server ID (preferred) or exact server name.")
+    @app_commands.describe(server="伺服器 ID（建議）或完整的伺服器名稱。")
     async def slash_leaveserver(self, interaction: discord.Interaction, server: str) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -2454,7 +2462,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="checkupdates",
-        description="Check for MusicBot source code and dependency updates.",
+        description="檢查 MusicBot 原始碼與相依套件是否有更新。",
     )
     async def slash_checkupdates(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -2475,7 +2483,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="uptime",
-        description="Show how long MusicBot has been online since last start.",
+        description="顯示 MusicBot 自上次啟動以來上線了多久。",
     )
     async def slash_uptime(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -2493,7 +2501,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="botlatency",
-        description="Show API and voice client latency for all connected guilds.",
+        description="顯示所有已連線伺服器的 API 與語音延遲。",
     )
     async def slash_botlatency(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -2511,7 +2519,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="latency",
-        description="Show API and voice latency for this server.",
+        description="顯示這個伺服器的 API 與語音延遲。",
     )
     async def slash_latency(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -2520,7 +2528,7 @@ class SlashCommands(commands.Cog):
         try:
             guild = interaction.guild
             if not guild:
-                await interaction.followup.send("Guild only.", ephemeral=True)
+                await interaction.followup.send("這個指令只能在伺服器中使用。", ephemeral=True)
                 return
             resp = await self.bot.cmd_latency(
                 ssd_=self._ssd(interaction),
@@ -2536,7 +2544,7 @@ class SlashCommands(commands.Cog):
 
     @app_commands.command(
         name="botversion",
-        description="Display the current MusicBot version.",
+        description="顯示目前的 MusicBot 版本。",
     )
     async def slash_botversion(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -2557,11 +2565,11 @@ class SlashCommands(commands.Cog):
 
     setcookies = app_commands.Group(
         name="setcookies",
-        description="Manage yt-dlp cookies. Owner only.",
+        description="管理 yt-dlp 使用的 cookies。僅限擁有者。",
         default_permissions=discord.Permissions(administrator=True),
     )
 
-    @setcookies.command(name="on", description="Enable a previously uploaded cookies.txt.")
+    @setcookies.command(name="on", description="啟用先前上傳過的 cookies.txt。")
     async def slash_setcookies_on(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -2576,7 +2584,7 @@ class SlashCommands(commands.Cog):
         except Exception as e:
             await self._err(interaction, e)
 
-    @setcookies.command(name="off", description="Disable cookies without deleting the file.")
+    @setcookies.command(name="off", description="停用 cookies，但不刪除檔案。")
     async def slash_setcookies_off(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         if not await self._owner_check(interaction):
@@ -2593,9 +2601,9 @@ class SlashCommands(commands.Cog):
 
     @setcookies.command(
         name="upload",
-        description="Upload a new cookies.txt file. WARNING: see /help setcookies for risks.",
+        description="上傳新的 cookies.txt 檔案。警告：風險請見 /help setcookies。",
     )
-    @app_commands.describe(file="A cookies.txt file exported from your browser.")
+    @app_commands.describe(file="從瀏覽器匯出的 cookies.txt 檔案。")
     async def slash_setcookies_upload(
         self, interaction: discord.Interaction, file: discord.Attachment
     ) -> None:
@@ -2615,21 +2623,20 @@ class SlashCommands(commands.Cog):
                 await file.save(self.bot.config.cookies_path)
             except discord.HTTPException as e:
                 raise exceptions.CommandError(
-                    "Error downloading the cookies file from Discord:  %(raw_error)s",
+                    "從 Discord 下載 cookies 檔案時發生錯誤：%(raw_error)s",
                     fmt_args={"raw_error": e},
                 ) from e
             except OSError as e:
                 raise exceptions.CommandError(
-                    "Could not save cookies to disk:  %(raw_error)s",
+                    "無法把 cookies 存到硬碟：%(raw_error)s",
                     fmt_args={"raw_error": e},
                 ) from e
 
             if not self.bot.downloader.cookies_enabled:
                 self.bot.downloader.enable_ytdl_cookies()
 
-            from .i18n import _D
             await interaction.followup.send(
-                _D("Cookies uploaded and enabled.", self._ssd(interaction)),
+                "Cookies 已上傳並啟用。",
                 ephemeral=True,
             )
         except Exception as e:
