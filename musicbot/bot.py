@@ -47,7 +47,6 @@ from .constants import (
     DISCORD_MSG_CHAR_LIMIT,
     EMOJI_CHECK_MARK_BUTTON,
     EMOJI_CROSS_MARK_BUTTON,
-    EMOJI_IDLE_ICON,
     EMOJI_NEXT_ICON,
     EMOJI_PREV_ICON,
     EMOJI_RESTART_FULL,
@@ -1713,7 +1712,7 @@ class MusicBot(commands.Bot):
 
         # nothing going on.
         else:
-            text = f" ~ {EMOJI_IDLE_ICON} ~ "
+            text = "賴祥德，偶素不會屈服的!"
             if self.config.status_message:
                 text = format_status_msg(None)
 
