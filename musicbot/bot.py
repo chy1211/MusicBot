@@ -87,6 +87,7 @@ from .utils import (
     format_size_from_bytes,
     format_song_duration,
     format_time_to_seconds,
+    get_compound_link_ids,
     is_empty_voice_channel,
     owner_only,
     slugify,
@@ -4304,17 +4305,13 @@ class MusicBot(commands.Bot):
             except asyncio.TimeoutError:
                 await self.safe_delete_message(msg)
 
-        # Check for playlist in youtube watch link.
+        # Check for a playlist ID in a youtube watch link, in any of:
         # https://youtu.be/VID?list=PLID
         # https://www.youtube.com/watch?v=VID&list=PLID
-        playlist_regex = re.compile(
-            r"(?:youtube.com/watch\?v=|youtu\.be/)([^?&]{6,})[&?]{1}(list=PL[^&]+)",
-            re.I | re.X,
-        )
-        matches = playlist_regex.search(song_url)
-        if matches:
-            pl_url = "https://www.youtube.com/playlist?" + matches.group(2)
-            ignore_vid = matches.group(1)
+        # https://music.youtube.com/watch?v=VID&list=OLAK5uy_ID
+        playlist_id, ignore_vid = get_compound_link_ids(song_url)
+        if playlist_id:
+            pl_url = f"https://www.youtube.com/playlist?list={playlist_id}"
             self.create_task(
                 _prompt_for_playing(
                     _D(

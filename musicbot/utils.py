@@ -14,9 +14,11 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
     TypeVar,
     Union,
 )
+from urllib.parse import parse_qs, urlparse
 
 from .constants import DISCORD_MSG_CHAR_LIMIT
 from .exceptions import PermissionsError
@@ -518,3 +520,64 @@ def check_extractor(target: str, contains: str) -> bool:
     """Tests extractor string for containing the given extractor parts."""
     parts = contains.split(":")
     return all(p in target for p in parts)
+
+
+# Playlist IDs are opaque, but always drawn from the URL-safe base64 alphabet.
+YOUTUBE_PLAYLIST_ID_CHARS = re.compile(r"[A-Za-z0-9_-]+")
+
+# Playlists that belong to whichever account is authenticated rather than to the
+# member who pasted the link. Queueing these would expose the bot account's own
+# lists, so they are never treated as a compound link.
+YOUTUBE_PRIVATE_PLAYLIST_IDS = frozenset({"WL", "LL"})
+
+
+def get_compound_link_ids(song_url: str) -> Tuple[str, str]:
+    """
+    Pick the playlist ID and video ID out of a YouTube "compound" watch link,
+    that is, a link to a single video which also names a playlist.
+
+    Handles every shape the watch links come in::
+
+        https://youtu.be/VID?list=PLID
+        https://www.youtube.com/watch?v=VID&list=PLID
+        https://www.youtube.com/watch?v=VID&t=42s&list=PLID
+        https://music.youtube.com/watch?v=VID&list=OLAK5uy_ID
+
+    Playlist IDs carry several prefixes besides ``PL`` -- ``OLAK5uy_`` for
+    YouTube Music albums, ``UU`` for channel uploads, ``RD`` for mixes, and more
+    -- so the ID is matched generically instead of by prefix.
+
+    :returns: ``(playlist_id, video_id)``, or ``("", "")`` if `song_url` is not a
+        YouTube watch link, names no playlist, or names a non-shareable one.
+    """
+    try:
+        parts = urlparse(song_url)
+    except ValueError:
+        return "", ""
+
+    host = (parts.hostname or "").lower()
+    is_short_link = host == "youtu.be"
+    if not is_short_link and host != "youtube.com" and not host.endswith(".youtube.com"):
+        return "", ""
+
+    query = parse_qs(parts.query)
+
+    playlist_id = next(iter(query.get("list", [])), "").strip()
+    if not playlist_id or not YOUTUBE_PLAYLIST_ID_CHARS.fullmatch(playlist_id):
+        return "", ""
+    if playlist_id.upper() in YOUTUBE_PRIVATE_PLAYLIST_IDS:
+        return "", ""
+
+    if is_short_link:
+        video_id = parts.path.lstrip("/").split("/")[0]
+    else:
+        # Only watch links are compound. A bare /playlist?list=... link is
+        # already queued whole by the play command, with no prompt needed.
+        if not parts.path.rstrip("/").endswith("/watch"):
+            return "", ""
+        video_id = next(iter(query.get("v", [])), "")
+
+    if len(video_id) < 6 or not YOUTUBE_PLAYLIST_ID_CHARS.fullmatch(video_id):
+        return "", ""
+
+    return playlist_id, video_id
