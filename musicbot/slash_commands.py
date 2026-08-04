@@ -382,8 +382,8 @@ class SlashCommands(commands.Cog):
         Returns True if allowed, sends ephemeral error and returns False otherwise.
         """
         if not isinstance(interaction.user, discord.Member):
-            await interaction.followup.send(
-                "這個指令只能在伺服器中使用。", ephemeral=True
+            await self._reply(
+                interaction, "這個指令只能在伺服器中使用。", ephemeral=True
             )
             return False
         perms: PermissionGroup = self.bot.permissions.for_user(interaction.user)
@@ -391,7 +391,8 @@ class SlashCommands(commands.Cog):
             interaction.user.id != self.bot.config.owner_id
             and not perms.can_use_command(command_name, sub_cmd)
         ):
-            await interaction.followup.send(
+            await self._reply(
+                interaction,
                 f"你的權限群組（`{perms.name}`）不能使用 `/{command_name}`。",
                 ephemeral=True,
             )
@@ -422,6 +423,26 @@ class SlashCommands(commands.Cog):
             return self.bot.server_data[interaction.guild.id]
         return None
 
+    async def _reply(
+        self,
+        interaction: discord.Interaction,
+        content: str,
+        *,
+        ephemeral: bool = False,
+        view: Optional[discord.ui.View] = None,
+    ) -> None:
+        kwargs: dict = {}
+        if view is not None:
+            kwargs["view"] = view
+        if interaction.response.is_done():
+            try:
+                await interaction.followup.send(content, ephemeral=ephemeral, **kwargs)
+            except discord.HTTPException:
+                # If Discord rejects ephemeral=True due to non-ephemeral defer(), fallback to non-ephemeral followup
+                await interaction.followup.send(content, **kwargs)
+        else:
+            await interaction.response.send_message(content, ephemeral=ephemeral, **kwargs)
+
     async def _send(
         self,
         interaction: discord.Interaction,
@@ -429,7 +450,7 @@ class SlashCommands(commands.Cog):
         *,
         ephemeral: bool = False,
     ) -> None:
-        await interaction.followup.send(_content(resp), ephemeral=ephemeral)
+        await self._reply(interaction, _content(resp), ephemeral=ephemeral)
 
     async def _err(self, interaction: discord.Interaction, exc: Exception) -> None:
         msg = getattr(exc, "message", str(exc))
@@ -439,7 +460,8 @@ class SlashCommands(commands.Cog):
                 msg = msg % fmt
             except Exception:
                 pass
-        await interaction.followup.send(f"❌ {msg}", ephemeral=True)
+        await self._reply(interaction, f"❌ {msg}", ephemeral=True)
+
 
     # -----------------------------------------------------------------------
     # /resetplaylist
