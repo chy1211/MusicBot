@@ -7334,6 +7334,7 @@ class MusicBot(commands.Bot):
                     fmt_args={"locale": ssd_.lang_code},
                 )
             ssd_.lang_code = lang_code
+            await ssd_.save_guild_options_file()
             return Response(
                 _D("Language for this server now set to: `%(locale)s`", ssd_)
                 % {"locale": lang_code},
