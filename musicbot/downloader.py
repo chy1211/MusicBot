@@ -69,7 +69,7 @@ class YtdlpLogHook:
 # Immutable dict is needed, because something is modifying the 'outtmpl' value. I suspect it being ytdl, but I'm not sure.
 ytdl_format_options_immutable = MappingProxyType(
     {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=m4a]/bestaudio/best[height<=360]/best",
         "outtmpl": "%(extractor)s-%(id)s-%(title).64B-%(qhash)s.%(ext)s",
         "restrictfilenames": True,
         "noplaylist": True,
@@ -150,6 +150,11 @@ class Downloader:
         ytdl_format_options["js_runtimes"] = {
             "deno": {},
             "node": {},
+        }
+        ytdl_format_options["extractor_args"] = {
+            "youtubepot-bgutilhttp": {
+                "base_url": ["http://bgutil-provider:4416"]
+            }
         }
 
         # add concurrent-fragments option if it is needed.
