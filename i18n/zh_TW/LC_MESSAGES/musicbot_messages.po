@@ -50,7 +50,7 @@ msgstr "MusicBot 無法送出發言請求。"
 
 #: musicbot/bot.py:1013
 msgid "The bot is not in a voice channel.\nUse the summon command to bring the bot to your voice channel."
-msgstr "機器人不在語音頻道裡。\n用 summon 指令把它叫進你的語音頻道。"
+msgstr "阿北還在土城舍房裡。用 /summon 把他交保出來大聲唱歌！"
 
 #: musicbot/bot.py:1025
 msgid "Something is wrong, we didn't get the VoiceClient."
@@ -78,7 +78,7 @@ msgstr "跳過 %(user)s 點的歌，因為人不在語音頻道裡！"
 
 #: musicbot/bot.py:1572
 msgid "Playback failed for song `%(song)s` due to an error:\n```\n%(error)s```"
-msgstr "`%(song)s` 播放失敗，發生錯誤：\n```\n%(error)s```"
+msgstr "❌ `%(song)s` 播放失敗！YouTube 又在搞司法迫害：\n```\n%(error)s```"
 
 #: musicbot/bot.py:1824
 msgid "[Dev Bug] Tried sending an invalid response object."
@@ -122,7 +122,7 @@ msgstr ""
 
 #: musicbot/bot.py:3028
 msgid "No such command"
-msgstr "沒有這個指令"
+msgstr "沒有這個指令。不要問，你會怕，去看 /help 的 SOP！"
 
 #: musicbot/bot.py:3047
 msgid "The list above shows only commands permitted for your use.\nFor a list of all commands, run: %(example_all)s\n"
@@ -250,7 +250,7 @@ msgstr "提供的歌曲連結無效"
 
 #: musicbot/bot.py:3385
 msgid "The queue is empty. Add some songs with a play command!"
-msgstr "隊列是空的，用 play 指令加幾首歌吧！"
+msgstr "歌單空空如也，怪怪的。趕快用 /play 塞幾首歌進來，該怎麼辦就怎麼辦！"
 
 #: musicbot/bot.py:3396
 msgid "All songs in the queue are already in the autoplaylist."
@@ -658,7 +658,7 @@ msgstr "如果正在播放，就暫停。"
 
 #: musicbot/bot.py:5194
 msgid "Paused music in `%(channel)s`"
-msgstr "已在 `%(channel)s` 暫停播放"
+msgstr "在 `%(channel)s` 暫停播放！被賴祥德關靜音了……但偶素不會屈服的！"
 
 #: musicbot/bot.py:5198
 msgid "Player is not playing."
@@ -754,7 +754,7 @@ msgstr "你沒有權限強制跳過單曲循環中的歌。"
 
 #: musicbot/bot.py:5546
 msgid "Force skipped `%(track)s`."
-msgstr "已強制跳過 `%(track)s`。"
+msgstr "這首聽起來怪怪的，直接強制跳過 `%(track)s`！阿北繼續堅持唱下一首。"
 
 #: musicbot/bot.py:5552
 msgid "You do not have permission to force skip."
