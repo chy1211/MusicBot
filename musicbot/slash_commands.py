@@ -38,6 +38,7 @@ from discord.ext import commands
 
 from . import exceptions
 from .constructs import GuildSpecificData, MusicBotResponse
+from .i18n import _D
 
 if TYPE_CHECKING:
     from .bot import MusicBot
@@ -453,6 +454,9 @@ class SlashCommands(commands.Cog):
         await self._reply(interaction, _content(resp), ephemeral=ephemeral)
 
     async def _err(self, interaction: discord.Interaction, exc: Exception) -> None:
+        # Exceptions raised by the shared bot command layer are still raw
+        # English message IDs at this boundary. Translate them with the
+        # interaction's guild language before sending the slash-command error.
         msg = getattr(exc, "message", str(exc))
         fmt = getattr(exc, "fmt_args", {})
         if fmt:
@@ -460,6 +464,9 @@ class SlashCommands(commands.Cog):
                 msg = msg % fmt
             except Exception:
                 pass
+        if interaction.guild and isinstance(msg, str):
+            ssd = self.bot.server_data.get(interaction.guild.id)
+            msg = _D(msg, ssd)
         await self._reply(interaction, f"❌ {msg}", ephemeral=True)
 
 
