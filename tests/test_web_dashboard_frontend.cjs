@@ -12,10 +12,12 @@ class Element {
     this.tag = tag; this.children = []; this.listeners = {};
     this.attributes = {}; this.dataset = {}; this.value = "";
     this.textContent = ""; this.disabled = false; this.hidden = false;
-    this.classList = {toggle() {}};
+    this.classes = new Set();
+    this.classList = {toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name)};
   }
   append(...items) {
     this.children.push(...items);
+    items.forEach((item) => { item.parent = this; });
     if (this.tag === "select" && !this.value && items.length) this.value = items[0].value;
   }
   replaceChildren() {
@@ -26,6 +28,11 @@ class Element {
   getAttribute(name) { return this.attributes[name] || null; }
   removeAttribute(name) { delete this.attributes[name]; }
   addEventListener(name, handler) { this.listeners[name] = handler; }
+  setPointerCapture(id) { this.capture = id; }
+  hasPointerCapture(id) { return this.capture === id; }
+  releasePointerCapture() { this.capture = null; }
+  closest() { return this.tag === "li" ? this : this.parent?.closest(); }
+  getBoundingClientRect() { return {height: 110}; }
   set src(value) { this.attributes.src = value; }
   get src() { return this.attributes.src; }
   set innerHTML(value) { throw new Error("Untrusted content must use textContent"); }
@@ -41,22 +48,25 @@ function initial(id) {
 }
 async function setup() {
   const elements = new Map();
-  const document = {activeElement: null, hidden: false,
+  const document = {activeElement: null, hidden: false, body: new Element("body"), listeners: {},
+    addEventListener(name, fn) { this.listeners[name] = fn; },
+    elementFromPoint() { return this.hit; },
+    querySelector() { return new Element(); },
     getElementById(id) {
       if (!elements.has(id)) elements.set(id, new Element(id === "guild" ? "select" : "div"));
       return elements.get(id);
     },
     createElement: (tag) => new Element(tag),
-    querySelectorAll() {
+    querySelectorAll(selector) {
       const result = [];
       function walk(element) {
         if (element.tag === "button") result.push(element);
         element.children.forEach(walk);
       }
-      walk(this.getElementById("queue"));
+      walk(this.getElementById(selector.includes("preview") ? "preview-results" : "queue"));
       return result;
     }};
-  const requests = [], timers = [], states = {1: initial(1), 2: initial(2)};
+  const requests = [], timers = [], frames = [], scrolls = [], states = {1: initial(1), 2: initial(2)};
   let hook = null;
   async function fetch(url, options) {
     requests.push({url, ...options, data: options.body ? JSON.parse(options.body) : undefined});
@@ -70,6 +80,8 @@ async function setup() {
       const match = url.match(/^api\/guilds\/(\d+)\/(.+)$/);
       const state = states[match[1]], action = match[2], data = options.body && JSON.parse(options.body);
       if (action === "state") body = clone(state);
+      else if (action === "resolve") body = {results: [{title: "Selected", kind: "track",
+        url: "https://example.test/selected", duration: 125, thumbnail: "", allowed: true, preview_id: "preview-one"}]};
       else {
         if (action === "pause") state.status = "paused";
         if (action === "resume") state.status = "playing";
@@ -84,10 +96,12 @@ async function setup() {
     }
     return {ok: status === 200, status, json: async () => body};
   }
-  const context = vm.createContext({document, fetch, window: {setTimeout: (...args) => timers.push(args)}});
+  const context = vm.createContext({document, fetch, window: {setTimeout: (...args) => timers.push(args), clearTimeout() {},
+    requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
+    innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
   vm.runInContext(code, context);
   await flush();
-  return {document, elements, states, requests, context, timers,
+  return {document, elements, states, requests, context, timers, frames, scrolls,
     element: (id) => document.getElementById(id),
     run: (expression) => vm.runInContext(expression, context),
     hook: (value) => { hook = value; }};
@@ -98,7 +112,7 @@ test("renders current track, progress, queue and safe untrusted titles", async (
   assert.equal(app.element("title").textContent, "First");
   assert.equal(app.element("progress").value, 30);
   assert.equal(app.element("queue-count").textContent, "2");
-  assert.equal(app.element("queue").children[0].children[1].children[0].textContent, "<img onerror=evil>");
+  assert.equal(app.element("queue").children[0].children[2].children[0].textContent, "<img onerror=evil>");
   assert.equal(app.element("enqueue").disabled, false);
   assert.equal(app.timers[0][1], 1000);
 });
@@ -113,24 +127,26 @@ test("control handlers send correct methods, body, guild and headers", async () 
   await app.element("repeat").listeners.change();
   app.element("query").value = "search words";
   await app.element("play-form").listeners.submit({preventDefault() {}});
+  await app.element("preview-results").children[0].children[2].listeners.click();
   const mutations = app.requests.filter((r) => r.method === "POST");
   assert.deepEqual(mutations.map((r) => r.url), [
-    "api/guilds/1/pause", "api/guilds/1/volume", "api/guilds/1/repeat", "api/guilds/1/play"]);
+    "api/guilds/1/pause", "api/guilds/1/volume", "api/guilds/1/repeat", "api/guilds/1/resolve", "api/guilds/1/play"]);
   assert.equal(mutations[1].data.volume, 65);
   assert.equal(mutations[2].data.mode, "all");
   assert.equal(mutations[3].data.query, "search words");
-  assert.equal(mutations[3].headers["X-MusicBot-Dashboard"], "1");
+  assert.equal(mutations[4].data.query, "https://example.test/selected");
+  assert.equal(mutations[4].headers["X-MusicBot-Dashboard"], "1");
   assert.equal(app.element("query").value, "");
 });
 
 test("queue handlers retain observed revision and block invalid boundaries", async () => {
   const app = await setup();
-  const actions = app.element("queue").children[0].children[2].children;
-  assert.equal(actions[0].disabled, true);
-  await actions[1].listeners.click();
+  const actions = app.element("queue").children[0].children[4].children;
+  assert.equal(actions[1].disabled, true);
+  await actions[2].listeners.click();
   const move = app.requests.find((r) => r.url.endsWith("queue/move"));
   assert.deepEqual(move.data, {from: 1, to: 2, revision: "revision-1"});
-  await app.element("queue").children[0].children[2].children[2].listeners.click();
+  await app.element("queue").children[0].children[4].children[3].listeners.click();
   assert.equal(app.requests.find((r) => r.method === "DELETE").url, "api/guilds/1/queue/1");
   assert.equal(app.element("queue-count").textContent, "1");
 });
@@ -207,7 +223,7 @@ test("mutations block duplicate input and polling while in flight", async () => 
 test("network errors preserve query and expose reconnect controls", async () => {
   const app = await setup();
   app.element("query").value = "keep this";
-  app.hook((url) => url.endsWith("/play") ? Promise.reject(new Error("network lost")) : null);
+  app.hook((url) => url.endsWith("/resolve") ? Promise.reject(new Error("network lost")) : null);
   await app.element("play-form").listeners.submit({preventDefault() {}});
   assert.equal(app.element("query").value, "keep this");
   assert.equal(app.element("notice").textContent, "network lost");
@@ -215,4 +231,188 @@ test("network errors preserve query and expose reconnect controls", async () => 
   await app.run("connect()");
   assert.equal(app.element("auth").open, true);
   assert.equal(app.element("toggle").disabled, true);
+});
+
+function pointer(type = "mouse", extra = {}) {
+  return {button: 0, pointerId: 7, isPrimary: true, pointerType: type,
+    clientX: 80, clientY: 220, preventDefault() {}, ...extra};
+}
+function handle(app, index = 0) { return app.element("queue").children[index].children[4].children[0]; }
+
+test("desktop pointer drag sends move with the observed revision", async () => {
+  const app = await setup(), grip = handle(app);
+  app.document.hit = app.element("queue").children[1];
+  grip.listeners.pointerdown(pointer());
+  grip.listeners.pointermove(pointer("mouse", {clientY: 320}));
+  assert.equal(app.run("drag.active"), true);
+  await grip.listeners.pointerup(pointer());
+  const move = app.requests.find((r) => r.url.endsWith("queue/move"));
+  assert.deepEqual(move.data, {from: 1, to: 2, revision: "revision-1"});
+  assert.equal(grip.hasPointerCapture(7), false);
+});
+
+test("touch drag requires long press and then uses the same move API", async () => {
+  const app = await setup(), grip = handle(app);
+  app.document.hit = app.element("queue").children[1];
+  grip.listeners.pointerdown(pointer("touch"));
+  assert.equal(app.run("drag.active"), false);
+  const hold = app.timers.find((timer) => timer[1] === 420);
+  hold[0]();
+  grip.listeners.pointermove(pointer("touch", {clientY: 320}));
+  await grip.listeners.pointerup(pointer("touch"));
+  assert.deepEqual(app.requests.find((r) => r.url.endsWith("queue/move")).data,
+    {from: 1, to: 2, revision: "revision-1"});
+});
+
+test("touch tap or movement before long press cancels without moving", async () => {
+  const app = await setup(), grip = handle(app);
+  grip.listeners.pointerdown(pointer("touch"));
+  await grip.listeners.pointerup(pointer("touch"));
+  grip.listeners.pointerdown(pointer("touch"));
+  grip.listeners.pointermove(pointer("touch", {clientY: 300}));
+  assert.equal(app.run("drag"), null);
+  assert.equal(app.requests.some((r) => r.url.endsWith("queue/move")), false);
+});
+
+test("Escape, pointercancel, lost capture and same-position drop send no mutations", async () => {
+  for (const reason of ["escape", "pointercancel", "lostpointercapture", "same"]) {
+    const app = await setup(), grip = handle(app);
+    app.document.hit = app.element("queue").children[0];
+    grip.listeners.pointerdown(pointer());
+    grip.listeners.pointermove(pointer("mouse", {clientY: 240}));
+    if (reason === "escape") app.document.listeners.keydown({key: "Escape"});
+    else if (reason === "same") await grip.listeners.pointerup(pointer());
+    else grip.listeners[reason]();
+    assert.equal(app.run("drag"), null);
+    assert.equal(app.requests.some((r) => r.url.endsWith("queue/move")), false);
+  }
+});
+
+test("changed queue revision cancels an active drag", async () => {
+  const app = await setup(), grip = handle(app);
+  grip.listeners.pointerdown(pointer());
+  grip.listeners.pointermove(pointer("mouse", {clientY: 250}));
+  app.states[1].revision = "updated-by-discord";
+  await app.run("refresh()");
+  assert.equal(app.run("drag"), null);
+  assert.equal(app.element("notice").textContent.includes("取消拖曳"), true);
+  await grip.listeners.pointerup(pointer());
+  assert.equal(app.requests.some((r) => r.url.endsWith("queue/move")), false);
+});
+
+test("stale drag response 409 refreshes state and retains the error notice", async () => {
+  const app = await setup(), grip = handle(app);
+  app.document.hit = app.element("queue").children[1];
+  app.hook((url) => url.endsWith("queue/move")
+    ? Promise.resolve({ok: false, status: 409, json: async () => ({error: "stale queue"})}) : null);
+  grip.listeners.pointerdown(pointer());
+  grip.listeners.pointermove(pointer("mouse", {clientY: 320}));
+  await grip.listeners.pointerup(pointer());
+  assert.equal(app.element("notice").textContent, "stale queue");
+  assert.equal(app.requests.at(-1).url, "api/guilds/1/state");
+  assert.equal(handle(app).disabled, false);
+});
+
+test("lookup never plays until the selected result is explicitly confirmed", async () => {
+  const app = await setup();
+  app.element("query").value = "find this";
+  await app.element("play-form").listeners.submit({preventDefault() {}});
+  assert.equal(app.requests.some((r) => r.url.endsWith("/play")), false);
+  assert.equal(app.element("preview-panel").hidden, false);
+  assert.equal(app.element("preview-results").children[0].children[1].children[0].textContent, "Selected");
+  await app.element("preview-results").children[0].children[2].listeners.click();
+  assert.deepEqual(app.requests.find((r) => r.url.endsWith("/play")).data,
+    {query: "https://example.test/selected", preview_id: "preview-one"});
+  assert.equal(app.element("preview-panel").hidden, true);
+});
+
+test("denied results are visible with a disabled confirmation button", async () => {
+  const app = await setup();
+  app.hook((url) => url.endsWith("/resolve") ? Promise.resolve({ok: true, status: 200,
+    json: async () => ({results: [{title: "Blocked", url: "https://example.test/blocked",
+      allowed: false, reason: "blocked by policy", kind: "track"}]})}) : null);
+  app.element("query").value = "blocked";
+  await app.run("resolveQuery()");
+  const card = app.element("preview-results").children[0];
+  assert.equal(card.children[2].disabled, true);
+  await card.children[2].listeners.click();
+  assert.equal(app.requests.some((r) => r.url.endsWith("/play")), false);
+});
+
+test("slow resolve permits playback controls and prevents duplicate lookups", async () => {
+  const app = await setup();
+  let release;
+  app.hook((url) => url.endsWith("/resolve") ? new Promise((resolve) => { release = resolve; }) : null);
+  app.element("query").value = "song";
+  const lookup = app.run("resolveQuery()");
+  await flush();
+  assert.equal(app.element("enqueue").disabled, true);
+  assert.equal(app.element("toggle").disabled, false);
+  await app.run("resolveQuery()");
+  await app.element("toggle").listeners.click();
+  assert.equal(app.requests.filter((r) => r.url.endsWith("/resolve")).length, 1);
+  release({ok: true, status: 200, json: async () => ({results: []})});
+  await lookup;
+});
+
+test("guild switching and clearing reject stale lookup responses", async () => {
+  for (const action of ["switch", "clear"]) {
+    const app = await setup();
+    let release;
+    app.hook((url) => url.endsWith("/resolve") ? new Promise((resolve) => { release = resolve; }) : null);
+    app.element("query").value = "song";
+    const lookup = app.run("resolveQuery()");
+    await flush();
+    if (action === "switch") {
+      app.element("guild").value = "2"; await app.element("guild").listeners.change();
+    } else app.element("preview-close").listeners.click();
+    release({ok: true, status: 200, json: async () => ({results: [{title: "stale"}]})});
+    await lookup;
+    assert.equal(app.element("preview-panel").hidden, true);
+    assert.equal(app.element("preview-results").children.length, 0);
+  }
+});
+
+test("duplicate confirm clicks are blocked and failed replies retain the same token", async () => {
+  const app = await setup();
+  app.element("query").value = "song"; await app.run("resolveQuery()");
+  const button = app.element("preview-results").children[0].children[2];
+  let release;
+  app.hook((url) => url.endsWith("/play") ? new Promise((resolve) => { release = resolve; }) : null);
+  const first = button.listeners.click();
+  await flush();
+  await button.listeners.click();
+  assert.equal(app.requests.filter((r) => r.url.endsWith("/play")).length, 1);
+  release({ok: false, status: 502, json: async () => ({error: "reply lost"})});
+  await first;
+  assert.equal(app.element("preview-panel").hidden, false);
+  assert.equal(button.disabled, false);
+  app.hook(null);
+  await button.listeners.click();
+  const plays = app.requests.filter((r) => r.url.endsWith("/play"));
+  assert.deepEqual(plays[0].data, plays[1].data);
+});
+
+test("edge dragging schedules scrolling and cancellation clears animation", async () => {
+  const app = await setup(), grip = handle(app);
+  grip.listeners.pointerdown(pointer());
+  grip.listeners.pointermove(pointer("mouse", {clientY: 10}));
+  app.frames.at(-1)();
+  assert.deepEqual(app.scrolls.at(-1), [0, -10]);
+  grip.listeners.pointercancel();
+  assert.equal(app.run("drag"), null);
+});
+
+test("an old state poll cannot overwrite a completed mutation", async () => {
+  const app = await setup();
+  let release;
+  app.hook((url) => url.endsWith("/state") ? new Promise((resolve) => { release = resolve; }) : null);
+  const old = app.run("refresh()");
+  await flush();
+  app.hook(null);
+  await app.element("toggle").listeners.click();
+  assert.equal(app.element("toggle").textContent.includes("播放"), true);
+  release({ok: true, status: 200, json: async () => initial(1)});
+  await old;
+  assert.equal(app.element("toggle").textContent.includes("播放"), true);
 });
