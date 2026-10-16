@@ -1,8 +1,7 @@
-# Web dashboard: round 6 (implemented and tested, not deployed)
+# Web dashboard: round 7 (development only)
 
 Optional aiohttp dashboard inside the bot event loop, without another Discord
-client or dependency. Production dev remains 02365d8 (round 5 plus copy cleanup, deployed
-2026-10-17); this round-6 feature branch is not deployed. The public production
+client or dependency. The round-7 branch starts at dev 9af6f8d (round 6). This feature branch is not deployed. The public production
 dashboard already uses Discord login. Each caller acts with their own guild
 membership, permissions and voice state. Default AuthMode=owner preserves legacy
 OwnerID behavior when the key is missing; owner mode requires external SSO.
@@ -826,3 +825,40 @@ injected: original mutations/replies and original exception propagation remain.
 Temporary containers/images use only musicbot-webtest- names and --network none.
 The archive-based test image copies no real operational configuration. No live
 Discord credentials, external providers or production services were used.
+
+## Personal library (round 7)
+
+Every authenticated, unblocked member of at least one bot guild owns one library,
+shared across guilds. No client-supplied user ID or filename is accepted. Responses
+contain no user ID. Storage: data/web_dashboard/user_playlists/<session-user>.json;
+version 1 JSON contains playlists with opaque IDs, names and tracks. A track stores
+only title (300 chars), http/https URL (2000 chars, no credentials/whitespace),
+duration (finite nonnegative seconds or null), and added_at (Unix seconds).
+Favorites plus 20 custom lists; names 1-60 characters; 200 tracks per list.
+Limits and malformed values return 400 in Traditional Chinese.
+
+Per-user asyncio locks serialize reads/mutations. A sibling temporary file is
+flushed, fsynced and atomically replaced; the parent directory is fsynced.
+Malformed JSON/schema is moved to .corrupt-<timestamp>, logged, and the request
+returns 409 without writing a replacement. The next request may start a new library.
+Files live under the persistent, ignored data bind mount.
+
+All routes require existing session, header and same-origin guards:
+- GET /api/library -> {version, playlists, revision, owner}.
+- POST /api/library {name} -> updated library.
+- PATCH /api/library/{opaque-id} {revision,name} or
+  {revision,action:"remove",index} / {revision,action:"move",index,to}.
+- DELETE /api/library/{opaque-id} {revision}. Favorites cannot be deleted/renamed.
+- POST /api/library/{opaque-id}/tracks {revision,track:{title,url,duration}}.
+- POST /api/guilds/{guild}/library/{opaque-id}/play {revision,selected_items?}.
+  Index strings select tracks in saved order; omit to enqueue all. The target
+  guild's live membership, command/voice permissions, AllowPlaylists, playlist
+  length, MaxSongs, song length, extractor and blocklist checks apply via the
+  existing play_selection and CONFIRMED_ENTRY_CHECK. Rate limit once per batch.
+  Returns {added,skipped,results:[{item_id,title,added,reason}],message,state}.
+  No cached saved duration authorizes enqueue; fresh extraction checks each song.
+
+UI: favorite current track, save queue/history tracks via picker, create/rename/
+delete lists, remove tracks, up/down ordering, enqueue all or checked tracks.
+Revision conflicts return 409. The demo seeds separate fake libraries under a
+TemporaryDirectory, cleaned at app shutdown; no real data directory is used.

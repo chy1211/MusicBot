@@ -6,6 +6,8 @@ import builtins
 import asyncio
 import signal
 import time
+import tempfile
+from pathlib import Path
 from collections import deque
 from types import SimpleNamespace as NS
 
@@ -282,9 +284,21 @@ class DemoDashboard(Dashboard):
     """Fake login exists only in this explicit demo executable, never production."""
     def __init__(self, bot, config, fake_login=None):
         self.fake_login = fake_login
+        self.demo_temp = tempfile.TemporaryDirectory(prefix="musicbot-webtest-demo-")
         super().__init__(bot, config)
         # Replace the provider boundary before any request can run.
         self.lyrics_client = FakeLyricsClient()
+        from musicbot.web_dashboard_library import PlaylistStore, song
+        self.playlist_store = PlaylistStore(Path(self.demo_temp.name) / "user_playlists")
+        async def cleanup_demo(_app):
+            self.demo_temp.cleanup()
+        self.app.on_cleanup.append(cleanup_demo)
+        for uid in (42, 43, 44, 45):
+            value = self.playlist_store.fresh()
+            value["playlists"].append({"id": "a"*24, "name": "示範歌單", "tracks": [song({"title": TITLES[0], "url": "https://example.test/track/0", "duration": 180})]})
+            self.playlist_store.path(uid).parent.mkdir(parents=True, exist_ok=True)
+            import json
+            self.playlist_store.path(uid).write_text(json.dumps(value), encoding="utf-8")
         bot.dashboard = self
         for guild in bot.guilds:
             for index in range(5, -1, -1):
