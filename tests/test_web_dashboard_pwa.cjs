@@ -10,7 +10,7 @@ function setup() {
     self: {location:{origin:"https://music.example.com"}, addEventListener:(name,fn)=>handlers[name]=fn,
       skipWaiting:async()=>skipped++, clients:{claim:async()=>claimed++}},
     caches:{open:async()=>store, match:async key=>cache.get(key),
-      keys:async()=>["musicbot-dashboard-old","unrelated","musicbot-dashboard-r7-1"], delete:async key=>deleted.push(key)},
+      keys:async()=>["musicbot-dashboard-old","unrelated","musicbot-dashboard-r7-2"], delete:async key=>deleted.push(key)},
     fetch:async request=>{fetches.push(request);if(offline)throw new Error("offline");return new Response("network",{status:200});}};
   vm.runInNewContext(code,context);
   async function event(name, request) {
@@ -50,7 +50,7 @@ test("HTML network first and offline fallback is a simple offline page",async()=
 });
 test("static stale while revalidate returns cache and refreshes versioned asset",async()=>{
   const a=setup();a.cache.set("/dashboard.js",new Response("cached"));
-  const result=await a.event("fetch",a.request("/dashboard.js?v=r7-1"));
+  const result=await a.event("fetch",a.request("/dashboard.js?v=r7-2"));
   assert.equal(await result.result.text(),"cached");
   assert.equal(await a.cache.get("/dashboard.js").text(),"network");
   a.setOffline(true);a.cache.set("/dashboard.css",new Response("offline css"));

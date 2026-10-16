@@ -944,8 +944,8 @@ the browser installation menu. Real-device installation is a release acceptance 
 sw.js caches only its explicit static allowlist: root HTML shell, offline.html,
 CSS, dashboard/library/admin/permissions/PWA JS, manifest and icons. Root HTML is
 network-first with a simple offline page on network failure. Other static assets
-use stale-while-revalidate. Version: musicbot-dashboard-r7-1; HTML asset references
-carry ?v=r7-1. Increment both on every static release. Install uses skipWaiting;
+use stale-while-revalidate. Version: musicbot-dashboard-r7-2; HTML asset references
+carry ?v=r7-2. Increment both on every static release. Install uses skipWaiting;
 activate deletes only older musicbot-dashboard-* caches and claims clients.
 A controller change shows a refresh button so a playing/unsaved session is not
 silently reloaded. Failed cache writes do not hide a successful HTML response.
