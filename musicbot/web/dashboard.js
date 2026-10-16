@@ -47,7 +47,6 @@ function authDisplay() {
   $("login-screen").hidden = signedIn;
   $("discord-login").hidden = authMode !== "discord";
   $("auth").hidden = authMode !== "owner";
-  $("owner-badge").hidden = authMode !== "owner";
   $("user-profile").hidden = authMode !== "discord" || !authenticated;
   $("identity-note").textContent = authMode === "discord"
     ? "每秒更新 · 以你的 Discord 身分與權限操作 · 操作前請加入機器人所在的語音頻道"

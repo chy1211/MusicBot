@@ -596,7 +596,6 @@ test("owner retains connection settings and uses no Discord profile", async () =
   const app = await setup();
   assert.equal(app.element("auth").hidden, false);
   assert.equal(app.element("user-profile").hidden, true);
-  assert.equal(app.element("owner-badge").hidden, false);
   const count = app.requests.length;
   await app.element("logout").listeners.click();
   assert.equal(app.requests.length, count);
@@ -809,7 +808,9 @@ test("fixed accessible toast, safe source link and reduced motion CSS are presen
   for (const slogan of ["讓音樂繼續陪你", "讓好歌", "接著發生。", "在 Discord 相聚，在這裡選歌。", "先看預覽，再加入佇列。搜尋結果可挑選一首。"])
     assert.ok(!html.includes(slogan) && !code.includes(slogan), slogan);
   assert.ok(!html.includes("sidebar-note"));
-  assert.ok(html.includes("你的音樂空間") && html.includes("讓旋律接下去"));
+  for (const slogan of ["你的音樂空間", "此刻，聽點喜歡的", "私人音樂室", "讓旋律接下去", "再聽一次，也很好", "跟著旋律，讀一句"])
+    assert.ok(!html.includes(slogan) && !code.includes(slogan), slogan);
+  assert.ok(!html.includes("owner-badge") && !code.includes("owner-badge"));
 });
 
 test("drop displacement uses unequal row heights without changing the move payload", async () => {
