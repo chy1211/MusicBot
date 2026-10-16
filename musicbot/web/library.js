@@ -97,7 +97,8 @@ async function librarySave(song, favorite = false) {
   $("library-save-dialog").showModal();
 }
 function librarySaveButton(song) {
-  return libraryButton("加到歌單…", () => librarySave(song));
+  const button = libraryButton("加到歌單…", () => librarySave(song));
+  button.className = "save-to-library"; return button;
 }
 $("nav-play").addEventListener("click", () => libraryView("play"));
 $("nav-library").addEventListener("click", () => libraryRun($("nav-library"), async () => {
