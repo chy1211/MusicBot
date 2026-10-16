@@ -13,6 +13,7 @@ from pathlib import Path
 from aiohttp import web
 from . import write_path
 from .web_dashboard_library import fail, song
+from .web_dashboard_permissions import DashboardPermissions
 
 log = logging.getLogger(__name__)
 
@@ -41,11 +42,12 @@ def apl_revision(apl):
     return hashlib.sha256(repr(list(apl)).encode()).hexdigest()
 
 
-class DashboardAdmin:
+class DashboardAdmin(DashboardPermissions):
     def init_admin(self):
         self.admin_lock = asyncio.Lock()
         self.backup_root = write_path("data/web_dashboard/backups")
         self.admin_records = deque(maxlen=100)
+        self.init_permissions_admin()
         path = "/api/guilds/{guild_id}/admin/autoplaylist"
         self.app.router.add_get(path, self.admin_autoplaylist)
         self.app.router.add_post(path, self.admin_autoplaylist)

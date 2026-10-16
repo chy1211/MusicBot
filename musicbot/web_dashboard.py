@@ -208,6 +208,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.app.router.add_get("/dashboard.js", self.asset)
         self.app.router.add_get("/library.js", self.asset)
         self.app.router.add_get("/admin.js", self.asset)
+        self.app.router.add_get("/permissions.js", self.asset)
         self.app.router.add_get("/api/guilds", self.guilds)
         self.app.router.add_get("/api/guilds/{guild_id}/state", self.state)
         self.app.router.add_get("/api/guilds/{guild_id}/listeners", self.listeners)
