@@ -127,6 +127,13 @@ function controls() {
   const hasPlayer = usable && state && state.status !== "disconnected";
   for (const id of ["toggle", "skip", "repeat", "volume"]) $(id).disabled = !hasPlayer;
   $("enqueue").disabled = !usable || resolving;
+  $("request-action").disabled = !usable || resolving;
+  const seekable = hasPlayer && !!state.current && state.current.duration > 0 && state.current.seekable === true;
+  for (const id of ["progress", "hero-progress"]) $(id).disabled = !seekable;
+  $("lyrics-toggle").disabled = !hasPlayer || !state.current;
+  $("lyrics-search").disabled = !usable || lyricsLoading;
+  $("history-refresh").disabled = !usable || historyLoading;
+  document.querySelectorAll("#history-list button").forEach((button) => { button.disabled = !usable; });
   document.querySelectorAll("#preview-results button").forEach((button) => {
     button.disabled = !usable || button.dataset.boundary === "1" || button.dataset.loading === "1";
   });
@@ -334,7 +341,8 @@ async function resolveQuery() {
   const epoch = generation, requestId = ++resolveGeneration, guild = selected;
   resolving = true; buttonBusy($("enqueue"), true); controls(); notice("正在查詢，只解析歌曲資訊…");
   try {
-    const result = await api("api/guilds/" + guild + "/resolve", "POST", {query});
+    const action = $("request-action").value === "playnext" ? "playnext" : "play";
+    const result = await api("api/guilds/" + guild + "/resolve", "POST", {query, action});
     if (epoch !== generation || requestId !== resolveGeneration) return;
     previewResults = result.results;
     $("preview-panel").hidden = false;
@@ -365,6 +373,9 @@ async function resolveQuery() {
         controls();
       };
       if (song.entries) {
+        const hint = document.createElement("p"); hint.className = "hint playlist-next-hint";
+        hint.textContent = "播放清單依原順序加入佇列；下一首播放目前只提供單曲。";
+        info.append(hint);
         const tools = document.createElement("div"); tools.className = "selection-tools";
         for (const [label, checked] of [["全選", true], ["全不選", false]]) {
           const select = document.createElement("button"); select.type = "button"; select.textContent = label;
@@ -404,21 +415,32 @@ async function resolveQuery() {
         info.append(tools, list);
       }
       updateSelection();
-      button.addEventListener("click", async () => {
-        if (button.disabled || busy) return;
+      const confirmSong = async (target, clicked = button) => {
+        if (clicked.disabled || busy) return;
         const payload = {query: song.url, preview_id: song.preview_id};
         if (song.kind === "playlist") payload.selected_items = song.entries
           .filter((item) => selectedItems.has(item.item_id)).map((item) => item.item_id);
-        buttonBusy(button, true, song.kind === "playlist" ? "處理中（" + selectedItems.size + " 首）…" : "處理中…");
+        buttonBusy(clicked, true, song.kind === "playlist" ? "處理中（" + selectedItems.size + " 首）…" : "處理中…");
         try {
-          if (await act("play", payload)) {
+          if (await act(target, payload)) {
             clearPreview(); $("query").value = ""; controls();
           }
-        } finally { buttonBusy(button, false); controls(); }
-      });
-      article.append(art, info, button); $("preview-results").append(article);
+        } finally { buttonBusy(clicked, false); controls(); }
+      };
+      button.addEventListener("click", () => confirmSong(action));
+      if (action === "playnext") button.textContent = song.allowed ? "下一首播放" : "無法插播";
+      article.append(art, info, button);
+      if (song.kind !== "playlist") {
+        const alternate = document.createElement("button");
+        alternate.type = "button"; alternate.className = "subtle preview-alternate";
+        alternate.dataset.boundary = song.allowed ? "0" : "1";
+        alternate.textContent = action === "play" ? "下一首播放" : "加入佇列";
+        alternate.addEventListener("click", () => confirmSong(action === "play" ? "playnext" : "play", alternate));
+        article.append(alternate);
+      }
+      $("preview-results").append(article);
     }
-    notice("請確認預覽，再按「加入佇列」。預覽五分鐘內有效。");
+    notice("請確認預覽，再選擇加入方式。預覽五分鐘內有效。");
   } catch (error) {
     if (epoch === generation && requestId === resolveGeneration) notice(error.message, true);
   } finally {
@@ -427,7 +449,10 @@ async function resolveQuery() {
 }
 
 function render(next, force = false) {
+  const previousTrack = currentTrackKey();
   state = next;
+  if (seekDrag && seekDrag.track !== currentTrackKey()) cancelSeek();
+  if (previousTrack !== currentTrackKey()) resetLyrics(false);
   $("title").textContent = state.current ? state.current.title : "選一首喜歡的歌";
   $("subtitle").textContent = state.current ? "點播：" + requesterName(state.current) : "請先加入 Discord 語音頻道，再點播歌曲";
   const source = safeURL(state.current?.url || "");
@@ -450,10 +475,9 @@ function render(next, force = false) {
     }
   } else { $("cover").hidden = true; $("cover").removeAttribute("src"); }
   const total = state.current ? state.current.duration : 0;
-  $("progress").max = total || 1;
-  $("progress").value = total ? Math.min(state.progress, total) : 0;
-  $("elapsed").textContent = duration(state.progress);
-  $("duration").textContent = total ? duration(total) : "直播／長度未知";
+  drawProgress(seekDrag ? seekDrag.position : state.progress, total);
+  if (lyricsOpen && state.current && lyricsTrack !== currentTrackKey() && !lyricsLoading) loadLyrics();
+  syncLyrics();
   if ((force || document.activeElement !== $("volume")) && state.volume !== null) {
     $("volume").value = state.volume; $("volume-label").value = state.volume + "%";
   }
@@ -465,7 +489,7 @@ async function act(action, data = {}, method = "POST") {
   const guild = selected, epoch = generation;
   if (drag) cancelDrag();
   ++stateGeneration;
-  busy = true; controls(); notice(action === "play" ? "正在搜尋與加入歌曲，請稍候…" : "正在處理…");
+  busy = true; controls(); notice(["play", "playnext"].includes(action) ? "正在搜尋與加入歌曲，請稍候…" : "正在處理…");
   let result;
   try {
     result = await api("api/guilds/" + guild + "/" + action, method, data);
@@ -486,6 +510,7 @@ async function refresh(epoch = generation, force = false) {
     const next = await api("api/guilds/" + guild + "/state");
     if (epoch !== generation || guild !== selected || sequence !== stateGeneration) return;
     connected = true; $("connection").textContent = "已連線"; render(next, force);
+    if (!historyLoading && Date.now() - historyUpdated >= 15000) refreshHistory();
   } catch (error) {
     if (epoch !== generation || guild !== selected || sequence !== stateGeneration) return;
     connected = false; $("connection").textContent = "連線中斷";
@@ -493,7 +518,7 @@ async function refresh(epoch = generation, force = false) {
   }
 }
 function resetView() {
-  cancelDrag(); clearPreview();
+  cancelDrag(); cancelSeek(); clearPreview(); resetHistory(); resetLyrics(true);
   queueRevision = null;
   render({status: "disconnected", current: null, progress: 0, volume: null,
     repeat: "off", queue: [], revision: ""});
@@ -555,4 +580,212 @@ $("volume").addEventListener("change", () => act("volume", {volume: Number($("vo
 $("shuffle").addEventListener("click", () => act("queue/shuffle", {revision: state.revision}));
 $("logout").addEventListener("click", logout);
 $("user-avatar").addEventListener("error", () => { $("user-avatar").hidden = true; });
+
+// Seek previews are separate from server state: polling can update other controls.
+let seekDrag = null;
+function currentTrackKey() {
+  return state?.current ? JSON.stringify([selected, state.current.url, state.current.title, state.current.duration, state.current.track_token]) : "";
+}
+function drawProgress(position, total = state?.current?.duration || 0) {
+  const value = total ? Math.max(0, Math.min(Number(position) || 0, total)) : 0;
+  for (const id of ["progress", "hero-progress"]) {
+    $(id).max = total || 1; $(id).value = value;
+    $(id).setAttribute("aria-valuetext", duration(value) + "，共 " + (total ? duration(total) : "長度未知"));
+  }
+  for (const id of ["elapsed", "hero-elapsed"]) $(id).textContent = duration(value);
+  for (const id of ["duration", "hero-duration"]) $(id).textContent = total ? duration(total) : "直播／長度未知";
+}
+function cancelSeek() {
+  seekDrag = null;
+}
+function beginSeek(input, kind, event = {}) {
+  if (input.disabled || busy || !connected || !state?.current) return false;
+  if (seekDrag && seekDrag.input !== input) cancelSeek();
+  if (!seekDrag) seekDrag = {input, kind, guild: selected, epoch: generation,
+    track: currentTrackKey(), trackToken: state.current.track_token, position: Number(input.value), pointerId: event.pointerId};
+  return true;
+}
+async function commitSeek() {
+  const completed = seekDrag;
+  if (!completed) return;
+  completed.position = Number(completed.input.value);
+  cancelSeek();
+  if (completed.epoch !== generation || completed.guild !== selected || completed.track !== currentTrackKey()) return;
+  return act("seek", {position: completed.position, track_token: completed.trackToken});
+}
+function installSeek(id) {
+  const input = $(id);
+  input.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.isPrimary === false) return;
+    beginSeek(input, "pointer", event);
+  });
+  input.addEventListener("input", () => {
+    if (!beginSeek(input, "assistive")) return;
+    seekDrag.position = Number(input.value); drawProgress(seekDrag.position);
+  });
+  const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"];
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { cancelSeek(); drawProgress(state?.progress); return; }
+    if (keys.includes(event.key)) beginSeek(input, "keyboard");
+  });
+  input.addEventListener("keyup", (event) => {
+    if (keys.includes(event.key) && seekDrag?.input === input && seekDrag.kind === "keyboard") return commitSeek();
+  });
+  input.addEventListener("change", () => {
+    // Screen readers can emit input/change without pointer or keyboard events.
+    if (seekDrag?.input === input && seekDrag.kind === "assistive") return commitSeek();
+  });
+  input.addEventListener("blur", () => {
+    if (seekDrag?.input !== input) return;
+    if (seekDrag.kind !== "pointer") return commitSeek();
+    cancelSeek(); drawProgress(state?.progress);
+  });
+}
+// Native range controls manage pointer capture themselves. Taking/releasing it
+// here makes Chrome emit lostpointercapture during an otherwise valid drag.
+document.addEventListener("pointerup", (event) => {
+  if (seekDrag?.kind === "pointer" && seekDrag.pointerId === event.pointerId) return commitSeek();
+});
+document.addEventListener("pointercancel", (event) => {
+  if (seekDrag?.kind === "pointer" && seekDrag.pointerId === event.pointerId) {
+    cancelSeek(); drawProgress(state?.progress);
+  }
+});
+
+let historyLoading = false, historyRequest = 0, historyUpdated = 0;
+function resetHistory() {
+  ++historyRequest; historyLoading = false; historyUpdated = 0;
+  $("history-list").replaceChildren(); $("history-status").textContent = "尚無播放紀錄。";
+}
+function playedTime(timestamp) {
+  if (timestamp === null || timestamp === undefined || !Number.isFinite(Number(timestamp)) || Number(timestamp) <= 0)
+    return "播放時間未知";
+  const date = new Date(Number(timestamp) * 1000), difference = Math.max(0, Date.now() - date.getTime());
+  if (!Number.isFinite(date.getTime())) return "播放時間未知";
+  if (difference < 60000) return "剛剛";
+  if (difference < 3600000) return Math.floor(difference / 60000) + " 分鐘前";
+  return date.toLocaleString("zh-TW", {timeZone: "Asia/Taipei", month: "numeric", day: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false});
+}
+async function refreshHistory(manual = false) {
+  if (!selected || !connected || historyLoading) return;
+  const guild = selected, epoch = generation, request = ++historyRequest;
+  historyLoading = true; controls();
+  try {
+    const result = await api("api/guilds/" + guild + "/history");
+    if (epoch !== generation || guild !== selected || request !== historyRequest) return;
+    $("history-list").replaceChildren();
+    const entries = (result.history || []).slice(0, 50);
+    $("history-status").textContent = entries.length ? "播放時間以台灣時間顯示。" : "還沒有播放紀錄，先點一首喜歡的歌。";
+    for (const song of entries) {
+      const row = document.createElement("li"), info = document.createElement("div");
+      info.className = "history-info";
+      const title = document.createElement("p"); title.textContent = song.title;
+      const meta = document.createElement("small");
+      meta.textContent = (song.duration ? duration(song.duration) : "長度未知") + " · 點播：" + requesterName(song) + " · " + playedTime(song.played_at);
+      info.append(title, meta);
+      if (safeURL(song.requester?.avatar)) {
+        const avatar = imageElement(song.requester.avatar, "requester-avatar"); avatar.alt = ""; info.append(avatar);
+      }
+      const actions = document.createElement("div"); actions.className = "history-actions";
+      if (safeURL(song.url)) {
+        const replay = document.createElement("button"); replay.type = "button"; replay.textContent = "再點一次";
+        replay.addEventListener("click", async () => {
+          if (replay.disabled || busy || epoch !== generation || guild !== selected) return;
+          $("query").value = song.url; $("request-action").value = "play";
+          await resolveQuery();
+          if (epoch === generation && guild === selected) $("preview-panel").scrollIntoView?.({behavior: reduceMotion() ? "auto" : "smooth", block: "nearest"});
+        });
+        const link = document.createElement("a"); link.textContent = "來源 ↗";
+        link.href = song.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+        actions.append(replay, link);
+      }
+      row.append(imageElement(song.thumbnail), info, actions); $("history-list").append(row);
+    }
+    historyUpdated = Date.now();
+  } catch (error) {
+    if (epoch === generation && request === historyRequest) {
+      // Optional history failures never disconnect the playback controls.
+      $("history-status").textContent = error.message || "暫時無法取得播放紀錄。";
+      if (manual) notice(error.message, true);
+      historyUpdated = Date.now();
+    }
+  } finally { if (epoch === generation && request === historyRequest) { historyLoading = false; controls(); } }
+}
+
+let lyricsOpen = false, lyricsLoading = false, lyricsRequest = 0, lyricsTrack = "", lyricsLines = [], lyricsActive = -1;
+function resetLyrics(close = false) {
+  ++lyricsRequest; lyricsLoading = false; lyricsTrack = ""; lyricsLines = []; lyricsActive = -1;
+  $("lyrics-content").replaceChildren(); $("lyrics-content").textContent = "";
+  $("lyrics-content").classList.toggle("plain-lyrics", false);
+  $("lyrics-status").textContent = ""; $("lyrics-search-form").hidden = true;
+  $("lyrics-query").value = ""; $("lyrics-heading").textContent = "歌詞";
+  if (close) {
+    lyricsOpen = false; $("lyrics-panel").hidden = true;
+    $("lyrics-toggle").setAttribute("aria-expanded", "false");
+  }
+}
+async function loadLyrics(query = "") {
+  if (!selected || !connected || !state?.current) return;
+  const guild = selected, epoch = generation, key = currentTrackKey(), request = ++lyricsRequest;
+  lyricsLoading = true; lyricsTrack = key; lyricsLines = []; lyricsActive = -1;
+  $("lyrics-content").replaceChildren(); $("lyrics-content").textContent = "";
+  $("lyrics-content").classList.toggle("plain-lyrics", false);
+  $("lyrics-status").textContent = "正在找歌詞…"; $("lyrics-search-form").hidden = true; controls();
+  try {
+    const result = await api("api/guilds/" + guild + "/lyrics" + (query ? "?query=" + encodeURIComponent(query) : ""));
+    if (epoch !== generation || guild !== selected || key !== currentTrackKey() || request !== lyricsRequest) return;
+    $("lyrics-heading").textContent = result.artist ? result.title + " · " + result.artist : result.title || "歌詞";
+    if (result.status === "synced" && Array.isArray(result.lines) && result.lines.length) {
+      lyricsLines = result.lines.map((line) => ({time: Number(line.time), text: String(line.text || "")}))
+        .filter((line) => Number.isFinite(line.time)).sort((a, b) => a.time - b.time);
+      for (const line of lyricsLines) {
+        const row = document.createElement("p"); row.textContent = line.text || "♪"; $("lyrics-content").append(row);
+      }
+      $("lyrics-status").textContent = "歌詞隨播放進度更新。"; syncLyrics();
+    } else if (result.status === "plain" && result.plain_lyrics) {
+      $("lyrics-content").textContent = result.plain_lyrics;
+      $("lyrics-status").textContent = "純文字歌詞"; $("lyrics-content").classList.toggle("plain-lyrics", true);
+    } else {
+      $("lyrics-status").textContent = result.status === "unavailable" ? "歌詞服務暫時無法使用，請稍後再試。" : "找不到歌詞";
+      $("lyrics-search-form").hidden = false;
+    }
+  } catch (error) {
+    if (epoch === generation && request === lyricsRequest) {
+      $("lyrics-status").textContent = error.message || "暫時無法取得歌詞。";
+      $("lyrics-search-form").hidden = false; notice(error.message, true);
+    }
+  } finally { if (epoch === generation && request === lyricsRequest) { lyricsLoading = false; controls(); } }
+}
+function syncLyrics() {
+  if (!lyricsOpen || !lyricsLines.length) return;
+  const progress = Number(state?.progress) || 0;
+  let index = -1;
+  for (let i = 0; i < lyricsLines.length && lyricsLines[i].time <= progress; i++) index = i;
+  if (index === lyricsActive) return;
+  lyricsActive = index;
+  Array.from($("lyrics-content").children).forEach((row, i) => {
+    row.classList.toggle("current-line", i === index);
+    if (i === index) {
+      row.setAttribute("aria-current", "true");
+      row.scrollIntoView?.({behavior: reduceMotion() ? "auto" : "smooth", block: "nearest"});
+    } else row.removeAttribute("aria-current");
+  });
+}
+function toggleLyrics(open = !lyricsOpen) {
+  lyricsOpen = open; $("lyrics-panel").hidden = !open;
+  $("lyrics-toggle").setAttribute("aria-expanded", String(open));
+  if (open && lyricsTrack !== currentTrackKey()) return loadLyrics();
+}
+installSeek("progress"); installSeek("hero-progress");
+$("history-refresh").addEventListener("click", () => refreshHistory(true));
+$("lyrics-toggle").addEventListener("click", () => toggleLyrics());
+$("lyrics-close").addEventListener("click", () => { toggleLyrics(false); $("lyrics-toggle").focus?.(); });
+$("lyrics-search-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const query = $("lyrics-query").value.trim();
+  if (query && !lyricsLoading) return loadLyrics(query);
+});
+$("request-action").addEventListener("change", () => { clearPreview(); controls(); });
+
 initialize().finally(() => window.setTimeout(poll, 1000));

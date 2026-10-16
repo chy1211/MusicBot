@@ -94,3 +94,68 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         self.client.session.cookie_jar.clear()
         await self.call("/api/guilds", method="GET")
         await self.call(BASE + "pause", {})
+
+    async def test_seek_uses_real_command_and_updates_fake_clock(self):
+        await self.login("owner")
+        current = self.bot.players[1].current_entry
+        result = await self.call(BASE + "seek", {"position": 62.5})
+        self.assertIs(self.bot.players[1].current_entry, current)
+        self.assertAlmostEqual(result["state"]["progress"], 62.5, delta=.2)
+        self.assertTrue(result["state"]["current"]["seekable"])
+
+    async def test_playnext_inserts_before_existing_queue(self):
+        await self.login("owner")
+        player = self.bot.players[1]
+        current = player.current_entry
+        old = list(player.playlist.entries)
+        preview = await self.call(BASE + "resolve", {
+            "query": "https://example.test/track/0", "action": "playnext"})
+        choice = preview["results"][0]
+        await self.call(BASE + "playnext", {
+            "query": choice["url"], "preview_id": choice["preview_id"]})
+        self.assertIs(player.current_entry, current)
+        self.assertEqual(list(player.playlist.entries)[1:], old)
+        self.assertIn("夜色慢行", player.playlist.entries[0].title)
+
+    async def test_recent_seed_has_multiple_requesters_and_records_skip(self):
+        await self.login("owner")
+        before = await self.call(BASE + "history", method="GET")
+        names = {item["requester"]["name"] for item in before["history"]}
+        self.assertTrue({"Owner", "一般成員"} <= names)
+        self.assertTrue(all(set(item["requester"]) == {"name", "avatar"}
+                            for item in before["history"]))
+        await self.call(BASE + "skip", {})
+        after = await self.call(BASE + "history", method="GET")
+        self.assertIn("窗邊的午後", after["history"][0]["title"])
+
+    async def test_fake_lyrics_cover_synced_plain_and_not_found(self):
+        from tools.dashboard_demo import FakeLyricsClient
+        self.assertIsInstance(self.dashboard.lyrics_client, FakeLyricsClient)
+        await self.login("owner")
+        synced = await self.call(BASE + "lyrics", method="GET")
+        self.assertEqual(synced["status"], "synced")
+        self.assertGreater(len(synced["lines"]), 1)
+        self.assertIn("\n", synced["plain_lyrics"])
+        plain = await self.call("/api/guilds/2/lyrics", method="GET")
+        self.assertEqual(plain["status"], "plain")
+        self.assertFalse(plain["lines"])
+        await self.call(BASE + "skip", {})
+        await self.call(BASE + "skip", {})
+        missing = await self.call(BASE + "lyrics", method="GET")
+        self.assertEqual(missing["status"], "not_found")
+        manual = await self.call(BASE + "lyrics?query=夜色慢行", method="GET")
+        self.assertEqual(manual["status"], "synced")
+
+    async def test_demo_seek_denies_away_and_denied_users(self):
+        await self.login("away")
+        await self.call(BASE + "seek", {"position": 60}, status=409)
+        await self.call("/auth/logout", {})
+        await self.login("denied")
+        await self.call(BASE + "seek", {"position": 60}, status=403)
+
+    async def test_recent_replay_uses_callers_current_restrictions(self):
+        await self.login("member")
+        history = await self.call(BASE + "history", method="GET")
+        long_song = next(item for item in history["history"] if item["duration"] > 210)
+        result = await self.call(BASE + "resolve", {"query": long_song["url"]})
+        self.assertFalse(result["results"][0]["allowed"])

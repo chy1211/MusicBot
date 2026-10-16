@@ -14,6 +14,7 @@ from aiohttp import web
 from musicbot.downloader import YtdlpResponseDict
 from musicbot.bot import MusicBot
 from musicbot.constructs import SkipState
+from musicbot.entry import URLPlaylistEntry
 from musicbot.web_dashboard import Dashboard, DashboardConfig, CONFIRMED_ENTRY_CHECK
 
 
@@ -71,6 +72,8 @@ class DemoBot:
         self.denied_perms.can_use_command = lambda *_: False
         self.permissions = NS(for_user=lambda member: self.perms if member.id == 42 else
                               self.denied_perms if member.id == 45 else self.member_perms)
+        self.filecache = NS()
+        self.dashboard = None
         self.members = {}
         self.guilds, self.players, self.server_data = [], {}, {}
         self.init_ok, self.logout_called = True, False
@@ -108,17 +111,26 @@ class DemoBot:
                 song.author, song.channel = members[43] if index == 1 else owner, channel
                 if index == 3:
                     song.author, song.channel = None, None
-            def skip(p=player):
+            def skip(p=player, g=guild):
+                previous = p.current_entry
                 p.current_entry = p.playlist.entries.popleft() if p.playlist.entries else None
-                p.progress = 0
+                p.progress = p.current_entry.start_time if p.current_entry else 0
+                p.tick = time.monotonic()
                 p.skip_state.reset()
+                if self.dashboard and p.current_entry is not previous:
+                    self.dashboard.record_play(g, p.current_entry)
             player.skip = skip
 
-    def song(self, index, title=None):
-        return NS(title=title or TITLES[index % len(TITLES)],
-                  url=f"https://example.test/track/{index}",
-                  thumbnail_url=f"{self.origin}/demo-cover/{index % 5}.svg",
-                  duration=180 + index * 17)
+    def song(self, index, title=None, duration=None, url=None):
+        # Real entry metadata and seek logic; no downloader/cache operation runs.
+        info = YtdlpResponseDict({
+            "__input_subject": f"https://example.test/track/{index}",
+            "title": title or TITLES[index % len(TITLES)],
+            "webpage_url": url or f"https://example.test/track/{index}",
+            "thumbnail": f"{self.origin}/demo-cover/{index % 5}.svg",
+            "duration": duration if duration is not None else 180 + index * 17,
+            "artist": "示範樂團", "extractor": "demo", "id": str(index)})
+        return URLPlaylistEntry(NS(bot=self), info)
 
     async def noop(self, *_args, **_kwargs):
         return None
@@ -131,7 +143,9 @@ class DemoBot:
         player = self.players[guild.id]
         now = time.monotonic()
         if player.is_playing and player.current_entry:
-            player.progress = min(player.current_entry.duration, player.progress + now - player.tick)
+            player.progress += now - player.tick
+            if player.progress >= player.current_entry.duration:
+                player.skip()
         player.tick = now
         return player
 
@@ -147,6 +161,7 @@ class DemoBot:
     _check_ignore_non_voice = MusicBot._check_ignore_non_voice
     cmd_remove = MusicBot.cmd_remove
     cmd_skip = MusicBot.cmd_skip
+    cmd_seek = MusicBot.cmd_seek
 
     async def extract(self, query, **kwargs):
         assert kwargs == {"download": False, "process": True}
@@ -170,7 +185,10 @@ class DemoBot:
             data = info(index)
         return YtdlpResponseDict(data)
 
-    async def cmd_play(self, *, player, song_url, author, channel, **_kwargs):
+    async def cmd_playnext(self, **kwargs):
+        return await self.cmd_play(_head=True, **kwargs)
+
+    async def cmd_play(self, *, player, song_url, author, channel, _head=False, **_kwargs):
         # Fake boundary only: the real Dashboard calls the same cmd_play entry point.
         data = await self.extract(song_url, download=False, process=True)
         permissions = self.permissions.for_user(author)
@@ -186,9 +204,13 @@ class DemoBot:
                 raise PermissionsError("Song duration exceeds limit.")
             if permissions.max_songs and player.playlist.count_for_user(author) >= permissions.max_songs:
                 raise PermissionsError("Queue limit reached.")
-            player.playlist.entries.append(NS(
-                title=info.title, url=info.webpage_url, author=author, channel=channel,
-                thumbnail_url=info.thumbnail_url, duration=info.duration))
+            song = self.song(int(info.get("id") or 0), title=info.title,
+                             duration=info.duration, url=info.webpage_url)
+            song.author, song.channel = author, channel
+            if _head:
+                player.playlist.entries.appendleft(song)
+            else:
+                player.playlist.entries.append(song)
             if validator is not None:
                 validator.enqueued = True
 
@@ -213,11 +235,46 @@ FAKE_USERS = {"owner": (42, "Owner"), "member": (43, "一般成員"),
               "away": (44, "不在語音頻道"), "denied": (45, "無指令權限")}
 
 
+class FakeLyricsClient:
+    """Original demo lyrics only. Never constructs an HTTP client."""
+    async def lookup(self, title, artist, duration, query=""):
+        subject = query.strip() or title
+        if TITLES[0] in subject:
+            lines = [
+                {"time": 0, "text": "夜色慢慢落在街角"},
+                {"time": 15, "text": "把今天的心事輕輕放好"},
+                {"time": 30, "text": "沿著燈光走向海的方向"},
+                {"time": 45, "text": "每一步都有溫柔回響"},
+                {"time": 60, "text": "等微風吹過，明天再出發"},
+                {"time": 90, "text": "讓這一刻陪我們慢慢唱"}]
+            return {"status": "synced", "title": TITLES[0], "artist": "示範樂團",
+                    "plain_lyrics": "\n".join(line["text"] for line in lines), "lines": lines}
+        if TITLES[1] in subject:
+            return {"status": "plain", "title": TITLES[1], "artist": "示範樂團",
+                    "plain_lyrics": "窗邊的午後，留一盞光\n把遠方的問候，寫成一行\n咖啡的香氣，陪風一起晃",
+                    "lines": []}
+        return {"status": "not_found", "title": subject, "artist": "",
+                "plain_lyrics": "", "lines": []}
+
+    async def close(self):
+        pass
+
+
 class DemoDashboard(Dashboard):
     """Fake login exists only in this explicit demo executable, never production."""
     def __init__(self, bot, config, fake_login=None):
         self.fake_login = fake_login
         super().__init__(bot, config)
+        # Replace the provider boundary before any request can run.
+        self.lyrics_client = FakeLyricsClient()
+        bot.dashboard = self
+        for guild in bot.guilds:
+            for index in range(5, -1, -1):
+                song = bot.song(index)
+                song.author = bot.members[guild.id][42 if index % 2 == 0 else 43]
+                song.channel = guild.system_channel
+                self.record_play(guild, song, played_at=time.time() - (index + 1) * 180)
+            self.record_play(guild, bot.players[guild.id].current_entry)
         self.app.router.add_post("/demo-login/{user}", self.fake_callback)
 
     def fake_response(self, key):

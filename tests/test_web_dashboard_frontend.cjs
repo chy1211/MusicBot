@@ -38,6 +38,8 @@ class Element {
     const shift = parseFloat((this.style.transform || "").replace("translateY(", "")) || 0;
     return {height: 74, top: 200 + index * 74 + shift, bottom: 274 + index * 74 + shift};
   }
+  scrollIntoView(options) { this.scrolled = options; }
+  focus() { this.focused = true; }
   animate(frames, options) { this.animations.push({frames, options}); }
   set src(value) { this.attributes.src = value; }
   get src() { return this.attributes.src; }
@@ -47,7 +49,7 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 const clone = (value) => JSON.parse(JSON.stringify(value));
 function initial(id) {
   return {guild_id: String(id), status: "playing",
-    current: {title: id === 1 ? "First" : "Second", duration: 180, thumbnail: ""},
+    current: {title: id === 1 ? "First" : "Second", duration: 180, seekable: true, thumbnail: ""},
     progress: 30, volume: 15, repeat: "off", revision: "revision-" + id,
     queue: [{title: "<img onerror=evil>", position: 1, duration: 60},
             {title: "Two", position: 2, duration: 120}]};
@@ -69,7 +71,7 @@ async function setup(options = {}) {
         if (element.tag === (selector.endsWith("input") ? "input" : "button")) result.push(element);
         element.children.forEach(walk);
       }
-      walk(this.getElementById(selector.includes("preview") ? "preview-results" : "queue"));
+      walk(this.getElementById(selector.includes("preview") ? "preview-results" : selector.includes("history") ? "history-list" : "queue"));
       return result;
     }};
   const requests = [], timers = [], frames = [], scrolls = [], states = {1: initial(1), 2: initial(2)};
@@ -89,12 +91,15 @@ async function setup(options = {}) {
       const match = url.match(/^api\/guilds\/(\d+)\/(.+)$/);
       const state = states[match[1]], action = match[2], data = options.body && JSON.parse(options.body);
       if (action === "state") body = clone(state);
+      else if (action === "history") body = {history: []};
+      else if (action.startsWith("lyrics")) body = {status: "not_found", title: state.current?.title || "", lines: []};
       else if (action === "resolve") body = {results: [{title: "Selected", kind: "track",
         url: "https://example.test/selected", duration: 125, thumbnail: "", allowed: true, preview_id: "preview-one"}]};
       else {
         if (action === "pause") state.status = "paused";
         if (action === "resume") state.status = "playing";
         if (action === "volume") state.volume = data.volume;
+        if (action === "seek") state.progress = data.position;
         if (action === "repeat") state.repeat = data.mode;
         if (action === "queue/move") state.queue.splice(data.to - 1, 0, state.queue.splice(data.from - 1, 1)[0]);
         if (options.method === "DELETE") state.queue.splice(Number(action.split("/")[1]) - 1, 1);
@@ -824,4 +829,360 @@ test("drop displacement uses unequal row heights without changing the move paylo
   await pending;
   assert.deepEqual(app.requests.find((request) => request.url.endsWith("queue/move")).data,
     {from: 1, to: 2, revision: "revision-1"});
+});
+
+
+test("both seek sliders preview a drag across polling and post only on release", async () => {
+  for (const id of ["progress", "hero-progress"]) {
+    const app = await setup(), slider = app.element(id);
+    slider.listeners.pointerdown(pointer());
+    slider.value = "105"; slider.listeners.input();
+    await slider.listeners.change();
+    app.states[1].progress = 31;
+    await app.run("refresh()");
+    assert.equal(app.element("progress").value, 105);
+    assert.equal(app.element("hero-progress").value, 105);
+    assert.equal(app.element("elapsed").textContent, "1:45");
+    assert.equal(app.element("hero-elapsed").textContent, "1:45");
+    assert.equal(app.requests.filter((request) => request.url.endsWith("/seek")).length, 0);
+    await app.document.listeners.pointerup(pointer());
+    await slider.listeners.change();
+    assert.deepEqual(app.requests.filter((request) => request.url.endsWith("/seek")).map((request) => request.data),
+      [{position: 105}]);
+    assert.equal(app.element("progress").value, 105);
+  }
+});
+
+test("touch seek and keyboard repeated arrows commit once at the end of interaction", async () => {
+  const app = await setup(), slider = app.element("progress");
+  slider.listeners.pointerdown(pointer("touch"));
+  slider.value = "55"; slider.listeners.input();
+  await app.document.listeners.pointerup(pointer("touch"));
+  assert.deepEqual(app.requests.filter((request) => request.url.endsWith("/seek")).map((request) => request.data),
+    [{position: 55}]);
+  slider.listeners.keydown({key: "ArrowRight"});
+  slider.value = "56"; slider.listeners.input(); await slider.listeners.change();
+  slider.listeners.keydown({key: "ArrowRight", repeat: true});
+  slider.value = "57"; slider.listeners.input(); await slider.listeners.change();
+  assert.equal(app.requests.filter((request) => request.url.endsWith("/seek")).length, 1);
+  await slider.listeners.keyup({key: "ArrowRight"});
+  await slider.listeners.keyup({key: "ArrowRight"});
+  assert.deepEqual(app.requests.filter((request) => request.url.endsWith("/seek")).map((request) => request.data),
+    [{position: 55}, {position: 57}]);
+});
+
+test("assistive input/change commits once and cancelled seek restores actual time", async () => {
+  const app = await setup(), slider = app.element("hero-progress");
+  slider.value = "75"; slider.listeners.input(); await slider.listeners.change();
+  assert.deepEqual(app.requests.find((request) => request.url.endsWith("/seek")).data, {position: 75});
+  slider.listeners.pointerdown(pointer("touch"));
+  slider.value = "95"; slider.listeners.input(); app.document.listeners.pointercancel(pointer("touch"));
+  assert.equal(slider.value, 75);
+  assert.equal(app.run("seekDrag"), null);
+  slider.listeners.keydown({key: "ArrowLeft"});
+  slider.value = "50"; slider.listeners.input(); slider.listeners.keydown({key: "Escape"});
+  await slider.listeners.keyup({key: "ArrowLeft"});
+  assert.equal(app.requests.filter((request) => request.url.endsWith("/seek")).length, 1);
+});
+
+test("track and guild changes cancel seek so release cannot target a new song", async () => {
+  const app = await setup(), slider = app.element("progress");
+  slider.listeners.pointerdown(pointer()); slider.value = "95"; slider.listeners.input();
+  app.states[1].current.title = "New track"; app.states[1].progress = 0;
+  await app.run("refresh()");
+  await app.document.listeners.pointerup(pointer());
+  assert.equal(slider.value, 0);
+  assert.equal(app.requests.some((request) => request.url.endsWith("/seek")), false);
+  slider.listeners.pointerdown(pointer()); slider.value = "45"; slider.listeners.input();
+  app.element("guild").value = "2"; await app.element("guild").listeners.change();
+  await app.document.listeners.pointerup(pointer());
+  assert.equal(slider.value, 30);
+  assert.equal(app.requests.some((request) => request.url.endsWith("/seek")), false);
+});
+
+test("live, empty and disconnected players disable seek and backend rejection reconciles", async () => {
+  const app = await setup();
+  app.states[1].current.seekable = false; await app.run("refresh()");
+  assert.equal(app.element("progress").disabled, true);
+  app.states[1].current.seekable = true;
+  app.states[1].current.duration = 0; await app.run("refresh()");
+  assert.equal(app.element("progress").disabled, true);
+  assert.equal(app.element("hero-progress").disabled, true);
+  app.element("progress").listeners.pointerdown(pointer());
+  assert.equal(app.run("seekDrag"), null);
+  app.states[1].current.duration = 180; await app.run("refresh()");
+  app.hook((url) => url.endsWith("/seek") ? errorResponse(403, "請加入機器人所在的語音頻道。") : null);
+  const slider = app.element("progress");
+  slider.listeners.pointerdown(pointer()); slider.value = "95"; slider.listeners.input();
+  await app.document.listeners.pointerup(pointer());
+  assert.equal(slider.value, 30);
+  assert.match(app.element("notice").textContent, /語音頻道/);
+  app.states[1].current = null; await app.run("refresh()");
+  assert.equal(app.element("progress").disabled, true);
+  assert.equal(app.element("lyrics-toggle").disabled, true);
+});
+
+test("single preview has separate playnext confirmation using the same scoped token", async () => {
+  const app = await setup();
+  app.element("query").value = "song"; await app.run("resolveQuery()");
+  const card = app.element("preview-results").children[0];
+  assert.equal(card.children[2].textContent, "加入佇列");
+  assert.equal(card.children[3].textContent, "下一首播放");
+  await card.children[3].listeners.click();
+  assert.deepEqual(app.requests.find((request) => request.url.endsWith("/playnext")).data,
+    {query: "https://example.test/selected", preview_id: "preview-one"});
+  assert.equal(app.requests.some((request) => request.url.endsWith("/play")), false);
+});
+
+test("playnext-only users can query with playnext permission and receive actual command denial", async () => {
+  const app = await setup();
+  app.element("request-action").value = "playnext";
+  app.element("query").value = "song"; await app.run("resolveQuery()");
+  assert.equal(app.requests.find((request) => request.url.endsWith("/resolve")).data.action, "playnext");
+  const card = app.element("preview-results").children[0];
+  assert.equal(card.children[2].textContent, "下一首播放");
+  assert.equal(card.children[3].textContent, "加入佇列");
+  app.hook((url) => url.endsWith("/play") ? errorResponse(403, "你沒有使用 play 指令的權限。") : null);
+  await card.children[3].listeners.click();
+  assert.match(app.element("notice").textContent, /play/);
+  assert.equal(app.element("preview-panel").hidden, false);
+  await card.children[2].listeners.click();
+  assert.equal(app.requests.filter((request) => request.url.endsWith("/playnext")).length, 1);
+});
+
+test("playlist preview retains ordered selection and offers no batch playnext control", async () => {
+  const {card, button} = await playlistApp();
+  assert.equal(card.children.length, 3);
+  assert.match(card.children[1].children.at(-3).textContent, /下一首播放目前只提供單曲/);
+  assert.match(button.textContent, /加入選取/);
+});
+
+function historyReply(count = 1) {
+  return {history: Array.from({length: count}, (_, i) => ({title: i ? "Track " + i : "<script>history</script>",
+    duration: 125, thumbnail: "https://example.test/cover", url: "https://example.test/replay-" + i,
+    requester: {name: i ? "好友" : "<img>朋友", avatar: "https://example.test/avatar"},
+    played_at: Math.floor(Date.now() / 1000) - 180})), source: "dashboard", resets_on_restart: true};
+}
+test("history renders at most fifty safe songs, requesters, times and source links", async () => {
+  const app = await setup();
+  app.hook((url) => url.endsWith("/history") ? Promise.resolve({ok: true, status: 200, json: async () => historyReply(53)}) : null);
+  await app.run("refreshHistory()");
+  const rows = app.element("history-list").children;
+  assert.equal(rows.length, 50);
+  assert.equal(rows[0].children[1].children[0].textContent, "<script>history</script>");
+  assert.match(rows[0].children[1].children[1].textContent, /點播：<img>朋友/);
+  assert.match(rows[0].children[1].children[1].textContent, /3 分鐘前/);
+  const link = rows[0].children[2].children[1];
+  assert.equal(link.href, "https://example.test/replay-0");
+  assert.equal(link.rel, "noopener noreferrer");
+  assert.equal(app.run("playedTime(null)"), "播放時間未知");
+  assert.match(app.run("playedTime(1)"), /08:00/);
+});
+
+test("history replay only opens a play-permission preview until separately confirmed", async () => {
+  const app = await setup();
+  app.hook((url) => url.endsWith("/history") ? Promise.resolve({ok: true, status: 200, json: async () => historyReply()}) : null);
+  await app.run("refreshHistory()");
+  await app.element("history-list").children[0].children[2].children[0].listeners.click();
+  const resolve = app.requests.find((request) => request.url.endsWith("/resolve"));
+  assert.deepEqual(resolve.data, {query: "https://example.test/replay-0", action: "play"});
+  assert.equal(app.requests.some((request) => request.url.endsWith("/play")), false);
+  assert.equal(app.element("preview-panel").hidden, false);
+});
+
+test("history failures are isolated and late guild response cannot restore old records", async () => {
+  const app = await setup();
+  app.hook((url) => url.endsWith("/history") ? errorResponse(403, "你不是這個伺服器的成員。") : null);
+  await app.run("refreshHistory()");
+  assert.match(app.element("history-status").textContent, /成員/);
+  assert.equal(app.element("toggle").disabled, false);
+  let release;
+  app.hook((url) => url === "api/guilds/1/history" ? new Promise((resolve) => { release = resolve; }) : null);
+  const pending = app.run("refreshHistory()");
+  app.element("guild").value = "2"; await app.element("guild").listeners.change();
+  release({ok: true, status: 200, json: async () => historyReply()}); await pending;
+  assert.equal(app.element("history-list").children.length, 0);
+  assert.equal(app.element("title").textContent, "Second");
+});
+
+function lyricsResponse(body) { return Promise.resolve({ok: true, status: 200, json: async () => body}); }
+const syncedLyrics = {status: "synced", title: "First", artist: "Artist", track_key: "first",
+  lines: [{time: 0, text: "前奏"}, {time: 20, text: "<script>第一句</script>"}, {time: 45, text: "下一句"}]};
+test("synced lyrics highlight and scroll the current line as playback advances", async () => {
+  const app = await setup();
+  app.hook((url) => url.endsWith("/lyrics") ? lyricsResponse(syncedLyrics) : null);
+  await app.element("lyrics-toggle").listeners.click();
+  assert.equal(app.element("lyrics-panel").hidden, false);
+  assert.equal(app.element("lyrics-toggle").getAttribute("aria-expanded"), "true");
+  const rows = app.element("lyrics-content").children;
+  assert.equal(rows[1].textContent, "<script>第一句</script>");
+  assert.equal(rows[1].getAttribute("aria-current"), "true");
+  assert.equal(rows[1].scrolled.behavior, "smooth");
+  app.states[1].progress = 50; await app.run("refresh()");
+  assert.equal(rows[1].getAttribute("aria-current"), null);
+  assert.equal(rows[2].getAttribute("aria-current"), "true");
+});
+
+test("lyrics are not fetched every poll or on reopen and reduced motion scrolls instantly", async () => {
+  const app = await setup({reducedMotion: true});
+  app.hook((url) => url.endsWith("/lyrics") ? lyricsResponse(syncedLyrics) : null);
+  await app.element("lyrics-toggle").listeners.click();
+  await app.run("refresh()"); await app.run("refresh()");
+  app.element("lyrics-close").listeners.click();
+  await app.element("lyrics-toggle").listeners.click();
+  assert.equal(app.requests.filter((request) => request.url.endsWith("/lyrics")).length, 1);
+  assert.equal(app.element("lyrics-content").children[1].scrolled.behavior, "auto");
+});
+
+test("plain lyrics render as safe text and missing lyrics expose a same-origin manual search", async () => {
+  const app = await setup();
+  app.hook((url) => url.includes("/lyrics") ? lyricsResponse({status: "plain", title: "First", plain_lyrics: "<img>\n第二行"}) : null);
+  await app.element("lyrics-toggle").listeners.click();
+  assert.equal(app.element("lyrics-content").textContent, "<img>\n第二行");
+  assert.equal(app.element("lyrics-content").classes.has("plain-lyrics"), true);
+  app.hook((url) => url.includes("/lyrics") ? lyricsResponse({status: "not_found"}) : null);
+  await app.run("loadLyrics()");
+  assert.equal(app.element("lyrics-status").textContent, "找不到歌詞");
+  assert.equal(app.element("lyrics-search-form").hidden, false);
+  app.element("lyrics-query").value = "歌名 Artist";
+  await app.element("lyrics-search-form").listeners.submit({preventDefault() {}});
+  assert.ok(app.requests.some((request) => request.url === "api/guilds/1/lyrics?query=" + encodeURIComponent("歌名 Artist")));
+  assert.equal(app.requests.every((request) => !/^https?:\/\//.test(request.url)), true);
+});
+
+test("lyrics service errors and rate limits leave playback usable with manual retry", async () => {
+  const app = await setup();
+  app.hook((url) => url.includes("/lyrics") ? lyricsResponse({status: "unavailable"}) : null);
+  await app.element("lyrics-toggle").listeners.click();
+  assert.match(app.element("lyrics-status").textContent, /暫時無法使用/);
+  assert.equal(app.element("toggle").disabled, false);
+  app.hook((url) => url.includes("/lyrics") ? errorResponse(429, "歌詞查詢太頻繁，請稍後再試。") : null);
+  await app.run("loadLyrics()");
+  assert.match(app.element("lyrics-status").textContent, /太頻繁/);
+  assert.equal(app.element("lyrics-search-form").hidden, false);
+  await app.element("toggle").listeners.click();
+  assert.equal(app.element("play-status").textContent, "已暫停");
+});
+
+test("late lyrics cannot overwrite a different track, different guild or expired session", async () => {
+  const app = await setup({session: discordSession()});
+  let release;
+  app.hook((url) => url.includes("/lyrics") ? new Promise((resolve) => { release = resolve; }) : null);
+  const pending = app.element("lyrics-toggle").listeners.click();
+  app.states[1].current.title = "New song";
+  app.hook((url) => url.includes("/lyrics") ? lyricsResponse({status: "plain", title: "New song", plain_lyrics: "new lyrics"}) : null);
+  await app.run("refresh()"); await flush();
+  release({ok: true, status: 200, json: async () => syncedLyrics}); await pending;
+  assert.equal(app.element("lyrics-content").textContent, "new lyrics");
+  app.hook((url) => url.includes("/lyrics") ? new Promise((resolve) => { release = resolve; }) : null);
+  const oldGuild = app.run("loadLyrics()");
+  app.element("guild").value = "2"; await app.element("guild").listeners.change();
+  release({ok: true, status: 200, json: async () => syncedLyrics}); await oldGuild;
+  assert.equal(app.element("lyrics-panel").hidden, true);
+  assert.equal(app.element("lyrics-content").textContent, "");
+  const expired = app.run("loadLyrics()");
+  app.run("signedOut()");
+  release({ok: true, status: 200, json: async () => syncedLyrics}); await expired;
+  assert.equal(app.element("lyrics-content").textContent, "");
+  assert.equal(app.element("dashboard").hidden, true);
+});
+
+test("manual lyrics query rejects an older slower response for the same track", async () => {
+  const app = await setup();
+  let release;
+  app.hook((url) => url.endsWith("/lyrics") ? new Promise((resolve) => { release = resolve; })
+    : url.includes("/lyrics?") ? lyricsResponse({status: "plain", title: "Manual", plain_lyrics: "manual result"}) : null);
+  const older = app.element("lyrics-toggle").listeners.click();
+  await app.run('loadLyrics("manual")');
+  release({ok: true, status: 200, json: async () => syncedLyrics}); await older;
+  assert.equal(app.element("lyrics-content").textContent, "manual result");
+});
+
+test("seek controls remain native keyboard/touch ranges and lyrics use no external script", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../musicbot/web/index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../musicbot/web/dashboard.css"), "utf8");
+  for (const id of ["progress", "hero-progress"])
+    assert.match(html, new RegExp('id="' + id + '"[^>]*type="range"[^>]*step="1"[^>]*aria-label='));
+  assert.match(html, /id="lyrics-toggle"[^>]*aria-controls="lyrics-panel"/);
+  assert.match(css, /progress-row input\[type=range\].*min-height:44px/);
+  assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
+  assert.ok(!html.includes("lrclib") && !code.includes("https://lrclib"));
+});
+
+
+test("seek sends the captured track token and reconciles a backend stale-track rejection", async () => {
+  const app = await setup(), slider = app.element("progress");
+  app.states[1].current.track_token = "track-at-drag-start"; await app.run("refresh()");
+  slider.listeners.pointerdown(pointer()); slider.value = "110"; slider.listeners.input();
+  assert.equal(app.run("seekDrag.trackToken"), "track-at-drag-start");
+  // A new playback instance can have identical metadata while the client has not polled.
+  app.states[1].current.track_token = "next-playback-instance";
+  app.states[1].progress = 4;
+  app.hook((url, options) => url.endsWith("/seek") ? (
+    assert.equal(JSON.parse(options.body).track_token, "track-at-drag-start"),
+    errorResponse(409, "歌曲已更換，請重新調整進度。")) : null);
+  await app.document.listeners.pointerup(pointer());
+  const requests = app.requests.filter((request) => request.url.endsWith("/seek"));
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].data, {position: 110, track_token: "track-at-drag-start"});
+  assert.equal(slider.value, 4);
+  assert.equal(app.states[1].progress, 4);
+  assert.match(app.element("notice").textContent, /歌曲已更換/);
+});
+
+test("a changed track token cancels seek even when title URL and duration are unchanged", async () => {
+  const app = await setup(), slider = app.element("hero-progress");
+  app.states[1].current.track_token = "first-instance"; await app.run("refresh()");
+  slider.listeners.pointerdown(pointer()); slider.value = "90"; slider.listeners.input();
+  app.states[1].current.track_token = "second-instance"; app.states[1].progress = 2;
+  await app.run("refresh()");
+  await app.document.listeners.pointerup(pointer());
+  assert.equal(app.run("seekDrag"), null);
+  assert.equal(slider.value, 2);
+  assert.equal(app.requests.some((request) => request.url.endsWith("/seek")), false);
+});
+
+
+test("a blocked single-song preview disables both command confirmation buttons", async () => {
+  const app = await setup();
+  app.hook((url) => url.endsWith("/resolve") ? lyricsResponse({results: [{
+    title: "Too long", kind: "track", url: "https://example.test/long", duration: 99999,
+    allowed: false, reason: "超過歌曲長度限制。", preview_id: "blocked-preview"}]}) : null);
+  app.element("query").value = "blocked"; await app.run("resolveQuery()");
+  const card = app.element("preview-results").children[0];
+  assert.equal(card.children[2].disabled, true);
+  assert.equal(card.children[3].disabled, true);
+  await card.children[2].listeners.click(); await card.children[3].listeners.click();
+  assert.equal(app.requests.some((request) => /\/(?:play|playnext)$/.test(request.url)), false);
+});
+
+
+test("native range lost capture preserves preview until document pointerup commits once", async () => {
+  const app = await setup(), slider = app.element("progress");
+  slider.listeners.pointerdown(pointer());
+  slider.value = "120"; slider.listeners.input();
+  // Chrome's native range can report lost capture during a legitimate drag.
+  slider.listeners.lostpointercapture?.(pointer());
+  await app.run("refresh()");
+  assert.equal(app.run("seekDrag.position"), 120);
+  assert.equal(slider.value, 120);
+  assert.equal(slider.capture, undefined);
+  assert.equal(app.requests.some((request) => request.url.endsWith("/seek")), false);
+  await app.document.listeners.pointerup(pointer("mouse", {pointerId: 99}));
+  assert.equal(app.run("seekDrag.position"), 120);
+  await app.document.listeners.pointerup(pointer());
+  await app.document.listeners.pointerup(pointer());
+  assert.equal(app.requests.filter((request) => request.url.endsWith("/seek")).length, 1);
+  assert.deepEqual(app.requests.find((request) => request.url.endsWith("/seek")).data, {position: 120});
+});
+
+test("blurring a pointer seek cancels safely while keyboard blur commits its final preview", async () => {
+  const app = await setup(), slider = app.element("hero-progress");
+  slider.listeners.pointerdown(pointer()); slider.value = "100"; slider.listeners.input();
+  slider.listeners.blur(); await app.document.listeners.pointerup(pointer());
+  assert.equal(slider.value, 30);
+  assert.equal(app.requests.some((request) => request.url.endsWith("/seek")), false);
+  slider.listeners.keydown({key: "End"}); slider.value = "180"; slider.listeners.input();
+  await slider.listeners.blur();
+  assert.deepEqual(app.requests.find((request) => request.url.endsWith("/seek")).data, {position: 180});
 });

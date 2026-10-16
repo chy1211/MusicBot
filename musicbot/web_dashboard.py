@@ -10,7 +10,7 @@ import logging
 import math
 import secrets
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +21,8 @@ from aiohttp import web
 
 from . import exceptions
 from .constructs import ErrorResponse, Response
+from .entry import LocalFilePlaylistEntry, URLPlaylistEntry
+from .web_dashboard_lyrics import LyricsClient, clean_metadata
 from .i18n import _D
 from .spotify import Spotify
 from .utils import get_compound_link_ids
@@ -173,6 +175,9 @@ class Dashboard(DashboardAuth):
         self.resolve_tasks = {}
         self.previews = {}
         self.rate_limits = {}
+        self.lyrics_rate_limits = {}
+        self.lyrics_client = LyricsClient()
+        self.recent_history = defaultdict(lambda: deque(maxlen=50))
         self.init_auth()
         self.app = web.Application(
             middlewares=[self.guard], client_max_size=16 * 1024)
@@ -185,9 +190,11 @@ class Dashboard(DashboardAuth):
         self.app.router.add_get("/dashboard.js", self.asset)
         self.app.router.add_get("/api/guilds", self.guilds)
         self.app.router.add_get("/api/guilds/{guild_id}/state", self.state)
+        self.app.router.add_get("/api/guilds/{guild_id}/history", self.history)
+        self.app.router.add_get("/api/guilds/{guild_id}/lyrics", self.lyrics)
         self.app.router.add_post(
             "/api/guilds/{guild_id}/resolve", self.resolve)
-        for action in ("play", "pause", "resume", "skip", "volume", "repeat"):
+        for action in ("play", "playnext", "seek", "pause", "resume", "skip", "volume", "repeat"):
             self.app.router.add_post(
                 "/api/guilds/{guild_id}/" + action, self.mutate)
         self.app.router.add_post(
@@ -212,7 +219,7 @@ class Dashboard(DashboardAuth):
             return "remove"
         action = request.path.rsplit("/", 1)[-1]
         return action if action in {
-            "state", "resolve", "play", "pause", "resume", "skip",
+            "state", "history", "lyrics", "resolve", "play", "playnext", "seek", "pause", "resume", "skip",
             "volume", "repeat", "move", "shuffle", "logout", "login", "callback",
         } else "unknown"
 
@@ -340,6 +347,103 @@ class Dashboard(DashboardAuth):
                 result.append({"id": str(guild.id), "name": guild.name})
         return web.json_response({"guilds": result})
 
+    @staticmethod
+    def is_seekable(entry):
+        return (isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry))
+                and getattr(entry, "duration", 0) is not None
+                and float(entry.duration) > 0
+                and math.isfinite(float(entry.duration)))
+
+    def record_play(self, guild, entry, played_at=None):
+        """Called by the real playback event, independently of browser polling."""
+        if entry is None:
+            return
+        item = track(entry, guild)
+        meta = getattr(entry, "meta", None) or {}
+        author = (getattr(entry, "author", None) or getattr(entry, "member", None)
+                  or meta.get("author") or meta.get("member"))
+        # Retain only the Discord id; resolve the display name/avatar on read.
+        item.pop("requester", None)
+        item["requester_id"] = getattr(author, "id", None)
+        item["requested"] = bool(author or getattr(entry, "channel", None))
+        item["played_at"] = float(played_at if played_at is not None else time.time())
+        self.recent_history[guild.id].appendleft(item)
+
+    async def history(self, request):
+        guild, _member = self.guild_owner(request)
+        rows = []
+        for item in self.recent_history.get(guild.id, ()):
+            public = {key: item[key] for key in
+                      ("title", "url", "thumbnail", "duration", "played_at")}
+            person = guild.get_member(item["requester_id"]) if item["requester_id"] else None
+            public["requester"] = requester(SimpleNamespace(
+                author=person, channel=True if item["requested"] else None), guild)
+            rows.append(public)
+        source = "dashboard_memory"
+        config = self.bot.config
+        # Existing histories contain URLs only. Reuse an already loaded guild
+        # playlist without file I/O, lazy file creation or extracting old URLs.
+        if getattr(config, "enable_queue_history_guilds", False):
+            source = "guild_queue_history+dashboard_metadata"
+            manager = getattr(self.bot, "playlist_mgr", None)
+            playlist = getattr(manager, "_playlists", {}).get(f"history-{guild.id}")
+            if playlist is not None and getattr(playlist, "loaded", False):
+                known = {item["url"] for item in rows}
+                for url in reversed(list(playlist)[-50:]):
+                    url = public_url(url)
+                    if url and url not in known and len(rows) < 50:
+                        rows.append({"title": "較早播放的歌曲（僅保留來源連結）",
+                                     "url": url, "thumbnail": "", "duration": 0,
+                                     "played_at": None,
+                                     "requester": {"name": "點播者無法取得", "avatar": ""}})
+                        known.add(url)
+        elif getattr(config, "enable_queue_history_global", False):
+            # Never disclose the global URL pool to a member of one guild.
+            source = "dashboard_memory_global_history_unscoped"
+        return web.json_response({"history": rows[:50], "source": source,
+                                  "resets_on_restart": True})
+
+    LYRICS_REQUESTS_PER_MINUTE = 12
+
+    def lyrics_rate_limit(self, member):
+        now = time.monotonic()
+        self.lyrics_rate_limits = {
+            uid: [stamp for stamp in stamps if stamp > now - 60]
+            for uid, stamps in self.lyrics_rate_limits.items()
+            if stamps and stamps[-1] > now - 60}
+        stamps = self.lyrics_rate_limits.setdefault(member.id, [])
+        if len(stamps) >= self.LYRICS_REQUESTS_PER_MINUTE:
+            raise APIError(429, "歌詞查詢過於頻繁，每人每分鐘最多 12 次，請稍後再試。")
+        if len(self.lyrics_rate_limits) > 1024:
+            self.lyrics_rate_limits.pop(next(iter(self.lyrics_rate_limits)))
+        stamps.append(now)
+
+    async def lyrics(self, request):
+        guild, member = self.guild_owner(request)
+        query = request.query.get("query", "").strip()
+        if len(query) > 160 or any(ord(char) < 32 for char in query):
+            raise APIError(400, "歌詞搜尋最多 160 字，且不可包含控制字元。")
+        self.lyrics_rate_limit(member)
+        player = self.bot.get_player_in(guild)
+        entry = getattr(player, "current_entry", None)
+        if entry is None:
+            raise APIError(409, "目前沒有播放中的歌曲。")
+        info = getattr(entry, "info", {}) or {}
+        title, artist = clean_metadata(entry.title, info.get("artist") or info.get("creator") or "")
+        track_key = hashlib.sha256(str((entry.url, entry.title, entry.duration)).encode()).hexdigest()
+        value = await self.lyrics_client.lookup(title, artist, entry.duration, query=query)
+        # An expired session/removed member must not receive data after a slow lookup.
+        if self.discord_auth:
+            self.authenticate(request)
+        self.guild_owner(request)
+        return web.json_response(dict(value, track_key=track_key))
+
+    @staticmethod
+    def track_token(player):
+        entry = getattr(player, "current_entry", None)
+        return (hashlib.sha256(str((id(player), id(entry))).encode()).hexdigest()
+                if entry is not None else "")
+
     def snapshot(self, guild):
         player = self.bot.get_player_in(guild)
         if player is None:
@@ -351,7 +455,10 @@ class Dashboard(DashboardAuth):
             "guild_id": str(guild.id),
             "status": ("paused" if player.is_paused else "playing"
                        if player.is_playing else "stopped"),
-            "current": track(player.current_entry, guild),
+            "current": (dict(track(player.current_entry, guild),
+                             seekable=self.is_seekable(player.current_entry),
+                             track_token=self.track_token(player))
+                        if player.current_entry else None),
             "progress": max(0, float(player.progress)),
             "volume": round(player.volume * 100),
             "repeat": ("song" if player.repeatsong else
@@ -406,7 +513,7 @@ class Dashboard(DashboardAuth):
         if bot_channel is not None:
             if bot_channel.id != member.voice.channel.id:
                 raise APIError(403, "你不在機器人的語音頻道。")
-        elif command != "play":
+        elif command not in ("play", "playnext"):
             raise APIError(409, "機器人尚未加入語音頻道。")
         elif not permissions.summonplay:
             raise APIError(403, "沒有 summonplay 權限，無法把機器人叫進語音頻道。")
@@ -414,7 +521,7 @@ class Dashboard(DashboardAuth):
     async def context(self, guild, owner, command, sub=""):
         permissions = self.bot.permissions.for_user(owner)
         self.command_permission(owner, permissions, command, sub)
-        if self.discord_auth:
+        if self.discord_auth or command in ("seek", "playnext"):
             self.voice_permission(guild, owner, permissions, command)
         elif not owner.voice or not owner.voice.channel:
             raise APIError(409, "請先用 OwnerID 本人加入 Discord 語音頻道。")
@@ -423,7 +530,7 @@ class Dashboard(DashboardAuth):
                 SimpleNamespace(guild=guild, author=owner))
         channel = self.channel_for(guild, owner)
         player = await self.bot.get_player(
-            owner.voice.channel, create=permissions.summonplay if command == "play" else False)
+            owner.voice.channel, create=permissions.summonplay if command in ("play", "playnext") else False)
         if self.discord_auth:
             # Membership, roles and voice may change while a connection is awaited.
             owner = guild.get_member(owner.id)
@@ -548,12 +655,12 @@ class Dashboard(DashboardAuth):
                     allowed=not reason, reason=reason,
                     warning="" if self.info_duration(info) else "長度未知，加入時會重新檢查。")
 
-    async def resolve_options(self, guild, owner, query):
+    async def resolve_options(self, guild, owner, query, action="play"):
         permissions = self.bot.permissions.for_user(owner)
         player = self.preview_player(guild)
         self.addition_checks(player, owner, permissions)
         if self.discord_auth:
-            self.command_permission(owner, permissions, "play", query.split()[0])
+            self.command_permission(owner, permissions, action, query.split()[0])
         parsed = urlsplit(query)
         if (parsed.scheme and parsed.scheme not in ("http", "https")
                 and ("://" in query or parsed.scheme in ("file", "data", "javascript", "spotify"))):
@@ -596,7 +703,8 @@ class Dashboard(DashboardAuth):
                                for item in choices[:limit])
             elif info.has_entries:
                 count = max(info.playlist_count or 0, info.entry_count)
-                reason = self.playlist_restriction(permissions, count)
+                reason = ("下一首播放目前只支援單曲，請選取單曲來源。"
+                          if action == "playnext" else self.playlist_restriction(permissions, count))
                 # Only retain/check the bounded subset we actually offer for selection.
                 children = info.get_entries_objects()[:self.PREVIEW_LIMIT]
                 items = [dict(self.preview_track(item, permissions, playlist=True,
@@ -625,13 +733,16 @@ class Dashboard(DashboardAuth):
     async def resolve(self, request):
         data = await self.payload(request)
         query = self.query(data)
+        action = data.get("action", "play")
+        if action not in ("play", "playnext"):
+            raise APIError(400, "點歌用途必須是 play 或 playnext。")
         guild, owner = self.guild_owner(request)
         self.user_rate_limit(owner)
         # Admission is separate from mutation locks; timed-out extractions retain
         # their slot until the coroutine completes (executor work cannot be killed).
         if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
             raise APIError(429, "解析仍在進行，請稍後再查詢。播放控制仍可使用。")
-        task = asyncio.create_task(self.resolve_options(guild, owner, query))
+        task = asyncio.create_task(self.resolve_options(guild, owner, query, action))
         self.resolve_tasks[guild.id] = task
         def finished(done):
             self.resolve_tasks.pop(guild.id, None)
@@ -650,7 +761,7 @@ class Dashboard(DashboardAuth):
         if self.discord_auth:
             self.authenticate(request)
             guild, owner = self.guild_owner(request)
-            self.command_permission(owner, self.bot.permissions.for_user(owner), "play", query.split()[0])
+            self.command_permission(owner, self.bot.permissions.for_user(owner), action, query.split()[0])
         now = time.monotonic()
         self.previews = {key: value for key, value in self.previews.items()
                          if value["expires"] > now}
@@ -796,11 +907,27 @@ class Dashboard(DashboardAuth):
         action = request.path.rsplit("/", 1)[-1]
         if request.method == "DELETE":
             action = "remove"
-        if action == "play":
+        if action in ("play", "playnext"):
             if "selected_items" in data and "preview_id" not in data:
                 raise APIError(400, "選歌加入必須提供預覽憑證。")
             self.user_rate_limit(owner)
             query = self.query(data)
+        elif action == "seek":
+            position = data.get("position")
+            try:
+                valid = (not isinstance(position, bool) and isinstance(position, (int, float))
+                         and math.isfinite(float(position)) and position >= 0)
+            except (ValueError, TypeError, OverflowError):
+                valid = False
+            if not valid:
+                raise APIError(400, "跳轉位置必須是大於或等於 0 的有限秒數。")
+            # Capture before the guild lock: native Discord playback is not
+            # serialized by this lock, and context() may await a voice lookup.
+            seek_player = self.bot.get_player_in(guild)
+            seek_entry = getattr(seek_player, "current_entry", None)
+            if ("track_token" in data
+                    and data["track_token"] != self.track_token(seek_player)):
+                raise APIError(409, "播放中的歌曲已更新，請重新整理後再跳轉。")
         elif action == "volume":
             self.integer(data, "volume", 1, 100)
         elif action == "repeat" and data.get("mode") not in ("off", "song", "all"):
@@ -813,12 +940,15 @@ class Dashboard(DashboardAuth):
                 guild, owner = self.guild_owner(request)
             sub = ""
             if self.discord_auth:
-                sub = (query.split()[0] if action == "play" else
+                sub = (query.split()[0] if action in ("play", "playnext") else
+                       str(data.get("position", "")) if action == "seek" else
                        str(data.get("volume", "")) if action == "volume" else
                        {"song": "on", "all": "all", "off": "off"}.get(data.get("mode"), "") if action == "repeat" else
                        str(data.get("from", "")) if action == "move" else
                        request.match_info.get("position", "") if action == "remove" else "")
-            preview = self.confirmed_preview(data, guild, owner) if action == "play" else None
+            preview = self.confirmed_preview(data, guild, owner) if action in ("play", "playnext") else None
+            if action == "playnext" and (data.get("selected_items") is not None or (preview and preview.get("kind") == "playlist")):
+                raise APIError(400, "下一首播放目前只支援單曲，請選取單曲來源。")
             if preview and preview["status"] == "done" and not self.discord_auth:
                 return web.json_response({"message": "這個選項已加入，未重複點播。",
                                           "state": self.snapshot(guild), **(preview.get("summary") or {})})
@@ -828,6 +958,8 @@ class Dashboard(DashboardAuth):
                     subs = self.repeat_commands(current, data["mode"])
                     sub = subs[0] if subs else sub
             player, permissions, channel = await self.context(guild, owner, action, sub)
+            if action == "seek" and (player is not seek_player or player.current_entry is not seek_entry):
+                raise APIError(409, "播放中的歌曲已更新，請重新整理後再跳轉。")
             if self.discord_auth:
                 self.authenticate(request)
                 guild, owner = self.guild_owner(request)
@@ -845,13 +977,52 @@ class Dashboard(DashboardAuth):
                 reasons = list(dict.fromkeys(item["reason"] for item in summary["results"] if item["reason"]))
                 response = Response(f"已加入 {summary['added']} 首，略過 {summary['skipped']} 首。" +
                                     (" " + "；".join(reasons) if reasons else ""))
-            elif action == "play":
+            elif action in ("play", "playnext"):
                 if preview:
                     preview["status"] = "submitted"
-                response = await self.bot.cmd_play(
-                    message=None, player=player, channel=channel, guild=guild,
-                    author=owner, permissions=permissions, leftover_args=[],
-                    song_url=query.strip())
+                def validate_next(info):
+                    if info.has_entries and (info.entry_count > 1 or "search" not in str(info.extractor)):
+                        raise APIError(403, "下一首播放目前只支援單曲，請選取單曲來源。")
+                    if self.discord_auth:
+                        self.authenticate(request)
+                    current_guild, member = self.guild_owner(request)
+                    perms = self.bot.permissions.for_user(member)
+                    self.command_permission(member, perms, action, query.split()[0])
+                    if self.discord_auth:
+                        self.voice_permission(current_guild, member, perms, action)
+                    self.addition_checks(self.bot.get_player_in(current_guild), member, perms)
+                    # Native duration_td.seconds drops complete days and fractions.
+                    # Check the fresh selected track using its full duration before
+                    # _cmd_play can enqueue; search wrappers may retain child data.
+                    candidate = info
+                    if info.has_entries:
+                        children = info.get_entries_objects()
+                        if not children or children[0].has_entries:
+                            raise APIError(403, "沒有可確認的單曲，請重新查詢。")
+                        candidate = children[0]
+                    reason = self.restriction(candidate, perms, extractor=info.extractor)
+                    if reason:
+                        raise APIError(403, reason)
+                    return perms
+                check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next)) if action == "playnext" else None
+                try:
+                    response = await getattr(self.bot, "cmd_" + action)(
+                        message=None, player=player, channel=channel, guild=guild,
+                        author=owner, permissions=permissions, leftover_args=[],
+                        song_url=query.strip())
+                finally:
+                    if check_token is not None:
+                        CONFIRMED_ENTRY_CHECK.reset(check_token)
+            elif action == "seek":
+                if not player.current_entry:
+                    raise APIError(409, "目前沒有播放中的歌曲。")
+                if not self.is_seekable(player.current_entry):
+                    raise APIError(400, "直播或長度未知的歌曲無法跳轉。")
+                if data["position"] > player.current_entry.duration:
+                    raise APIError(400, "跳轉位置超過歌曲長度。")
+                response = await self.bot.cmd_seek(
+                    ssd_=ssd, guild=guild, player=player, leftover_args=[],
+                    seek_time=format(float(data["position"]), ".6f"))
             elif action in ("pause", "resume"):
                 response = await getattr(self.bot, "cmd_" + action)(ssd, player)
             elif action == "skip":
@@ -928,6 +1099,12 @@ class Dashboard(DashboardAuth):
             return web.json_response({"message": message, "state": self.snapshot(guild), **summary})
 
     async def start(self):
+        # Capture a song already playing when an optional dashboard starts.
+        for guild in self.bot.guilds:
+            player = self.bot.get_player_in(guild)
+            entry = getattr(player, "current_entry", None)
+            if entry is not None and not self.recent_history.get(guild.id):
+                self.record_play(guild, entry)
         self.runner = web.AppRunner(self.app, access_log=None, shutdown_timeout=5)
         await self.runner.setup()
         self.site = web.TCPSite(self.runner, self.config.host, self.config.port)
@@ -948,6 +1125,8 @@ class Dashboard(DashboardAuth):
         self.sessions.clear()
         self.oauth_states.clear()
         self.rate_limits.clear()
+        self.lyrics_rate_limits.clear()
+        self.recent_history.clear()
 
 
 async def start_dashboard(bot, config_path: Path):
