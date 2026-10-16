@@ -54,6 +54,7 @@ function authDisplay() {
 }
 function signedOut(message = "登入後即可查看你的伺服器並點歌。") {
   stopEvents();
+  if (typeof libraryClear === "function") libraryClear();
   ++generation; ++stateGeneration;
   authenticated = false; connected = false; loading = false; selected = "";
   secret = ""; $("secret").value = ""; $("query").value = "";
@@ -101,7 +102,7 @@ async function api(path, method = "GET", data) {
   if (data !== undefined) headers["Content-Type"] = "application/json";
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), path.endsWith("/resolve") ? 25000
-    : data?.selected_items ? 150000 : 30000);
+    : (data?.selected_items || /\/library\/.*\/play$/.test(path)) ? 150000 : 30000);
   let response, body;
   try {
     response = await fetch(path, {method, headers, cache: "no-store", credentials: "same-origin",
@@ -131,6 +132,7 @@ function controls() {
   const seekable = hasPlayer && !!state.current && state.current.duration > 0 && state.current.seekable === true;
   for (const id of ["progress", "hero-progress"]) $(id).disabled = !seekable;
   $("lyrics-toggle").disabled = !hasPlayer || !state.current;
+  $("favorite").disabled = !hasPlayer || !safeURL(state?.current?.url);
   $("lyrics-search").disabled = !usable || lyricsLoading;
   $("history-refresh").disabled = !usable || historyLoading;
   document.querySelectorAll("#history-list button").forEach((button) => { button.disabled = !usable; });
@@ -207,6 +209,7 @@ function renderQueue() {
         : act("queue/move", {from: song.position, to: target, revision: rev}));
       actions.append(button);
     }
+    if (typeof librarySaveButton === "function" && safeURL(song.url)) actions.append(librarySaveButton(song));
     li.append(number, img, info, time, actions); $("queue").append(li);
   }
   if (!reduceMotion()) for (const row of $("queue").children) {
@@ -719,6 +722,7 @@ function applyHistory(result, guild = selected, epoch = generation) {
         const link = document.createElement("a"); link.textContent = "來源 ↗";
         link.href = song.url; link.target = "_blank"; link.rel = "noopener noreferrer";
         actions.append(replay, link);
+        if (typeof librarySaveButton === "function") actions.append(librarySaveButton(song));
       }
       row.append(imageElement(song.thumbnail), info, actions); $("history-list").append(row);
     }
