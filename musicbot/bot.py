@@ -198,6 +198,8 @@ class MusicBot(commands.Bot):
         self.logout_called: bool = False
         self.cached_app_info: Optional[discord.AppInfo] = None
         self.last_status: Optional[discord.BaseActivity] = None
+        # Optional dashboard, initialized only after Discord/OwnerID is ready.
+        self._web_dashboard = None
         self.players: Dict[int, MusicPlayer] = {}
         self.task_pool: Set[AsyncTask] = set()
 
@@ -2192,6 +2194,7 @@ class MusicBot(commands.Bot):
             ) from e
 
         finally:
+            await self._stop_web_dashboard()
             # Shut down the thread pool executor.
             log.info("Waiting for download threads to finish up...")
             # We can't kill the threads in ThreadPoolExecutor.  User can Ctrl+C though.
@@ -2254,6 +2257,29 @@ class MusicBot(commands.Bot):
             if self.exit_signal:
                 raise self.exit_signal
 
+    async def _start_web_dashboard(self) -> None:
+        # Keep imports and startup failures outside the bot's failure path.
+        try:
+            from .web_dashboard import start_dashboard
+
+            self._web_dashboard = await start_dashboard(
+                self, write_path(self._config_file).parent / "web_dashboard.ini"
+            )
+        except Exception:
+            log.exception("Could not initialize web dashboard; MusicBot will continue")
+
+    async def _stop_web_dashboard(self) -> None:
+        dashboard, self._web_dashboard = self._web_dashboard, None
+        if dashboard is not None:
+            try:
+                await dashboard.close()
+            except Exception:
+                log.exception("Could not shut down web dashboard cleanly")
+
+    async def close(self) -> None:
+        await self._stop_web_dashboard()
+        await super().close()
+
     async def logout(self) -> None:
         """
         Disconnect all voice clients and signal MusicBot to close it's connections to discord.
@@ -2263,7 +2289,7 @@ class MusicBot(commands.Bot):
 
         self.logout_called = True
         await self.disconnect_all_voice_clients()
-        return await super().close()
+        return await self.close()
 
     async def on_error(self, event: str, /, *_args: Any, **_kwargs: Any) -> None:
         _ex_type, ex, _stack = sys.exc_info()
@@ -2309,6 +2335,8 @@ class MusicBot(commands.Bot):
 
         await self._on_ready_always()
         self.on_ready_count += 1
+        if self.on_ready_count == 1:
+            await self._start_web_dashboard()
 
         log.debug("Finish on_ready")
 
