@@ -12,12 +12,12 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r8-2">
-  <script src="/dashboard.js?v=r8-2" defer></script>
-  <script src="/library.js?v=r8-2" defer></script>
-  <script src="/admin.js?v=r8-2" defer></script>
-  <script src="/permissions.js?v=r8-2" defer></script>
-  <script src="/pwa.js?v=r8-2" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r8-3">
+  <script src="/dashboard.js?v=r8-3" defer></script>
+  <script src="/library.js?v=r8-3" defer></script>
+  <script src="/admin.js?v=r8-3" defer></script>
+  <script src="/permissions.js?v=r8-3" defer></script>
+  <script src="/pwa.js?v=r8-3" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -92,6 +92,9 @@
       <p id="drag-help" class="hint">拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。</p>
       <div class="queue-head" aria-hidden="true"><span>＃</span><span>歌曲</span><span>長度</span></div>
       <ol id="queue" aria-describedby="drag-help"></ol>
+      <section id="queue-recommendations" aria-labelledby="recommendation-heading" hidden>
+        <h3 id="recommendation-heading">最近播過</h3><ol id="recommendation-list" class="history-list"></ol>
+      </section>
       <p id="queue-empty" class="empty">下一首的空位，留給你。<br><span>查詢上方歌曲，確認後加入佇列。</span></p>
     </section>
     <section class="card listeners" aria-labelledby="listeners-heading">

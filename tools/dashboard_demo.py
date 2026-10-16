@@ -336,12 +336,30 @@ class DemoDashboard(Dashboard):
                 self.record_activity(guild, "Owner" if index == 0 else "一般成員",
                     "play", source, "點歌：" + TITLES[index], "成功",
                     timestamp=time.time() - 30 * (3-index))
+        self.demo_queues = {gid: list(player.playlist.entries) for gid, player in bot.players.items()}
+        self.demo_queue_mode = "live"
         self.demo_step = 0
         self.app.cleanup_ctx.append(self.demo_updates)
         self.app.router.add_post("/demo-login/{user}", self.fake_callback)
 
+    async def index(self, request):
+        # Demo-only switches; no production API or configuration is involved.
+        mode = request.query.get("demo-queue")
+        if mode in ("empty", "filled"):
+            self.demo_queue_mode = mode
+            for gid, player in self.bot.players.items():
+                player.playlist.entries = deque() if mode == "empty" else deque(self.demo_queues[gid])
+        response = await super().index(request)
+        controls = ('<div class="request-mode" aria-label="示範操作">'
+                    '<a class="source-link" href="/?demo-queue=empty">示範空佇列</a>'
+                    '<a class="source-link" href="/?demo-queue=filled">還原示範佇列</a></div>')
+        response.text = response.text.replace('<h2 id="request-heading">', controls + '<h2 id="request-heading">', 1)
+        return response
+
     def demo_tick(self):
         """Deterministic local simulation, usable without starting its timer."""
+        if self.demo_queue_mode == "empty":
+            return  # Keep the recommendation scenario stable until restored.
         self.demo_step += 1
         for guild in self.bot.guilds:
             player = self.bot.players[guild.id]
