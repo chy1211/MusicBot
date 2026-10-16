@@ -46,7 +46,7 @@ function initial(id) {
     queue: [{title: "<img onerror=evil>", position: 1, duration: 60},
             {title: "Two", position: 2, duration: 120}]};
 }
-async function setup() {
+async function setup(options = {}) {
   const elements = new Map();
   const document = {activeElement: null, hidden: false, body: new Element("body"), listeners: {},
     addEventListener(name, fn) { this.listeners[name] = fn; },
@@ -67,7 +67,8 @@ async function setup() {
       return result;
     }};
   const requests = [], timers = [], frames = [], scrolls = [], states = {1: initial(1), 2: initial(2)};
-  let hook = null;
+  const session = clone(options.session || {auth_mode: "owner", authenticated: true, user: null});
+  let hook = options.hook || null;
   async function fetch(url, options) {
     requests.push({url, ...options, data: options.body ? JSON.parse(options.body) : undefined});
     if (hook) {
@@ -75,7 +76,9 @@ async function setup() {
       if (intercepted) return intercepted;
     }
     let body, status = 200;
-    if (url === "api/guilds") body = {guilds: [{id: "1", name: "First Guild"}, {id: "2", name: "Second Guild"}]};
+    if (url === "/auth/session") body = clone(session);
+    else if (url === "/auth/logout") { session.authenticated = false; session.user = null; body = {message: "signed out"}; }
+    else if (url === "api/guilds") body = {guilds: [{id: "1", name: "First Guild"}, {id: "2", name: "Second Guild"}]};
     else {
       const match = url.match(/^api\/guilds\/(\d+)\/(.+)$/);
       const state = states[match[1]], action = match[2], data = options.body && JSON.parse(options.body);
@@ -101,7 +104,7 @@ async function setup() {
     innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
   vm.runInContext(code, context);
   await flush();
-  return {document, elements, states, requests, context, timers, frames, scrolls,
+  return {document, elements, states, requests, context, timers, frames, scrolls, session,
     element: (id) => document.getElementById(id),
     run: (expression) => vm.runInContext(expression, context),
     hook: (value) => { hook = value; }};
@@ -415,4 +418,196 @@ test("an old state poll cannot overwrite a completed mutation", async () => {
   release({ok: true, status: 200, json: async () => initial(1)});
   await old;
   assert.equal(app.element("toggle").textContent.includes("播放"), true);
+});
+
+
+function discordSession(authenticated = true) {
+  return {auth_mode: "discord", authenticated,
+    user: authenticated ? {id: "123", name: "<img onerror=evil>", avatar: "https://cdn.discordapp.com/fake-avatar.png"} : null};
+}
+function errorResponse(status, error) {
+  return Promise.resolve({ok: false, status, json: async () => ({error})});
+}
+
+test("logged-out Discord page reads no guild or song APIs, including subsequent polls", async () => {
+  const app = await setup({session: discordSession(false)});
+  assert.deepEqual(app.requests.map((request) => request.url), ["/auth/session"]);
+  assert.equal(app.element("dashboard").hidden, true);
+  assert.equal(app.element("login-screen").hidden, false);
+  assert.equal(app.element("discord-login").hidden, false);
+  assert.equal(app.element("auth").hidden, true);
+  assert.equal(app.element("enqueue").disabled, true);
+  await app.run("poll()"); await app.run("connect()"); await app.run("refresh()");
+  assert.equal(app.requests.length, 1);
+});
+
+test("Discord session renders a safe profile and never sends shared-secret authorization", async () => {
+  const app = await setup({session: discordSession()});
+  assert.equal(app.requests[0].url, "/auth/session");
+  assert.equal(app.requests[0].headers, undefined);
+  assert.equal(app.requests[0].credentials, "same-origin");
+  assert.equal(app.element("dashboard").hidden, false);
+  assert.equal(app.element("login-screen").hidden, true);
+  assert.equal(app.element("user-profile").hidden, false);
+  assert.equal(app.element("user-name").textContent, "<img onerror=evil>");
+  assert.equal(app.element("user-avatar").src, discordSession().user.avatar);
+  assert.equal(app.element("auth").hidden, true);
+  app.element("secret").value = "fake-fixture-secret";
+  app.element("auth-form").listeners.submit({preventDefault() {}});
+  await flush();
+  assert.ok(app.requests.every((request) => request.headers?.Authorization === undefined));
+  assert.ok(app.requests.filter((request) => request.url.startsWith("api/")).every(
+    (request) => request.credentials === "same-origin"));
+});
+
+test("Discord API 401 erases songs, guilds, preview, profile and query before stopping polling", async () => {
+  const app = await setup({session: discordSession()});
+  app.element("query").value = "private song"; await app.run("resolveQuery()");
+  app.hook((url) => url.endsWith("/state") ? errorResponse(401, "session expired") : null);
+  await app.run("refresh()");
+  assert.equal(app.element("dashboard").hidden, true);
+  assert.equal(app.element("login-screen").hidden, false);
+  assert.equal(app.element("login-status").textContent, "session expired");
+  assert.equal(app.element("guild").children.length, 0);
+  assert.equal(app.element("queue").children.length, 0);
+  assert.equal(app.element("preview-results").children.length, 0);
+  assert.equal(app.element("preview-panel").hidden, true);
+  assert.equal(app.element("query").value, "");
+  assert.equal(app.element("user-name").textContent, "");
+  assert.equal(app.element("user-avatar").getAttribute("src"), null);
+  assert.notEqual(app.element("title").textContent, "First");
+  assert.notEqual(app.element("bar-title").textContent, "First");
+  assert.equal(app.run("state"), null);
+  assert.equal(app.run("selected"), "");
+  const count = app.requests.length;
+  await app.run("poll()"); await app.run("poll()");
+  assert.equal(app.requests.length, count);
+});
+
+test("late state and lookup responses cannot restore content after session expiry", async () => {
+  const app = await setup({session: discordSession()});
+  let release;
+  app.hook((url) => url.endsWith("/state") ? new Promise((resolve) => { release = resolve; }) : null);
+  const stale = app.run("refresh()");
+  await flush();
+  app.hook((url) => url.endsWith("/resolve") ? errorResponse(401, "expired") : null);
+  app.element("query").value = "song"; await app.run("resolveQuery()");
+  release({ok: true, status: 200, json: async () => initial(1)});
+  await stale;
+  assert.equal(app.element("dashboard").hidden, true);
+  assert.equal(app.run("state"), null);
+  assert.equal(app.element("queue").children.length, 0);
+  assert.equal(app.element("preview-results").children.length, 0);
+});
+
+test("mutation 401 stops reconciliation without exposing the old guild again", async () => {
+  const app = await setup({session: discordSession()});
+  app.hook((url) => url.endsWith("/skip") ? errorResponse(401, "expired") : null);
+  await app.element("skip").listeners.click();
+  assert.equal(app.requests.at(-1).url, "api/guilds/1/skip");
+  assert.equal(app.element("dashboard").hidden, true);
+  assert.equal(app.element("toggle").disabled, true);
+});
+
+test("permission 403 displays the bot reason while retaining the Discord session", async () => {
+  const app = await setup({session: discordSession()});
+  app.hook((url) => url.endsWith("/skip") ? errorResponse(403, "you must join the bot voice channel") : null);
+  await app.element("skip").listeners.click();
+  assert.equal(app.element("notice").textContent, "you must join the bot voice channel");
+  assert.equal(app.element("dashboard").hidden, false);
+  assert.equal(app.element("user-profile").hidden, false);
+  assert.equal(app.run("authenticated"), true);
+  assert.equal(app.element("toggle").disabled, false);
+});
+
+test("logout posts with the CSRF header, clears personal content and rejects a late lookup", async () => {
+  const app = await setup({session: discordSession()});
+  let release;
+  app.hook((url) => url.endsWith("/resolve") ? new Promise((resolve) => { release = resolve; }) : null);
+  app.element("query").value = "song";
+  const lookup = app.run("resolveQuery()");
+  await flush();
+  await app.element("logout").listeners.click();
+  const request = app.requests.at(-1);
+  assert.equal(request.url, "/auth/logout");
+  assert.equal(request.method, "POST");
+  assert.equal(request.headers["X-MusicBot-Dashboard"], "1");
+  assert.equal(request.credentials, "same-origin");
+  assert.equal(request.headers.Authorization, undefined);
+  assert.equal(app.element("user-name").textContent, "");
+  assert.equal(app.element("guild").children.length, 0);
+  assert.equal(app.element("queue").children.length, 0);
+  release({ok: true, status: 200, json: async () => ({results: [{title: "late"}]})});
+  await lookup;
+  assert.equal(app.element("preview-results").children.length, 0);
+  assert.equal(app.element("dashboard").hidden, true);
+  const count = app.requests.length;
+  await app.run("poll()");
+  assert.equal(app.requests.length, count);
+});
+
+test("a rejected logout retains login and gives a retryable error", async () => {
+  const app = await setup({session: discordSession()});
+  app.hook((url) => url === "/auth/logout" ? errorResponse(502, "try logout again") : null);
+  await app.element("logout").listeners.click();
+  assert.equal(app.element("notice").textContent, "try logout again");
+  assert.equal(app.element("dashboard").hidden, false);
+  assert.equal(app.element("logout").disabled, false);
+  assert.equal(app.run("authenticated"), true);
+});
+
+test("session bootstrap failure and malformed responses fail closed without API reads", async () => {
+  for (const response of [errorResponse(503, "unavailable"),
+      Promise.resolve({ok: true, status: 200, json: async () => ({})}),
+      Promise.resolve({ok: true, status: 200, json: async () => ({auth_mode: "owner", authenticated: false})})]) {
+    const app = await setup({hook: () => response});
+    assert.deepEqual(app.requests.map((request) => request.url), ["/auth/session"]);
+    assert.equal(app.element("dashboard").hidden, true);
+    assert.equal(app.element("login-screen").hidden, false);
+    assert.equal(app.run("authenticated"), false);
+    await app.run("poll()");
+    assert.equal(app.requests.length, 1);
+  }
+});
+
+test("incomplete Discord identity is treated as logged out and unsafe avatar URLs are ignored", async () => {
+  const incomplete = discordSession(); incomplete.user = null;
+  const loggedOut = await setup({session: incomplete});
+  assert.equal(loggedOut.requests.length, 1);
+  assert.equal(loggedOut.element("dashboard").hidden, true);
+  const unsafe = discordSession(); unsafe.user.avatar = "javascript:evil()";
+  const loggedIn = await setup({session: unsafe});
+  assert.equal(loggedIn.element("user-avatar").getAttribute("src"), null);
+});
+
+test("owner retains connection settings and uses no Discord profile", async () => {
+  const app = await setup();
+  assert.equal(app.element("auth").hidden, false);
+  assert.equal(app.element("user-profile").hidden, true);
+  assert.equal(app.element("owner-badge").hidden, false);
+  const count = app.requests.length;
+  await app.element("logout").listeners.click();
+  assert.equal(app.requests.length, count);
+});
+
+test("initial HTML conceals the dashboard and provides a same-origin Discord login link", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../musicbot/web/index.html"), "utf8");
+  assert.match(html, /<div id="dashboard" hidden>/);
+  assert.match(html, /id="discord-login"[^>]*href="\/auth\/login"/);
+  assert.match(html, /id="user-profile"[^>]*hidden/);
+  assert.ok(html.indexOf('id="login-screen"') < html.indexOf('id="dashboard"'));
+});
+
+
+test("a non-JSON API 401 still clears the Discord session and stops polling", async () => {
+  const app = await setup({session: discordSession()});
+  app.hook((url) => url.endsWith("/state") ? Promise.resolve({ok: false, status: 401,
+    json: async () => { throw new SyntaxError("HTML response"); }}) : null);
+  await app.run("refresh()");
+  assert.equal(app.element("dashboard").hidden, true);
+  assert.equal(app.run("authenticated"), false);
+  assert.equal(app.element("queue").children.length, 0);
+  const count = app.requests.length;
+  await app.run("poll()");
+  assert.equal(app.requests.length, count);
 });
