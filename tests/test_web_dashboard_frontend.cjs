@@ -38,6 +38,8 @@ class Element {
     const shift = parseFloat((this.style.transform || "").replace("translateY(", "")) || 0;
     return {height: 74, top: 200 + index * 74 + shift, bottom: 274 + index * 74 + shift};
   }
+  showModal() { this.open = true; }
+  close() { this.open = false; }
   scrollIntoView(options) { this.scrolled = options; }
   focus() { this.focused = true; }
   animate(frames, options) { this.animations.push({frames, options}); }
@@ -123,6 +125,8 @@ async function setup(options = {}) {
     matchMedia: () => ({matches: !!options.reducedMotion}),
     innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
   vm.runInContext(code, context);
+  if (options.round7) for (const name of ["library.js", "admin.js", "permissions.js"])
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "../musicbot/web", name), "utf8"), context);
   await flush();
   return {document, elements, states, requests, context, timers, frames, scrolls, session, streams,
     element: (id) => document.getElementById(id),
@@ -1422,4 +1426,132 @@ test("SSE wrong-guild data closes and reconnects safely", async () => {
   await flush();
   assert.equal(app.streams[0].closed,true);
   assert.equal(app.element("title").textContent,"First");
+});
+
+function libraryFixture(owner = false) {
+  const lib = {version:1,revision:"library-v1",owner,playlists:[
+    {id:"favorites",name:"收藏",tracks:[{title:"<img onerror=evil>",url:"https://example.test/one",duration:90}]},
+    {id:"custom",name:"Study",tracks:[{title:"First",url:"https://example.test/a",duration:120},
+      {title:"Second",url:"https://example.test/b",duration:null}]}]};
+  const perms = {groups:[{name:"Default",editable:["MaxSongs","AllowPlaylists"],
+    values:{MaxSongs:3,AllowPlaylists:false,UserList:["未知成員"]}}],
+    limits:{MaxSongs:10000,AllowPlaylists:null},activity:[]};
+  const apl = {revision:"apl-v1",total:2,matched:2,page:1,page_size:50,
+    tracks:[{index:0,url:"https://example.test/one",title:"Song"}]};
+  const reply=body=>({ok:true,status:200,json:async()=>clone(body)});
+  const hook=(url,options)=>{
+    if (url.includes("/admin/permissions")) {
+      if (options.method==="PATCH") {const v=JSON.parse(options.body);perms.groups[0].values[v.field]=v.value;}
+      return reply({...perms,message:"updated"});
+    }
+    if (url.includes("/admin/autoplaylist")) return reply(apl);
+    if (url.startsWith("/api/library")) {
+      if (url.includes("/tracks")&&options.method==="POST") {
+        lib.playlists.find(p=>url.includes("/"+p.id+"/")).tracks.push(JSON.parse(options.body).track);
+      }
+      return reply(lib);
+    }
+    if (/\/library\/.*\/play$/.test(url)) return reply({added:1,skipped:1,message:"已加入 1 首，被拒 1 首。",results:[],state:initial(1)});
+  };
+  return {lib,perms,apl,hook};
+}
+test("round7 general member sees playlists and no management entry", async()=>{
+  const fixture=libraryFixture(false),app=await setup({round7:true,hook:fixture.hook});
+  await flush();assert.equal(app.element("nav-admin").hidden,true);
+  await app.element("nav-library").listeners.click();
+  assert.equal(app.element("play-view").hidden,true);assert.equal(app.element("library-panel").hidden,false);
+  assert.equal(app.element("library-list").children[0].children[1].textContent.startsWith("<img"),true);
+  assert.equal(app.element("library-rename").disabled,true);assert.equal(app.element("library-delete").disabled,true);
+});
+test("round7 owner capability reveals management and current-track action",async()=>{
+  const fixture=libraryFixture(true),app=await setup({round7:true,hook:fixture.hook});
+  await flush();assert.equal(app.element("nav-admin").hidden,false);
+  assert.equal(app.element("autoplaylist-current").hidden,false);
+  await app.element("nav-admin").listeners.click();
+  assert.equal(app.element("admin-panel").hidden,false);
+  assert.equal(app.element("admin-apl-list").children.length,1);
+  assert.equal(app.element("admin-permissions").children[1].children[0].textContent,"Default");
+});
+test("round7 favorite sends only track metadata with revision",async()=>{
+  const fixture=libraryFixture(),app=await setup({round7:true,hook:fixture.hook});
+  await app.run('librarySave({title:"Saved",url:"https://example.test/saved",duration:12,requester:{id:"never-save"}},true)');
+  const request=app.requests.find(r=>r.url==="/api/library/favorites/tracks");
+  assert.deepEqual(request.data,{revision:"library-v1",track:{title:"Saved",url:"https://example.test/saved",duration:12}});
+  assert.equal(request.headers["X-MusicBot-Dashboard"],"1");
+});
+test("round7 playlist picker selects custom list and closes after save",async()=>{
+  const fixture=libraryFixture(),app=await setup({round7:true,hook:fixture.hook});
+  await app.run('librarySave({title:"Saved",url:"https://example.test/saved",duration:null})');
+  assert.equal(app.element("library-save-dialog").open,true);
+  app.element("playlist-picker").value="custom";
+  await app.element("library-save-confirm").listeners.click();
+  assert.ok(app.requests.some(r=>r.url==="/api/library/custom/tracks"));
+  assert.equal(app.element("library-save-dialog").open,false);
+});
+test("round7 up down remove and rename send observed library revision",async()=>{
+  const fixture=libraryFixture(),app=await setup({round7:true,hook:fixture.hook});
+  await app.element("nav-library").listeners.click();
+  app.element("library-select").value="custom";app.element("library-select").listeners.change();
+  const row=app.element("library-list").children[0],actions=row.children[2].children;
+  assert.equal(actions[0].disabled,true);
+  await actions[1].listeners.click();
+  const change=app.requests.find(r=>r.method==="PATCH");
+  assert.equal(change.data.action,"move");assert.equal(change.data.index,0);assert.equal(change.data.to,1);
+  assert.equal(change.data.revision,"library-v1");
+  app.element("library-name").value="New name";await app.element("library-rename").listeners.click();
+  assert.ok(app.requests.some(r=>r.data?.name==="New name"));
+});
+test("round7 checked enqueue uses target guild and displays partial rejection",async()=>{
+  const fixture=libraryFixture(),app=await setup({round7:true,hook:fixture.hook});
+  await app.element("nav-library").listeners.click();
+  app.element("library-select").value="custom";app.element("library-select").listeners.change();
+  const check=app.element("library-list").children[1].children[0];check.checked=true;check.listeners.change();
+  assert.equal(app.element("library-play-selected").disabled,false);
+  await app.element("library-play-selected").onclick();
+  const request=app.requests.find(r=>r.url==="/api/guilds/1/library/custom/play");
+  assert.deepEqual(request.data,{revision:"library-v1",selected_items:["1"]});
+  assert.equal(app.element("notice").textContent,"已加入 1 首，被拒 1 首。");
+  assert.ok(app.element("notice").classes.has("error"));
+});
+test("round7 enqueue all omits selection and empty checked selection stays disabled",async()=>{
+  const fixture=libraryFixture(),app=await setup({round7:true,hook:fixture.hook});
+  await app.element("nav-library").listeners.click();
+  assert.equal(app.element("library-play-selected").disabled,true);
+  await app.element("library-play-all").onclick();
+  const request=app.requests.find(r=>r.url==="/api/guilds/1/library/favorites/play");
+  assert.deepEqual(request.data,{revision:"library-v1"});
+});
+test("round7 permissions require old/new confirmation before PATCH",async()=>{
+  const fixture=libraryFixture(true),app=await setup({round7:true,hook:fixture.hook});
+  await flush();await app.element("nav-admin").listeners.click();
+  const row=app.element("admin-permissions").children[1].children[1];
+  row.children[1].value="8";await row.children[2].listeners.click();
+  assert.equal(app.element("permission-confirm-dialog").open,true);
+  assert.ok(app.element("permission-confirm-text").textContent.includes("3 → 8"));
+  assert.equal(app.requests.filter(r=>r.method==="PATCH").length,0);
+  await app.element("permission-confirm").listeners.click();
+  const request=app.requests.find(r=>r.method==="PATCH");
+  assert.deepEqual(request.data,{group:"Default",field:"MaxSongs",old_value:3,value:8});
+});
+test("round7 permissions cancel invalid values and guild changes send no edit",async()=>{
+  const fixture=libraryFixture(true),app=await setup({round7:true,hook:fixture.hook});
+  await flush();await app.element("nav-admin").listeners.click();
+  const row=app.element("admin-permissions").children[1].children[1];
+  row.children[1].value="-1";await row.children[2].listeners.click();
+  assert.equal(app.element("permission-confirm-dialog").open,undefined);
+  row.children[1].value="4";await row.children[2].listeners.click();
+  await app.element("permission-cancel").listeners.click();
+  assert.equal(app.element("permission-confirm-dialog").open,false);
+  await row.children[2].listeners.click();app.run('generation++');
+  await app.element("permission-confirm").listeners.click();
+  assert.equal(app.requests.filter(r=>r.method==="PATCH").length,0);
+});
+test("round7 logout clears private playlists and owner management",async()=>{
+  const fixture=libraryFixture(true),app=await setup({round7:true,hook:fixture.hook});
+  await flush();await app.element("nav-library").listeners.click();
+  assert.ok(app.element("library-list").children.length);
+  app.run('signedOut()');
+  assert.equal(app.element("library-list").children.length,0);
+  assert.equal(app.element("nav-admin").hidden,true);
+  assert.equal(app.element("admin-apl-list").children.length,0);
 });

@@ -5,13 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#05060d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="音樂控制台">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css">
-  <script src="/dashboard.js" defer></script>
-  <script src="/library.js" defer></script>
-  <script src="/admin.js" defer></script>
-  <script src="/permissions.js" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r7-1">
+  <script src="/dashboard.js?v=r7-1" defer></script>
+  <script src="/library.js?v=r7-1" defer></script>
+  <script src="/admin.js?v=r7-1" defer></script>
+  <script src="/permissions.js?v=r7-1" defer></script>
+  <script src="/pwa.js?v=r7-1" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -27,6 +33,7 @@
     <a class="brand" href="/" aria-label="音樂控制台首頁"><span aria-hidden="true">♫</span> 音樂控制台</a>
     <label for="guild">切換伺服器</label><select id="guild" aria-label="切換伺服器"></select>
     <nav class="page-tabs" aria-label="頁面"><button id="nav-play" type="button" aria-pressed="true">播放</button><button id="nav-library" type="button">我的歌單</button><button id="nav-admin" type="button" hidden>管理</button></nav>
+    <button id="pwa-refresh" type="button" hidden>重新整理更新</button>
     <span id="connection" class="badge" role="status">連線中</span>
     <details id="auth" class="auth">
       <summary>連線設定</summary>
@@ -41,6 +48,7 @@
     <header class="page-heading"><div><h1>一起聽音樂</h1></div>
       <div id="user-profile" class="user-profile" hidden><img id="user-avatar" alt="" referrerpolicy="no-referrer" hidden>
         <span id="user-name"></span><button id="logout" type="button" class="subtle">登出</button></div></header>
+    <p id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true"></p>
     <div id="play-view">
     <section class="card request" aria-labelledby="request-heading">
       <h2 id="request-heading">下一首，想聽什麼？</h2>
@@ -55,7 +63,6 @@
         <div id="preview-results"></div>
       </section>
     </section>
-    <p id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true"></p>
     <section class="card now-playing" aria-labelledby="now-heading">
       <div class="art hero-art"><span aria-hidden="true">♫</span><img id="cover" alt="歌曲封面" hidden></div>
       <div class="track-info"><p class="eyebrow" id="now-heading">正在播放</p><span id="play-status" class="badge">尚未連線</span>

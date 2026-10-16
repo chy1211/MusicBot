@@ -931,3 +931,83 @@ Concurrent external edits before replacement cause 409. Native Discord permissio
 editing is outside this web lock; avoid simultaneous administration from both UIs.
 The demo uses a real Permissions parser on a fake permissions.ini located wholly
 inside TemporaryDirectory and replaces its in-memory object through the same API.
+
+## Install on a phone (PWA, round 7)
+
+manifest.webmanifest names 音樂控制台, display standalone, start_url/scope "/", with
+the existing #05060d theme. SVG favicon, 192/512 PNG and 180 apple-touch-icon PNG
+are served locally; PNGs total under 5 KiB and can be regenerated with
+python3 tools/dashboard_icons.py. iOS standalone/status/title meta tags are included.
+In Safari use Share -> Add to Home Screen; on supporting Android browsers use
+the browser installation menu. Real-device installation is a release acceptance item.
+
+sw.js caches only its explicit static allowlist: root HTML shell, offline.html,
+CSS, dashboard/library/admin/permissions/PWA JS, manifest and icons. Root HTML is
+network-first with a simple offline page on network failure. Other static assets
+use stale-while-revalidate. Version: musicbot-dashboard-r7-1; HTML asset references
+carry ?v=r7-1. Increment both on every static release. Install uses skipWaiting;
+activate deletes only older musicbot-dashboard-* caches and claims clients.
+A controller change shows a refresh button so a playing/unsaved session is not
+silently reloaded. Failed cache writes do not hide a successful HTML response.
+
+GET only, same origin, explicit paths only. /api and /api/*, /auth and /auth/*,
+event-stream Accept and events paths, unlisted routes, other origins, writes and
+non-version query parameters bypass the worker completely. No session/identity,
+API response, event or OAuth redirect/token is cached. Authentication and cookie
+flows retain normal network behavior. SW install static fetches omit credentials.
+The root HTML is a generic shell without embedded identity; offline.html has none.
+
+## Round-7 isolated tests and demo (no deployment)
+
+From a clean committed branch, on the test host:
+
+~~~sh
+ctx=$(mktemp -d /tmp/musicbot-webtest-r7.XXXXXX)
+git -C "$HOME/musicbot" archive feature/dashboard-round7 | tar -x -C "$ctx"
+printf '%s\n' 'FROM musicbot:ytdlp-base' 'WORKDIR /webtest' 'COPY . .' |
+  docker build --network none -t musicbot-webtest-r7:demo -f - "$ctx"
+docker run --rm --network none --name musicbot-webtest-r7-unit \
+  --entrypoint python3 musicbot-webtest-r7:demo \
+  -W 'error::DeprecationWarning:aiohttp.web_protocol' \
+  -m unittest discover -s tests -p 'test_web_dashboard*.py'
+docker run --rm --network none --name musicbot-webtest-r7-links \
+  --entrypoint python3 musicbot-webtest-r7:demo -m tools.test_compound_link
+(cd "$ctx" && node --test tests/test_web_dashboard_frontend.cjs tests/test_web_dashboard_pwa.cjs)
+docker run --rm -d --network none --name musicbot-webtest-r7-demo \
+  --entrypoint python3 musicbot-webtest-r7:demo \
+  -m tools.dashboard_demo --host 0.0.0.0 --port 8080 \
+  --public-origin http://127.0.0.1:18080
+python3 "$ctx/tools/dashboard_demo_relay.py" \
+  --container musicbot-webtest-r7-demo --port 18080
+~~~
+
+Keep the relay running and use a Windows tunnel:
+ssh -N -L 127.0.0.1:18080:127.0.0.1:18080 -o ExitOnForwardFailure=yes your-vps
+Then open http://127.0.0.1:18080/. network none containers require the existing
+loopback relay; port publishing alone does not provide networking to them.
+
+Fake Owner: favorite a song; create, rename, reorder, remove and enqueue tracks
+from My Playlists; inspect owner-only management, search/page/add/remove the fake
+autoplaylist, add current song, and confirm permission old/new values. Fake member:
+management is hidden, private library differs, and playlist enqueue is denied until
+Owner enables AllowPlaylists in the temporary Default group. Away/denied users
+exercise voice/command denial. Switch guilds, logout, reconnect and inspect that
+private views clear. DevTools offline mode exercises the offline page; reconnect
+and refresh verifies the update prompt and normal login. Unit/VM tests simulate
+fetch events and explicitly assert every excluded route bypasses respondWith.
+
+The demo uses TemporaryDirectory for its private libraries, native AutoPlaylist,
+fake permissions.ini and backups, with cleanup on app shutdown. It uses fake login,
+fake extraction/lyrics/local art only; no real config/data, credentials or outbound
+connections. All test containers have --network none and musicbot-webtest-* names.
+Stop relay/tunnel, then clean only the named resources:
+
+~~~sh
+docker stop musicbot-webtest-r7-demo
+docker image rm musicbot-webtest-r7:demo
+case "$ctx" in /tmp/musicbot-webtest-r7.*) rm -rf -- "$ctx";; esac
+~~~
+
+Live Discord/OAuth, real-phone installation and production proxy behavior remain
+unverified until a separately authorized deployment. Nothing in this procedure
+changes dev, the production working tree/config/data, services or existing images.

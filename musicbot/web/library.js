@@ -15,6 +15,7 @@ async function libraryRun(button, run) {
 function libraryClear() {
   libraryData = null; libraryPendingSong = null; libraryActive = "favorites";
   $("library-list").replaceChildren(); $("playlist-picker").replaceChildren();
+  libraryView("play");
   $("library-panel").hidden = true; $("library-save-dialog").close?.();
 }
 function libraryView(page) {
