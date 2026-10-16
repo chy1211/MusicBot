@@ -14,7 +14,7 @@ from aiohttp import web
 from musicbot.downloader import YtdlpResponseDict
 from musicbot.bot import MusicBot
 from musicbot.constructs import SkipState
-from musicbot.web_dashboard import Dashboard, DashboardConfig
+from musicbot.web_dashboard import Dashboard, DashboardConfig, CONFIRMED_ENTRY_CHECK
 
 
 # This executable does not initialize MusicBot/gettext.
@@ -29,7 +29,7 @@ class DemoPlaylist:
         self.entries = deque(songs)
 
     def count_for_user(self, owner):
-        return sum(song.author.id == owner.id for song in self.entries)
+        return sum(getattr(getattr(song, "author", None), "id", None) == owner.id for song in self.entries)
 
     def get_entry_at_index(self, index):
         return self.entries[index]
@@ -106,6 +106,8 @@ class DemoBot:
             player.current_entry.author, player.current_entry.channel = owner, channel
             for index, song in enumerate(player.playlist.entries):
                 song.author, song.channel = members[43] if index == 1 else owner, channel
+                if index == 3:
+                    song.author, song.channel = None, None
             def skip(p=player):
                 p.current_entry = p.playlist.entries.popleft() if p.playlist.entries else None
                 p.progress = 0
@@ -151,7 +153,7 @@ class DemoBot:
         await asyncio.sleep(.15)
         def info(index):
             song = self.song(index)
-            return {"__input_subject": query, "_type": "video", "title": song.title,
+            return {"__input_subject": query, "_type": "video", "title": "blocked 範例歌曲" if index % 7 == 6 else song.title + f" {index + 1}",
                     "webpage_url": song.url, "duration": song.duration,
                     "thumbnail": song.thumbnail_url, "extractor": "demo", "id": str(index)}
         if query.startswith("ytsearch"):
@@ -159,19 +161,22 @@ class DemoBot:
                     "entries": [info(i) for i in range(5)]}
         elif "playlist" in query:
             data = {"__input_subject": query, "title": "週末慢慢聽", "extractor": "demo:playlist",
-                    "playlist_count": 5, "entries": [info(i) for i in range(5)]}
+                    "playlist_count": 24, "entries": [info(i) for i in range(24)]}
         else:
             try:
                 index = int(query.rsplit("/", 1)[-1])
             except ValueError:
                 index = 0
-            data = info(index % 5)
+            data = info(index)
         return YtdlpResponseDict(data)
 
     async def cmd_play(self, *, player, song_url, author, channel, **_kwargs):
         # Fake boundary only: the real Dashboard calls the same cmd_play entry point.
         data = await self.extract(song_url, download=False, process=True)
         permissions = self.permissions.for_user(author)
+        validator = CONFIRMED_ENTRY_CHECK.get()
+        if validator is not None:
+            permissions = validator(data)
         if data.has_entries:
             await self._do_playlist_checks(player, author, data)
         from musicbot.exceptions import PermissionsError
@@ -184,6 +189,8 @@ class DemoBot:
             player.playlist.entries.append(NS(
                 title=info.title, url=info.webpage_url, author=author, channel=channel,
                 thumbnail_url=info.thumbnail_url, duration=info.duration))
+            if validator is not None:
+                validator.enqueued = True
 
     async def cmd_pause(self, _ssd, player):
         player.is_playing, player.is_paused = False, True

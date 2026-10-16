@@ -4474,6 +4474,12 @@ class MusicBot(commands.Bot):
                     "That video cannot be played. Try using the stream command.",
                 )
 
+            # Dashboard selection guard is task-local; native play has no callback.
+            from .web_dashboard import CONFIRMED_ENTRY_CHECK
+            confirmed_check = CONFIRMED_ENTRY_CHECK.get()
+            if confirmed_check is not None:
+                permissions = confirmed_check(info)
+
             # ensure the extractor has been allowed via permissions.
             permissions.can_use_extractor(info.extractor)
 
@@ -4562,6 +4568,8 @@ class MusicBot(commands.Bot):
                 entry, position = await player.playlist.add_entry_from_info(
                     info, channel=channel, author=author, head=head
                 )
+                if confirmed_check is not None:
+                    confirmed_check.enqueued = True
 
                 reply_text = _D(
                     "Enqueued `%(track)s` to be played.\n"

@@ -12,7 +12,7 @@ class Element {
     this.tag = tag; this.children = []; this.listeners = {};
     this.attributes = {}; this.dataset = {}; this.value = "";
     this.textContent = ""; this.disabled = false; this.hidden = false;
-    this.classes = new Set();
+    this.classes = new Set(); this.style = {}; this.animations = [];
     this.classList = {toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name)};
   }
   append(...items) {
@@ -32,7 +32,13 @@ class Element {
   hasPointerCapture(id) { return this.capture === id; }
   releasePointerCapture() { this.capture = null; }
   closest() { return this.tag === "li" ? this : this.parent?.closest(); }
-  getBoundingClientRect() { return {height: 110}; }
+  getBoundingClientRect() {
+    if (!this.layout) return {height: 110};
+    const index = this.parent?.children.indexOf(this) || 0;
+    const shift = parseFloat((this.style.transform || "").replace("translateY(", "")) || 0;
+    return {height: 74, top: 200 + index * 74 + shift, bottom: 274 + index * 74 + shift};
+  }
+  animate(frames, options) { this.animations.push({frames, options}); }
   set src(value) { this.attributes.src = value; }
   get src() { return this.attributes.src; }
   set innerHTML(value) { throw new Error("Untrusted content must use textContent"); }
@@ -60,7 +66,7 @@ async function setup(options = {}) {
     querySelectorAll(selector) {
       const result = [];
       function walk(element) {
-        if (element.tag === "button") result.push(element);
+        if (element.tag === (selector.endsWith("input") ? "input" : "button")) result.push(element);
         element.children.forEach(walk);
       }
       walk(this.getElementById(selector.includes("preview") ? "preview-results" : "queue"));
@@ -99,8 +105,9 @@ async function setup(options = {}) {
     }
     return {ok: status === 200, status, json: async () => body};
   }
-  const context = vm.createContext({document, fetch, window: {setTimeout: (...args) => timers.push(args), clearTimeout() {},
+  const context = vm.createContext({document, fetch, URL, AbortController, window: {setTimeout: (...args) => timers.push(args), clearTimeout() {},
     requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
+    matchMedia: () => ({matches: !!options.reducedMotion}),
     innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
   vm.runInContext(code, context);
   await flush();
@@ -117,7 +124,7 @@ test("renders current track, progress, queue and safe untrusted titles", async (
   assert.equal(app.element("queue-count").textContent, "2");
   assert.equal(app.element("queue").children[0].children[2].children[0].textContent, "<img onerror=evil>");
   assert.equal(app.element("enqueue").disabled, false);
-  assert.equal(app.timers[0][1], 1000);
+  assert.ok(app.timers.some((timer) => timer[1] === 1000));
 });
 
 test("control handlers send correct methods, body, guild and headers", async () => {
@@ -610,4 +617,211 @@ test("a non-JSON API 401 still clears the Discord session and stops polling", as
   const count = app.requests.length;
   await app.run("poll()");
   assert.equal(app.requests.length, count);
+});
+
+test("resolve spinner disables only lookup and resets after a failed response", async () => {
+  const app = await setup();
+  let release;
+  app.hook((url) => url.endsWith("/resolve") ? new Promise((resolve) => { release = resolve; }) : null);
+  app.element("query").value = "spinner";
+  const pending = app.run("resolveQuery()");
+  await flush();
+  assert.equal(app.element("enqueue").getAttribute("aria-busy"), "true");
+  assert.equal(app.element("enqueue").classes.has("is-loading"), true);
+  assert.equal(app.element("enqueue").disabled, true);
+  assert.equal(app.element("toggle").disabled, false);
+  release({ok: false, status: 504, json: async () => ({error: "逾時"})});
+  await pending;
+  assert.equal(app.element("enqueue").getAttribute("aria-busy"), "false");
+  assert.equal(app.element("enqueue").classes.has("is-loading"), false);
+  assert.equal(app.element("enqueue").disabled, false);
+});
+
+test("play spinner resets on client timeout and preserves its confirmation token", async () => {
+  const app = await setup();
+  app.element("query").value = "song"; await app.run("resolveQuery()");
+  const button = app.element("preview-results").children[0].children[2];
+  app.hook((url, options) => url.endsWith("/play") ? new Promise((_, reject) => {
+    options.signal.addEventListener("abort", () => reject(Object.assign(new Error(), {name: "AbortError"})));
+  }) : null);
+  const pending = button.listeners.click();
+  await flush();
+  assert.equal(button.dataset.loading, "1");
+  assert.equal(button.getAttribute("aria-busy"), "true");
+  assert.equal(button.disabled, true);
+  app.timers.filter((timer) => timer[1] === 30000).at(-1)[0]();
+  await pending;
+  assert.equal(button.dataset.loading, "0");
+  assert.equal(button.disabled, false);
+  assert.equal(app.element("preview-panel").hidden, false);
+  assert.match(app.element("notice").textContent, /逾時/);
+});
+
+test("toast expires automatically and an old timer cannot erase a new error", async () => {
+  const app = await setup();
+  app.run('notice("成功")');
+  const success = app.timers.at(-1);
+  assert.equal(success[1], 4500);
+  assert.equal(app.element("notice").classes.has("visible"), true);
+  app.run('notice("拒絕", true)');
+  const error = app.timers.at(-1);
+  assert.equal(error[1], 10000);
+  success[0]();
+  assert.equal(app.element("notice").textContent, "拒絕");
+  assert.equal(app.element("notice").classes.has("error"), true);
+  error[0]();
+  assert.equal(app.element("notice").textContent, "");
+  assert.equal(app.element("notice").classes.has("visible"), false);
+});
+
+test("current source link only exposes HTTP links and requester display names", async () => {
+  const app = await setup();
+  app.states[1].current.requester = {name: "<script>點播者</script>", avatar: ""};
+  app.states[1].queue[0].requester = {name: "好友", avatar: ""};
+  app.states[1].current.url = "https://www.youtube.com/watch?v=abc";
+  await app.run("refresh()");
+  assert.equal(app.element("source-link").href, app.states[1].current.url);
+  assert.equal(app.element("source-link").hidden, false);
+  assert.match(app.element("source-link").textContent, /YouTube/);
+  assert.equal(app.element("subtitle").textContent, "點播：<script>點播者</script>");
+  assert.equal(app.element("queue").children[0].children[2].children[1].textContent, "點播：好友");
+  for (const url of ["javascript:alert(1)", "file:///tmp/test", "https://u:p@example.test/song"]) {
+    app.states[1].current.url = url;
+    await app.run("refresh()");
+    assert.equal(app.element("source-link").hidden, true);
+  }
+});
+
+function playlistReply() {
+  return {title: "Playlist", kind: "playlist", url: "https://example.test/list", allowed: true,
+    count: 3, checked_count: 3, eligible_count: 2, preview_id: "playlist-token", entries: [
+      {item_id: "1", title: "一", duration: 60, allowed: true},
+      {item_id: "2", title: "二", duration: 600, allowed: false, reason: "超過歌長"},
+      {item_id: "3", title: "三", duration: 60, allowed: true}]};
+}
+async function playlistApp() {
+  const app = await setup();
+  app.hook((url) => url.endsWith("/resolve") ? Promise.resolve({ok: true, status: 200,
+    json: async () => ({results: [playlistReply()]})}) : null);
+  app.element("query").value = "list"; await app.run("resolveQuery()");
+  const card = app.element("preview-results").children[0], info = card.children[1];
+  return {app, card, tools: info.children.at(-2), list: info.children.at(-1), button: card.children[2]};
+}
+
+test("playlist defaults to all eligible items and cannot select a blocked row", async () => {
+  const {app, list, button} = await playlistApp();
+  assert.equal(list.children.length, 3);
+  assert.equal(list.children[0].children[0].children[0].checked, true);
+  assert.equal(list.children[1].children[0].children[0].checked, false);
+  assert.equal(list.children[1].children[0].children[0].disabled, true);
+  assert.equal(button.textContent, "加入選取的 2 首");
+  await button.listeners.click();
+  assert.deepEqual(app.requests.find((request) => request.url.endsWith("/play")).data, {
+    query: "https://example.test/list", preview_id: "playlist-token", selected_items: ["1", "3"]});
+});
+
+test("playlist select none, select all and individual selection update the count and payload", async () => {
+  const {app, tools, list, button} = await playlistApp();
+  tools.children[1].listeners.click();
+  assert.equal(button.textContent, "加入選取的 0 首");
+  assert.equal(button.disabled, true);
+  await button.listeners.click();
+  assert.equal(app.requests.some((request) => request.url.endsWith("/play")), false);
+  tools.children[0].listeners.click();
+  const first = list.children[0].children[0].children[0];
+  first.checked = false; first.listeners.change();
+  assert.equal(button.textContent, "加入選取的 1 首");
+  await button.listeners.click();
+  assert.deepEqual(app.requests.find((request) => request.url.endsWith("/play")).data.selected_items, ["3"]);
+});
+
+test("batch confirmation displays spinner, freezes selection and reports partial success toast", async () => {
+  const {app, list, button} = await playlistApp();
+  let release;
+  app.hook((url) => url.endsWith("/play") ? new Promise((resolve) => { release = resolve; }) : null);
+  const pending = button.listeners.click();
+  await flush();
+  assert.equal(button.getAttribute("aria-busy"), "true");
+  assert.equal(list.children[0].children[0].children[0].disabled, true);
+  assert.equal(button.disabled, true);
+  release({ok: true, status: 200, json: async () => ({
+    message: "已加入 1 首，略過 1 首。佇列額滿。", added: 1, skipped: 1, state: initial(1)})});
+  await pending;
+  assert.match(app.element("notice").textContent, /已加入 1 首/);
+  assert.equal(app.element("notice").classes.has("visible"), true);
+});
+
+test("drag lifts the source, shifts neighbours, sends one move and animates rollback on 409", async () => {
+  const app = await setup(), rows = app.element("queue").children, grip = handle(app);
+  app.document.hit = rows[1];
+  let release;
+  app.hook((url) => url.endsWith("queue/move") ? new Promise((resolve) => { release = resolve; }) : null);
+  grip.listeners.pointerdown(pointer());
+  grip.listeners.pointermove(pointer("mouse", {clientY: 320}));
+  assert.equal(rows[0].classes.has("dragging"), true);
+  assert.match(rows[0].style.transform, /scale\(1.025\)/);
+  assert.match(rows[1].style.transform, /translateY\(-110px\)/);
+  const pending = grip.listeners.pointerup(pointer());
+  await flush();
+  assert.equal(rows[0].classes.has("settling"), true);
+  assert.equal(app.requests.filter((request) => request.url.endsWith("queue/move")).length, 1);
+  release({ok: false, status: 409, json: async () => ({error: "隊列已更新"})});
+  await pending;
+  assert.equal(rows[0].style.transform, "");
+  assert.equal(rows[1].style.transform, "");
+  assert.equal(app.run("dragVisual"), null);
+  assert.equal(app.element("notice").textContent, "隊列已更新");
+});
+
+test("queue reorder uses FLIP frames and reduced motion skips transforms while retaining move", async () => {
+  const app = await setup();
+  for (const row of app.element("queue").children) row.layout = true;
+  app.states[1].queue.reverse();
+  app.states[1].queue.forEach((song, i) => { song.position = i + 1; });
+  app.states[1].revision += "flip";
+  // Newly created fake rows have no layout; use a deterministic position function.
+  app.run('document.createElement = ((create) => (tag) => { const el = create(tag); el.layout = tag === "li"; return el; })(document.createElement)');
+  await app.run("refresh()");
+  assert.ok(app.element("queue").children.some((row) => row.animations.length > 0));
+  const reduced = await setup({reducedMotion: true}), grip = handle(reduced);
+  reduced.document.hit = reduced.element("queue").children[1];
+  grip.listeners.pointerdown(pointer("touch"));
+  reduced.timers.find((timer) => timer[1] === 420)[0]();
+  grip.listeners.pointermove(pointer("touch", {clientY: 320}));
+  assert.equal(reduced.element("queue").children[0].style.transform, undefined);
+  await grip.listeners.pointerup(pointer("touch"));
+  assert.equal(reduced.requests.filter((request) => request.url.endsWith("queue/move")).length, 1);
+});
+
+test("fixed accessible toast, safe source link and reduced motion CSS are present", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../musicbot/web/index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../musicbot/web/dashboard.css"), "utf8");
+  assert.match(html, /id="notice"[^>]*role="status"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
+  assert.match(html, /id="source-link"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
+  assert.match(css, /\.notice\{position:fixed/);
+  assert.match(css, /prefers-reduced-motion:reduce/);
+  assert.match(css, /\.is-loading::before\{display:none/);
+  for (const slogan of ["讓音樂繼續陪你", "讓好歌", "接著發生。", "在 Discord 相聚，在這裡選歌。", "先看預覽，再加入佇列。搜尋結果可挑選一首。"])
+    assert.ok(!html.includes(slogan) && !code.includes(slogan), slogan);
+  assert.ok(!html.includes("sidebar-note"));
+  assert.ok(html.includes("你的音樂空間") && html.includes("讓旋律接下去"));
+});
+
+test("drop displacement uses unequal row heights without changing the move payload", async () => {
+  const app = await setup(), rows = app.element("queue").children, grip = handle(app);
+  rows[0].offsetTop = 0; rows[0].offsetHeight = 120;
+  rows[1].offsetTop = 120; rows[1].offsetHeight = 74;
+  app.document.hit = rows[1];
+  let release;
+  app.hook((url) => url.endsWith("queue/move") ? new Promise((resolve) => { release = resolve; }) : null);
+  grip.listeners.pointerdown(pointer());
+  grip.listeners.pointermove(pointer("mouse", {clientY: 320}));
+  const pending = grip.listeners.pointerup(pointer());
+  await flush();
+  assert.equal(rows[0].style.transform, "translateY(74px)");
+  assert.equal(rows[1].style.transform, "translateY(-120px)");
+  release({ok: true, status: 200, json: async () => ({message: "done", state: initial(1)})});
+  await pending;
+  assert.deepEqual(app.requests.find((request) => request.url.endsWith("queue/move")).data,
+    {from: 1, to: 2, revision: "revision-1"});
 });

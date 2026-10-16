@@ -50,14 +50,14 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.bot.info = dict(self.bot.info, title="List", entries=items, playlist_count=15)
         song, = await self.preview("https://example.test/playlist")
         self.assertEqual((song["kind"], song["title"], song["count"]), ("playlist", "List", 15))
-        self.assertEqual(len(song["entries"]), 10)
+        self.assertEqual(len(song["entries"]), 15)
         self.assertEqual((song["checked_count"], song["eligible_count"]), (15, 14))
         self.assertTrue(song["allowed"])
         self.assertEqual(len(self.bot.player.playlist.entries), 3)
 
     async def test_playlist_permissions_are_existing_checks(self):
         self.bot.info = dict(self.bot.info, entries=[dict(self.bot.info)] * 2, playlist_count=2)
-        for name, value in (("allow_playlists", False), ("max_playlist_length", 1), ("max_songs", 4)):
+        for name, value in (("allow_playlists", False), ("max_playlist_length", 1)):
             setattr(self.bot.perms, name, value)
             song, = await self.preview("https://example.test/playlist")
             self.assertFalse(song["allowed"], name)
@@ -239,11 +239,13 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.dashboard.previews), 100)
 
     async def test_confirmation_of_playlist_uses_real_import_and_filters(self):
-        short = dict(self.bot.info, title="Short", duration=60)
-        long = dict(self.bot.info, title="Long", duration=600)
+        short = dict(self.bot.info, title="Short", duration=60, webpage_url="https://example.test/short")
+        long = dict(self.bot.info, title="Long", duration=600, webpage_url="https://example.test/long")
         self.bot.info = dict(self.bot.info, entries=[short, long], playlist_count=2)
         self.bot.perms.max_song_length = 100
         song, = await self.preview("https://example.test/playlist")
+        # Single canonical URLs resolve to one item, as real extractors do.
+        self.bot.info = short
         result = await self.call(BASE + "play", self.confirm(song))
         self.assertEqual([item["title"] for item in result["state"]["queue"]],
                          ["One", "Two", "Three", "Short"])

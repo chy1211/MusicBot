@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#121212">
+  <meta name="theme-color" content="#05060d">
   <title>音樂控制台</title>
   <link rel="stylesheet" href="dashboard.css">
   <script src="dashboard.js" defer></script>
@@ -24,7 +24,6 @@
     <p class="eyebrow">你的音樂空間</p>
     <label for="guild">切換伺服器</label><select id="guild" aria-label="切換伺服器"></select>
     <span id="connection" class="badge" role="status">連線中</span>
-    <div class="sidebar-note"><span aria-hidden="true">◉</span><p>讓好歌<br>接著發生。</p><small>在 Discord 相聚，在這裡選歌。</small></div>
     <details id="auth" class="auth">
       <summary>連線設定</summary>
       <form id="auth-form"><label for="secret">共享密鑰</label>
@@ -44,19 +43,18 @@
         <label class="sr-only" for="query">歌曲連結或搜尋關鍵字</label>
         <div class="input-row"><input id="query" type="text" maxlength="2000" placeholder="貼上歌曲／播放清單連結，或輸入歌名" required>
           <button id="enqueue" class="primary" type="submit" disabled>查詢</button></div>
-        <p class="hint">先看預覽，再加入佇列。搜尋結果可挑選一首。</p>
       </form>
       <section id="preview-panel" hidden aria-label="點歌預覽">
         <div class="section-top"><h3>確認你的選擇</h3><button id="preview-close" class="subtle" type="button">清除預覽</button></div>
         <div id="preview-results"></div>
       </section>
     </section>
-    <p id="notice" class="notice" role="status" aria-live="polite">正在讀取機器人狀態…</p>
+    <p id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true"></p>
     <section class="card now-playing" aria-labelledby="now-heading">
       <div class="art hero-art"><span aria-hidden="true">♫</span><img id="cover" alt="歌曲封面" hidden></div>
       <div class="track-info"><p class="eyebrow" id="now-heading">正在播放</p><span id="play-status" class="badge">尚未連線</span>
         <h2 id="title">選一首喜歡的歌</h2><p id="subtitle" class="muted">請先加入 Discord 語音頻道</p>
-        <div class="sound-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        <a id="source-link" class="source-link" target="_blank" rel="noopener noreferrer" hidden>在來源網站開啟 ↗</a>
       </div>
     </section>
     <section class="card queue" aria-labelledby="queue-heading">
