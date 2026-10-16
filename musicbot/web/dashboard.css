@@ -57,3 +57,19 @@ select option{background:#1c1c22}
 @media(max-width:760px){.hero-progress{margin-left:calc(-108px - 18px);margin-top:24px}.seek-hint{margin-left:calc(-108px - 18px);font-size:10px}.now-playing{padding-bottom:12px}.progress-row{gap:7px}.preview-item:has(.preview-alternate){grid-template-columns:48px minmax(0,1fr)}.preview-item>.preview-alternate{grid-column:2;justify-self:start;margin-top:0}.lyrics-content{max-height:42vh;padding:10px}.lyrics-content p{font-size:17px}.lyrics-search .input-row{flex-wrap:wrap}.lyrics-search input{min-width:160px}.history-list>li{grid-template-columns:38px minmax(0,1fr);gap:10px}.history-list .queue-cover{width:38px;height:38px}.history-actions{grid-column:2;justify-content:flex-start}.history .section-top{align-items:flex-start}.history h2{font-size:21px}#lyrics-toggle{margin-left:0}.progress-row input[type=range]{touch-action:pan-y}}
 
 :root{--bar:128px}@media(max-width:1100px){:root{--bar:184px}.playback-bar{--bar:184px}}@media(max-width:760px){:root{--bar:216px}.playback-bar{--bar:216px}}
+
+/* Round six: compact functional metadata, using the existing glass palette. */
+#queue-heading{font-size:20px;line-height:1.6;overflow-wrap:anywhere}
+#queue-total{font-size:14px;color:var(--muted);font-weight:500}
+.queue-filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.queue-filters button{font-size:12px;padding:8px 18px}
+.queue-filters button[aria-pressed=true]{background:rgba(100,210,255,.16);border-color:rgba(100,210,255,.5);color:#9be7ff}
+.queue-estimate{display:block;color:#9be7ff;line-height:1.7}
+.listeners-list{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.listener{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:24px;padding:6px 12px;max-width:100%;overflow-wrap:anywhere}
+.listener-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover}
+.listeners-list>details{flex-basis:100%;min-width:0}.listeners-list summary{color:var(--green)}
+.activity-list{list-style:none;padding:0;margin:14px 0 0;max-height:380px;overflow:auto;scrollbar-width:thin}
+.activity-list li{padding:12px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.activity-list p{font-size:13px}.activity-list small{font-size:11px}
+@media(max-width:760px){#queue-heading{font-size:18px}.queue .section-top{align-items:flex-start}.queue .section-top>div{min-width:0}.queue .section-top>button{flex-shrink:0}.listener{font-size:12px}.queue-estimate{font-size:10px}}

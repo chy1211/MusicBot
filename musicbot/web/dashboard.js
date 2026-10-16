@@ -49,10 +49,11 @@ function authDisplay() {
   $("auth").hidden = authMode !== "owner";
   $("user-profile").hidden = authMode !== "discord" || !authenticated;
   $("identity-note").textContent = authMode === "discord"
-    ? "每秒更新 · 以你的 Discord 身分與權限操作 · 操作前請加入機器人所在的語音頻道"
-    : "每秒更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道";
+    ? "即時更新 · 以你的 Discord 身分與權限操作 · 操作前請加入機器人所在的語音頻道"
+    : "即時更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道";
 }
 function signedOut(message = "登入後即可查看你的伺服器並點歌。") {
+  stopEvents();
   ++generation; ++stateGeneration;
   authenticated = false; connected = false; loading = false; selected = "";
   secret = ""; $("secret").value = ""; $("query").value = "";
@@ -139,7 +140,7 @@ function controls() {
   document.querySelectorAll("#preview-results input").forEach((input) => {
     input.disabled = !usable || input.dataset.boundary === "1";
   });
-  $("shuffle").disabled = !hasPlayer || !state.queue.length;
+  $("shuffle").disabled = !hasPlayer || !state.queue.length || queueMine;
   $("guild").disabled = busy;
   $("logout").disabled = busy;
   document.querySelectorAll("#queue button").forEach((button) => {
@@ -157,7 +158,7 @@ function imageElement(url, className = "queue-cover") {
   return img;
 }
 function renderQueue() {
-  const signature = state.revision + JSON.stringify(state.queue.map((song) => [song.requester, song.title]));
+  const signature = state.revision + queueMine + JSON.stringify(state.queue);
   if (queueRevision === signature) return;
   const before = new Map(Array.from($("queue").children, (row) =>
     [row.dataset.key, row.getBoundingClientRect().top]));
@@ -166,9 +167,11 @@ function renderQueue() {
   queueRevision = signature;
   $("queue").replaceChildren();
   $("queue-count").textContent = String(state.queue.length);
-  $("queue-empty").hidden = state.queue.length !== 0;
+  const visible = queueMine ? state.queue.filter((song) => song.mine === true) : state.queue;
+  $("queue-empty").hidden = visible.length !== 0;
+  $("queue-empty").textContent = queueMine ? "目前沒有你點播的歌曲。" : "目前佇列是空的。";
   const occurrences = new Map();
-  for (const song of state.queue) {
+  for (const song of visible) {
     const li = document.createElement("li");
     li.dataset.position = String(song.position);
     const key = JSON.stringify([song.title, song.url, song.duration, song.requester]);
@@ -180,7 +183,8 @@ function renderQueue() {
     const info = document.createElement("div"); info.className = "song";
     const title = document.createElement("p"); title.textContent = song.title;
     const source = document.createElement("small"); source.textContent = "點播：" + requesterName(song);
-    info.append(title, source);
+    const estimate = document.createElement("small"); estimate.className = "queue-estimate";
+    info.append(title, source, estimate);
     const time = document.createElement("span"); time.className = "song-length";
     time.textContent = song.duration ? duration(song.duration) : "未知";
     const actions = document.createElement("div"); actions.className = "actions";
@@ -189,7 +193,8 @@ function renderQueue() {
     handle.textContent = "⋮⋮"; handle.className = "drag-handle";
     handle.setAttribute("aria-label", "拖曳排序：" + song.title + "；鍵盤請用旁邊的上移或下移按鈕");
     handle.setAttribute("aria-describedby", "drag-help");
-    handle.title = "拖曳排序（手機長按）";
+    handle.title = queueMine ? "我的點歌篩選中，請用上下移按鈕" : "拖曳排序（手機長按）";
+    handle.dataset.boundary = queueMine ? "1" : "0";
     installDrag(handle, li, song.position, rev);
     actions.append(handle);
     for (const [text, label, target] of [["↑", "上移", song.position - 1], ["↓", "下移", song.position + 1], ["×", "刪除", null]]) {
@@ -296,7 +301,7 @@ function activateDrag() {
 }
 function installDrag(handle, row, from, rev) {
   handle.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || event.isPrimary === false || busy || !connected || drag) return;
+    if (queueMine || event.button !== 0 || event.isPrimary === false || busy || !connected || drag) return;
     drag = {handle, row, from, target: from, rev, pointerId: event.pointerId,
       x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY,
       active: false, touch: event.pointerType !== "mouse", epoch: generation};
@@ -449,7 +454,7 @@ async function resolveQuery() {
 
 function render(next, force = false) {
   const previousTrack = currentTrackKey();
-  state = next;
+  state = next; stateAt = Date.now();
   if (seekDrag && seekDrag.track !== currentTrackKey()) cancelSeek();
   if (previousTrack !== currentTrackKey()) resetLyrics(false);
   $("title").textContent = state.current ? state.current.title : "選一首喜歡的歌";
@@ -481,7 +486,7 @@ function render(next, force = false) {
     $("volume").value = state.volume; $("volume-label").value = state.volume + "%";
   }
   if (force || document.activeElement !== $("repeat")) $("repeat").value = state.repeat;
-  renderQueue(); controls();
+  renderQueue(); controls(); updateQueueTimes(); renderCommunity(state);
 }
 async function act(action, data = {}, method = "POST") {
   if (busy || !selected || !connected) return;
@@ -509,7 +514,7 @@ async function refresh(epoch = generation, force = false) {
     const next = await api("api/guilds/" + guild + "/state");
     if (epoch !== generation || guild !== selected || sequence !== stateGeneration) return;
     connected = true; $("connection").textContent = "已連線"; render(next, force);
-    if (!historyLoading && Date.now() - historyUpdated >= 15000) refreshHistory();
+    if (fallbackPolling && !historyLoading && Date.now() - historyUpdated >= 15000) refreshHistory();
   } catch (error) {
     if (epoch !== generation || guild !== selected || sequence !== stateGeneration) return;
     connected = false; $("connection").textContent = "連線中斷";
@@ -518,12 +523,14 @@ async function refresh(epoch = generation, force = false) {
 }
 function resetView() {
   cancelDrag(); cancelSeek(); clearPreview(); resetHistory(); resetLyrics(true);
+  queueMine = false; setQueueFilter(false);
   queueRevision = null;
   render({status: "disconnected", current: null, progress: 0, volume: null,
     repeat: "off", queue: [], revision: ""});
 }
 async function connect() {
   if (authMode !== "owner" && !authenticated) return;
+  stopEvents(); fallbackPolling = true;
   const epoch = ++generation;
   loading = true; connected = false; selected = ""; state = null;
   resetView(); controls(); $("connection").textContent = "連線中";
@@ -538,7 +545,7 @@ async function connect() {
     selected = $("guild").value;
     if (!selected) { notice(authMode === "owner" ? "目前沒有 OwnerID 本人所在的可用伺服器。" : "目前沒有你與機器人共同所在的伺服器。"); return; }
     await refresh(epoch);
-    if (connected) notice("已連線，可以開始點歌。");
+    if (connected) { notice("已連線，可以開始點歌。"); startEvents(); }
   } catch (error) {
     if (epoch === generation) {
       notice(error.message, true); $("connection").textContent = "連線失敗";
@@ -549,7 +556,7 @@ async function connect() {
   }
 }
 async function poll() {
-  if ((authMode === "owner" || authenticated) && !busy && !loading) {
+  if (!document.hidden && fallbackPolling && (authMode === "owner" || authenticated) && !busy && !loading) {
     if (selected) await refresh();
     else await connect();
   }
@@ -557,8 +564,9 @@ async function poll() {
 }
 $("cover").addEventListener("error", () => { $("cover").hidden = true; });
 $("guild").addEventListener("change", async () => {
+  stopEvents(); fallbackPolling = true;
   ++generation; selected = $("guild").value; state = null;
-  connected = false; resetView(); controls(); await refresh();
+  connected = false; resetView(); controls(); await refresh(); startEvents();
 });
 $("auth-form").addEventListener("submit", (event) => {
   event.preventDefault(); secret = $("secret").value.trim(); connect();
@@ -673,6 +681,19 @@ async function refreshHistory(manual = false) {
   try {
     const result = await api("api/guilds/" + guild + "/history");
     if (epoch !== generation || guild !== selected || request !== historyRequest) return;
+    applyHistory(result, guild, epoch);
+  } catch (error) {
+    if (epoch === generation && request === historyRequest) {
+      // Optional history failures never disconnect the playback controls.
+      $("history-status").textContent = error.message || "暫時無法取得播放紀錄。";
+      if (manual) notice(error.message, true);
+      historyUpdated = Date.now();
+    }
+  } finally { if (epoch === generation && request === historyRequest) { historyLoading = false; controls(); } }
+}
+
+function applyHistory(result, guild = selected, epoch = generation) {
+  ++historyRequest; historyLoading = false;
     $("history-list").replaceChildren();
     const entries = (result.history || []).slice(0, 50);
     $("history-status").textContent = entries.length ? "播放時間以台灣時間顯示。" : "還沒有播放紀錄，先點一首喜歡的歌。";
@@ -702,14 +723,7 @@ async function refreshHistory(manual = false) {
       row.append(imageElement(song.thumbnail), info, actions); $("history-list").append(row);
     }
     historyUpdated = Date.now();
-  } catch (error) {
-    if (epoch === generation && request === historyRequest) {
-      // Optional history failures never disconnect the playback controls.
-      $("history-status").textContent = error.message || "暫時無法取得播放紀錄。";
-      if (manual) notice(error.message, true);
-      historyUpdated = Date.now();
-    }
-  } finally { if (epoch === generation && request === historyRequest) { historyLoading = false; controls(); } }
+  controls();
 }
 
 let lyricsOpen = false, lyricsLoading = false, lyricsRequest = 0, lyricsTrack = "", lyricsLines = [], lyricsActive = -1;
@@ -758,7 +772,7 @@ async function loadLyrics(query = "") {
 }
 function syncLyrics() {
   if (!lyricsOpen || !lyricsLines.length) return;
-  const progress = Number(state?.progress) || 0;
+  const progress = localProgress();
   let index = -1;
   for (let i = 0; i < lyricsLines.length && lyricsLines[i].time <= progress; i++) index = i;
   if (index === lyricsActive) return;
@@ -787,4 +801,162 @@ $("lyrics-search-form").addEventListener("submit", (event) => {
 });
 $("request-action").addEventListener("change", () => { clearPreview(); controls(); });
 
-initialize().finally(() => window.setTimeout(poll, 1000));
+
+
+/* Shared-clock progress and queue estimates. Only received state resets the anchor. */
+let stateAt = Date.now(), queueMine = false;
+function localProgress(now = Date.now()) {
+  const base = Math.max(0, Number(state?.progress) || 0);
+  const value = base + (connected && state?.status === "playing" ? Math.max(0, now - stateAt) / 1000 : 0);
+  const total = Number(state?.current?.duration);
+  return Number.isFinite(total) && total > 0 ? Math.min(total, value) : value;
+}
+function queueSchedule(value, progress = Number(value?.progress) || 0) {
+  const valid = (n) => Number.isFinite(Number(n)) && Number(n) > 0;
+  const songs = value?.queue || [];
+  const known = songs.reduce((sum, song) => sum + (valid(song.duration) ? Number(song.duration) : 0), 0);
+  const unknown = songs.some((song) => !valid(song.duration));
+  const minutes = Math.ceil(known / 60);
+  const total = (unknown ? "已知 " : "共 ") + Math.floor(minutes / 60) + " 小時 " + minutes % 60 + " 分" +
+    (unknown ? "・含長度未知歌曲" : "");
+  let wait = value?.current && valid(value.current.duration) ? Math.max(0, Number(value.current.duration) - progress) : null;
+  const times = new Map();
+  for (const song of songs) {
+    let text;
+    if (value.repeat === "song") text = "單曲重複中，時間未定";
+    else if (value.status === "paused") text = "暫停中，時間順延";
+    else if (value.status !== "playing" || wait === null) text = "時間未定";
+    else text = wait < 60 ? "約 1 分鐘內" : "約 " + Math.ceil(wait / 60) + " 分鐘後";
+    times.set(song.position, text);
+    if (wait !== null) wait = valid(song.duration) ? wait + Number(song.duration) : null;
+  }
+  return {total, times};
+}
+function updateQueueTimes() {
+  const schedule = queueSchedule(state, localProgress());
+  $("queue-total").textContent = schedule.total;
+  $("queue-timing-note").textContent = state?.repeat === "all" ? "整個佇列重複：顯示本輪預計時間。" : "";
+  for (const row of $("queue").children) {
+    const time = row.children[2]?.children[2];
+    if (time) time.textContent = schedule.times.get(Number(row.dataset.position)) || "時間未定";
+  }
+}
+function setQueueFilter(mine) {
+  queueMine = mine;
+  cancelDrag(); queueRevision = null;
+  $("queue-all").setAttribute("aria-pressed", String(!mine));
+  $("queue-mine").setAttribute("aria-pressed", String(mine));
+  $("drag-help").textContent = mine
+    ? "我的點歌：停用拖曳與洗牌；↑ ↓ 與刪除仍使用完整佇列的位置。"
+    : "拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。";
+  if (state) { renderQueue(); controls(); updateQueueTimes(); }
+}
+function renderCommunity(value) {
+  const listeners = value?.listeners || {connected: false, members: []};
+  const members = listeners.members || [];
+  $("listeners-status").textContent = listeners.connected
+    ? (listeners.channel || "語音頻道") + "・" + members.length + " 人"
+    : "機器人目前不在語音頻道";
+  const list = $("listeners-list"); list.replaceChildren();
+  const add = (member, parent) => {
+    const row = document.createElement("span"); row.className = "listener";
+    const name = document.createElement("span"); name.textContent = member.name;
+    row.append(imageElement(member.avatar, "listener-avatar"), name); parent.append(row);
+  };
+  members.slice(0, 8).forEach((member) => add(member, list));
+  if (members.length > 8) {
+    const details = document.createElement("details"), summary = document.createElement("summary");
+    summary.textContent = "另外 " + (members.length - 8) + " 人"; details.append(summary);
+    const more = document.createElement("div"); more.className = "listeners-list";
+    members.slice(8).forEach((member) => add(member, more)); details.append(more); list.append(details);
+  }
+  const records = (value?.activity?.activity || []).slice(0, 100);
+  $("activity-list").replaceChildren();
+  $("activity-status").textContent = records.length ? "最近 100 筆操作，重新啟動後清空。" : "尚無操作紀錄。";
+  for (const item of records) {
+    const row = document.createElement("li"), line = document.createElement("p"), meta = document.createElement("small");
+    line.textContent = item.actor + "・" + item.detail;
+    const stamp = new Date(Number(item.time) * 1000);
+    const time = Number.isFinite(stamp.getTime()) ? stamp.toLocaleTimeString("zh-TW",
+      {timeZone: "Asia/Taipei", hour12: false}) : "時間未知";
+    meta.textContent = time + "・" + ({web: "網頁", discord_text: "Discord 文字", discord_slash: "Discord 斜線"}[item.source] || "Discord") + "・" + item.result;
+    row.append(line, meta); $("activity-list").append(row);
+  }
+}
+/* EventSource is manually reopened so its retry is bounded and observable. */
+let eventSource = null, eventTimer = null, eventWatchdog = null, eventEpoch = 0;
+let eventFailures = 0, fallbackPolling = true, nextStreamTry = 0;
+function stopEvents() {
+  ++eventEpoch;
+  if (eventSource) eventSource.close();
+  eventSource = null;
+  window.clearTimeout(eventTimer); window.clearTimeout(eventWatchdog);
+}
+function streamEligible() {
+  return typeof EventSource !== "undefined" && !!selected && !document.hidden &&
+    (authMode === "discord" ? authenticated : !secret);
+}
+function startEvents(reset = true) {
+  stopEvents();
+  if (reset) { eventFailures = 0; nextStreamTry = 0; }
+  if (!streamEligible()) { fallbackPolling = true; return; }
+  const epoch = eventEpoch, guild = selected, view = generation;
+  const source = eventSource = new EventSource("/api/guilds/" + guild + "/events");
+  const current = () => epoch === eventEpoch && source === eventSource && guild === selected && view === generation;
+  const failed = async () => {
+    if (!current()) return;
+    source.close(); eventSource = null; window.clearTimeout(eventWatchdog);
+    ++eventFailures; fallbackPolling = true;
+    // A regular authenticated read distinguishes expired login/removed membership
+    // from a network/proxy failure (EventSource does not expose HTTP status).
+    await refresh(view);
+    if (epoch !== eventEpoch || guild !== selected || view !== generation) return;
+    const delay = eventFailures >= 4 ? 60000 : Math.min(30000, 1000 * 2 ** (eventFailures - 1));
+    nextStreamTry = Date.now() + delay;
+    $("connection").textContent = eventFailures >= 4 ? "一般更新・即時連線重試中" : "即時連線重試中";
+    eventTimer = window.setTimeout(() => {
+      if (epoch === eventEpoch && guild === selected && view === generation) startEvents(false);
+    }, delay);
+  };
+  source.addEventListener("snapshot", (event) => {
+    if (!current()) return;
+    try {
+      const bundle = JSON.parse(event.data);
+      if (String(bundle.state?.guild_id) !== guild) throw new Error("invalid guild");
+      ++stateGeneration; connected = true; fallbackPolling = false; eventFailures = 0;
+      window.clearTimeout(eventWatchdog);
+      render(bundle.state);
+      if (bundle.history) applyHistory(bundle.history, guild, view);
+      $("connection").textContent = "即時連線";
+      nextStreamTry = 0;
+    } catch { failed(); }
+  });
+  source.addEventListener("access", (event) => {
+    if (!current()) return;
+    source.close(); eventSource = null; fallbackPolling = true;
+    let status; try { status = JSON.parse(event.data).status; } catch { status = 401; }
+    if (status === 401) signedOut("登入已過期，請重新登入。");
+    else {
+      stopEvents(); ++generation; selected = ""; state = null; connected = false;
+      resetView(); controls(); notice("你已無法查看這個伺服器，正在更新伺服器清單。", true);
+      connect();
+    }
+  });
+  source.onerror = failed;
+  eventWatchdog = window.setTimeout(failed, 20000);
+}
+function localTick() {
+  if (!document.hidden && state) {
+    if (!seekDrag) drawProgress(localProgress());
+    updateQueueTimes(); syncLyrics();
+  }
+  window.setTimeout(localTick, 1000);
+}
+$("queue-all").addEventListener("click", () => setQueueFilter(false));
+$("queue-mine").addEventListener("click", () => setQueueFilter(true));
+document.addEventListener("visibilitychange", async () => {
+  stopEvents();
+  if (!document.hidden && selected) { await refresh(); startEvents(); }
+});
+
+initialize().finally(() => { window.setTimeout(poll, 1000); window.setTimeout(localTick, 1000); });

@@ -39,6 +39,7 @@ from discord.ext import commands
 from . import exceptions
 from .constructs import GuildSpecificData, MusicBotResponse
 from .i18n import _D
+from .web_dashboard_activity import native_result, slash_activity
 
 if TYPE_CHECKING:
     from .bot import MusicBot
@@ -451,6 +452,10 @@ class SlashCommands(commands.Cog):
         *,
         ephemeral: bool = False,
     ) -> None:
+        try:
+            native_result(resp)
+        except Exception as exc:
+            log.warning("Dashboard activity result failed (%s)", type(exc).__name__)
         await self._reply(interaction, _content(resp), ephemeral=ephemeral)
 
     async def _err(self, interaction: discord.Interaction, exc: Exception) -> None:
@@ -819,6 +824,7 @@ class SlashCommands(commands.Cog):
     @app_commands.describe(
         query="YouTube/Spotify 網址、任何 yt-dlp 支援的網址，或搜尋字詞。"
     )
+    @slash_activity("play")
     async def slash_play(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "play"):
@@ -853,6 +859,7 @@ class SlashCommands(commands.Cog):
         description="把一個播放清單洗牌後加入播放佇列。",
     )
     @app_commands.describe(url="要洗牌加入佇列的播放清單網址。")
+    @slash_activity("shuffleplay")
     async def slash_shuffleplay(self, interaction: discord.Interaction, url: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "shuffleplay"):
@@ -888,6 +895,7 @@ class SlashCommands(commands.Cog):
         description="把一首歌插入佇列，緊接在目前歌曲之後播放。",
     )
     @app_commands.describe(query="網址或搜尋字詞。")
+    @slash_activity("playnext")
     async def slash_playnext(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "playnext"):
@@ -927,6 +935,7 @@ class SlashCommands(commands.Cog):
         description="跳過目前歌曲，立刻播放這首。",
     )
     @app_commands.describe(query="網址或搜尋字詞。")
+    @slash_activity("playnow")
     async def slash_playnow(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "playnow"):
@@ -961,6 +970,7 @@ class SlashCommands(commands.Cog):
         description="跳到目前歌曲的指定時間點。前面加 + 或 - 可做相對跳轉。",
     )
     @app_commands.describe(time="以秒為單位的時間，例如 90、1:30、+30、-15")
+    @slash_activity("seek")
     async def slash_seek(self, interaction: discord.Interaction, time: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "seek"):
@@ -999,6 +1009,7 @@ class SlashCommands(commands.Cog):
         app_commands.Choice(name="開啟",       value="on"),
         app_commands.Choice(name="關閉",      value="off"),
     ])
+    @slash_activity("repeat")
     async def slash_repeat(
         self,
         interaction: discord.Interaction,
@@ -1030,6 +1041,7 @@ class SlashCommands(commands.Cog):
         from_pos="歌曲目前在佇列中的位置。",
         to_pos="要移到的目標位置。",
     )
+    @slash_activity("move")
     async def slash_move(
         self,
         interaction: discord.Interaction,
@@ -1066,6 +1078,7 @@ class SlashCommands(commands.Cog):
         description="把一個網址加入佇列，以直播串流方式播放（不下載）。",
     )
     @app_commands.describe(url="直接串流網址（Twitch、YouTube 直播、shoutcast 等）")
+    @slash_activity("stream")
     async def slash_stream(self, interaction: discord.Interaction, url: str) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "stream"):
@@ -1302,6 +1315,7 @@ class SlashCommands(commands.Cog):
         name="pause",
         description="暫停目前播放的曲目。",
     )
+    @slash_activity("pause")
     async def slash_pause(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "pause"):
@@ -1327,6 +1341,7 @@ class SlashCommands(commands.Cog):
     # -----------------------------------------------------------------------
 
     @app_commands.command(name="resume", description="繼續播放已暫停的曲目。")
+    @slash_activity("resume")
     async def slash_resume(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "resume"):
@@ -1346,6 +1361,7 @@ class SlashCommands(commands.Cog):
     # -----------------------------------------------------------------------
 
     @app_commands.command(name="shuffle", description="把目前佇列裡的所有曲目洗牌。")
+    @slash_activity("shuffle")
     async def slash_shuffle(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "shuffle"):
@@ -1366,6 +1382,7 @@ class SlashCommands(commands.Cog):
     # -----------------------------------------------------------------------
 
     @app_commands.command(name="clear", description="清空佇列裡的所有歌曲。")
+    @slash_activity("clear")
     async def slash_clear(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         if not await self._check_perms(interaction, "clear"):
@@ -1400,6 +1417,7 @@ class SlashCommands(commands.Cog):
         to_position="範圍結尾——會移除從 position 到這個位置之間的所有歌曲。",
         user="移除這位成員加入的所有歌曲。",
     )
+    @slash_activity("remove")
     async def slash_remove(
         self,
         interaction: discord.Interaction,
@@ -1451,6 +1469,7 @@ class SlashCommands(commands.Cog):
         description="跳過目前歌曲，或發起投票跳過。",
     )
     @app_commands.describe(force="強制跳過——需要 InstaSkip 權限。")
+    @slash_activity("skip")
     async def slash_skip(
         self,
         interaction: discord.Interaction,
@@ -1491,6 +1510,7 @@ class SlashCommands(commands.Cog):
         description="設定或顯示播放音量（1–100）。前面加 + 或 - 可做相對調整。",
     )
     @app_commands.describe(level="音量大小 1–100。用 +10 或 -10 做相對調整。")
+    @slash_activity("volume")
     async def slash_volume(
         self,
         interaction: discord.Interaction,

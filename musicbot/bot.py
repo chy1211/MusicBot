@@ -77,6 +77,7 @@ from .permissions import PermissionGroup, Permissions, PermissionsDefaults
 from .player import MusicPlayer
 from .playlist import Playlist
 from .spotify import Spotify
+from .web_dashboard_activity import begin_text, finish as finish_activity
 from .utils import (
     _func_,
     check_extractor,
@@ -1537,6 +1538,12 @@ class MusicBot(commands.Bot):
         Event called by MusicPlayer when an entry is added to the playlist.
         """
         log.debug("Running on_player_entry_added")
+        try:
+            dashboard = getattr(self, "_web_dashboard", None)
+            if dashboard is not None:
+                dashboard.note_queue_entry(player.voice_client.channel.guild, entry)
+        except Exception as exc:
+            log.warning("Dashboard queue observation failed (%s)", type(exc).__name__)
         # if playing auto-playlist track and a user queues a track,
         # if we're configured to do so, auto skip the auto playlist track.
         if (
@@ -8459,6 +8466,13 @@ class MusicBot(commands.Bot):
         if message.channel.guild:
             ssd = self.server_data[message.channel.guild.id]
 
+        # Optional observer: capture failures are contained inside the helper.
+        activity = None
+        try:
+            activity = begin_text(self, message, command)
+        except Exception as exc:
+            log.warning("Dashboard activity capture failed (%s)", type(exc).__name__)
+        activity_ok = False
         # Check permissions, assign arguments, and process the command call.
         try:
             # check non-voice permission.
@@ -8611,6 +8625,7 @@ class MusicBot(commands.Bot):
                 return
 
             response = await handler(**handler_kwargs)
+            activity_ok = not isinstance(response, ErrorResponse)
             if response and isinstance(response, MusicBotResponse):
                 # Set a default response title if none is set.
                 if not response.title:
@@ -8674,6 +8689,10 @@ class MusicBot(commands.Bot):
                 await self.safe_send_message(message.channel, er)
 
         finally:
+            try:
+                finish_activity(activity, activity_ok)
+            except Exception as exc:
+                log.warning("Dashboard activity recording failed (%s)", type(exc).__name__)
             if self.config.delete_invoking:
                 self.create_task(
                     self._wait_delete_msg(message, self.config.delete_delay_short)

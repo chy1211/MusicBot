@@ -1,8 +1,8 @@
-# Web dashboard: round 5 (implemented and tested, not deployed)
+# Web dashboard: round 6 (implemented and tested, not deployed)
 
 Optional aiohttp dashboard inside the bot event loop, without another Discord
-client or dependency. Production dev remains 5ac807b (round 4, deployed
-2026-10-17); this round-5 feature branch is not deployed. The public production
+client or dependency. Production dev remains 02365d8 (round 5 plus copy cleanup, deployed
+2026-10-17); this round-6 feature branch is not deployed. The public production
 dashboard already uses Discord login. Each caller acts with their own guild
 membership, permissions and voice state. Default AuthMode=owner preserves legacy
 OwnerID behavior when the key is missing; owner mode requires external SSO.
@@ -94,8 +94,8 @@ uses textContent, without external scripts/fonts/CDN.
 
 In Discord mode, all /api/* requests require a live session **before** header,
 readiness, route or guild checks. Missing/expired/tampered sessions uniformly
-return 401 without guild/song data. Authenticated APIs and logout also require
-X-MusicBot-Dashboard: 1. No CORS. Supplied Origin must exactly equal PublicURL
+return 401 without guild/song data. Authenticated APIs and logout require
+X-MusicBot-Dashboard: 1, except the read-only GET events transport described below. No CORS. Supplied Origin must exactly equal PublicURL
 origin, including scheme/port. Missing Origin is permitted because cross-site
 browser scripts cannot supply the custom header without a CORS preflight;
 HTML forms cannot supply that header.
@@ -111,7 +111,7 @@ Owner mode retains the preceding Origin-versus-Host check, optional Bearer
 SharedSecret and browser tab-memory secret input. Never expose owner mode
 without an authenticated reverse proxy.
 
-Security headers on auth/API/static/errors include no-store, nosniff,
+Security headers on auth/API/static/errors include no-store (SSE uses no-cache), nosniff,
 no-referrer, X-Frame-Options=DENY and CSP with same-origin scripts/styles, no
 objects/base override/framing. JSON request bodies are capped at 16 KiB. Access
 logging is disabled to avoid callback codes/cookies in URL logs. Dashboard audit
@@ -136,6 +136,9 @@ voice again before executing.
 | API under /api/guilds/{id} | Command permission | Discord-mode voice | Existing implementation |
 | --- | --- | --- | --- |
 | GET /state | none; membership/blocklist | none | get_player_in |
+| GET /listeners | none; membership/blocklist | none | bot voice member cache, excludes bots |
+| GET /activity | none; membership/blocklist | none | latest 100 guild memory records |
+| GET /events | live session + membership/blocklist continuously | none | bounded SSE snapshots |
 | POST /resolve | play or playnext (action), query first argument | none; never summons | extract_info, _do_song_blocklist_check, can_use_extractor, playlist/entry gates |
 | POST /play | play, query first argument | same bot voice; absent bot needs caller voice + summonplay | cmd_play -> _cmd_play -> Playlist |
 | POST /playnext | playnext, query first argument | same bot voice; absent bot needs caller voice + summonplay | cmd_playnext -> _cmd_play(head=True); single only |
@@ -248,8 +251,9 @@ inspect the queue and resolve again. Session and membership are checked before
 the response; revoked sessions never receive a state snapshot.
 Legacy /play {query} still uses the original full-list behavior.
 
-State current and every queue track add requester: {name,avatar} only; no requester
-ID, roles, channel, email or other member data. Live guild display name wins,
+State current and every queue track include requester: {name,avatar} and a
+viewer-specific mine boolean; no requester ID, roles, channel, email or other
+member data. Live guild display name wins,
 then retained author/member metadata. Autoplay is 自動播放; a restored entry with
 a channel but missing author is 點播者已離開或無法取得. Missing identity cannot
 be reconstructed after the bot discarded it. Avatar and source URLs use
@@ -271,7 +275,8 @@ authoritative state. API unchanged: one move with observed {from,to,revision}.
 Touch hold is 420ms; Escape, lost capture, pointercancel and incoming revisions
 cancel without mutation. Keyboard up/down/remove remain. Reduced motion disables
 spinner rotation, FLIP and drag transforms; processing text remains.
-Polling runs every second, ten seconds while hidden.
+SSE replaces normal polling; progress is extrapolated locally. Failed/unsupported
+streams fall back to one-second polling. Hidden tabs stop streams and reads.
 
 Query/confirm buttons expose aria-busy and CSS spinners, block duplicate submits,
 and restore state after failure/timeout. Client deadlines: resolve 25s, selected
@@ -304,9 +309,9 @@ blobs. No refraction filter or pointer spotlight. The playback bar is solid
 Removed exactly the requested groups: 讓音樂繼續陪你 plus sound-bar decoration;
 sidebar-note including ◉ / 讓好歌 / 接著發生。 / 在 Discord 相聚，在這裡選歌。;
 the hint 先看預覽，再加入佇列。搜尋結果可挑選一首。.
-Retained for user decision: 你的音樂空間 (login/sidebar), 此刻，聽點喜歡的 (header),
-讓旋律接下去 (queue), 私人音樂室 (owner badge). Potentially decorative headings
-一起聽音樂, 下一首，想聽什麼？ and 確認你的選擇 also remain.
+The subsequent copy cleanup also removed 你的音樂空間, 此刻，聽點喜歡的,
+讓旋律接下去 and 私人音樂室, plus the recent-play and lyrics taglines.
+Round 6 keeps that cleanup. 一起聽音樂, 下一首，想聽什麼？ and 確認你的選擇 remain.
 Functional empty-state, drag instructions and error messages remain.
 
 ## Offline tests and fake-login demo
@@ -582,3 +587,242 @@ Independent review also reproduced and fixed full-duration playnext limits
 and disabled alternate buttons on disallowed previews. No Discord client,
 real voice, actual LRCLIB query or real-phone touchscreen was used. These remain
 acceptance items for a separately authorized release.
+
+
+## Round 6: shared listening and live updates (not deployed)
+
+The root dashboard retains its existing style, Traditional Chinese controls,
+mobile layout and prefers-reduced-motion behavior. No decorative copy is added.
+
+The queue heading counts the complete queue and sums its known durations,
+rounded up to minutes. If any duration is unknown it labels the sum as known
+duration and warns that unknown tracks are included. Estimated starts use the
+current remainder plus preceding track lengths, displayed as approximate minutes
+from now. An unknown track can have a known start, but all tracks after it have
+undetermined starts. Pausing labels every estimate as postponed. Single-track
+repeat makes starts undetermined; queue repeat shows the first traversal only.
+These estimates assume normal playback speed, no further skips/reordering and
+no download/connection delay. No scheduling data is persisted or added to APIs.
+
+All/mine filtering uses only the viewer-specific mine flag. It does not expose
+the requester's ID. Mine mode disables drag sorting and shuffle, with visible
+instructions. Up/down/delete retain original full-queue positions and revision.
+The heading and duration remain totals for the complete queue.
+
+### New and changed read APIs
+
+All paths below use /api/guilds/{id}. Existing mutation inputs/permissions remain
+unchanged. Guild reads require a current guild member and respect the user
+blocklist, but do not require voice attendance or create a player.
+
+| Method/path | Request | Response |
+| --- | --- | --- |
+| GET /state | no body, usual dashboard header | existing state + per-track mine + listeners + activity |
+| GET /listeners | no body, usual dashboard header | {connected,channel,members:[{name,avatar}]} |
+| GET /activity | no body, usual dashboard header | {activity:[{actor,action,source,detail,result,time}],limit:100,resets_on_restart:true} |
+| GET /events | no body, cookie; no custom header required | text/event-stream; named snapshot and access events |
+
+listeners.connected is false with empty channel/members when the bot is not in
+voice. Members exclude MusicBot and every other bot; there are no member-ID
+fields. The UI shows eight listeners, folding the rest in a details element.
+Names and avatar URLs follow the same bounded text/validated URL rules as tracks.
+Voice-channel names are visible to guild members, following the requested
+guild-membership scope; this is not a per-channel member visibility API.
+
+Each guild keeps its last 100 activity records in memory, newest first; restart
+clears them. time is Unix seconds; the UI renders Asia/Taipei time. source is
+web, discord_text or discord_slash. actor is a display name, never an ID.
+detail contains fixed action labels and affected song titles, not search input,
+command arguments, URLs or exception text. Large batches show at most eight
+titles plus a count. result is success or a simplified denied/incomplete result.
+Removed tracks are captured before mutation. Vote skip is distinguished from
+instant skip using current-track/skip-state changes. Concurrent native commands
+can make before/after attribution approximate; this is an activity feed rather
+than a durable audit trail. Display names/song titles remain untrusted text.
+
+Every web playback/queue mutation is observed, including authorized member
+requests rejected by validation/permissions/revision. Login/read/resolve/lyrics
+searches are not activity records. Unauthenticated or nonmember requests cannot
+create records in another guild. Raw arguments/errors never enter this feed.
+
+### Discord observation and unchanged command behavior
+
+Text dispatcher coverage (after canonical alias resolution):
+play, shuffleplay, playnext, playnow, stream, seek, repeat, move, pause, resume,
+shuffle, clear, remove, skip (including vote skip), volume.
+The same 15 slash callbacks have an isolated observer decorator.
+No cmd_* body, argument mapping, permission test or response path is replaced.
+
+bot.py changes are limited to an observer import, a guarded read-only queue
+insertion observer at on_player_entry_added, a guarded capture before the
+existing text permission/argument try block, a boolean after the original
+handler returns, and a guarded finish in the existing finally block.
+The entry observer only records object insertion order for notification-channel
+selection; existing autoskip and serialization statements execute unchanged.
+Observer errors log only their type and cannot replace a command error/result.
+
+slash_commands.py adds the observer import, a guarded result observation before
+the original _send reply, and decorators around the 15 callbacks. The decorator
+awaits exactly the original callback, returns its exact value and propagates its
+original exceptions. Task-local ContextVar state is restored in finally.
+functools.wraps and evaluated original signatures preserve Discord registration,
+parameter types, choices/defaults and names, including postponed annotations.
+The observer never modifies response content, args, permissions or exceptions.
+
+Not covered: interactive text/slash search result-selection UI (its later
+callbacks are outside the safe dispatch scope), autoplay, and administrative or
+unrelated commands such as speed/disconnect/config. Text requests silently
+ignored before dispatch (unbound channel, blocked user, unknown command or bot
+message) keep their original silent behavior and are not activity records.
+A supported command returning a normal response without changing playback is
+recorded as completed, matching its original result.
+
+### SSE security, lifecycle and proxy behavior
+
+GET /events is the only custom-header exception and does not mutate playback.
+Discord mode still authenticates the same HttpOnly, Secure (HTTPS), SameSite=Lax,
+host-scoped cookie. Public Host must match PublicURL and an Origin, if supplied,
+must match its exact scheme/host/port. Sec-Fetch-Site must be same-origin or
+absent; cross-site, same-site and none are rejected. Browsers set this header;
+cross-site scripts cannot forge it. Older clients may omit it, but still require
+a valid cookie and any supplied Origin must match; SameSite plus no CORS prevents
+cross-site script access. No tokens, credentials or user IDs are put in event URLs.
+No permissive CORS headers are emitted. HEAD/POST/OPTIONS do not acquire streams.
+Normal APIs, including /state and logout, still require the custom header.
+Legacy owner mode with a SharedSecret refuses SSE and retains Bearer polling;
+it never bypasses a configured secret to accommodate EventSource.
+
+Streams are reserved synchronously before any await: at most three per Discord
+user across sessions/guilds, and 64 globally. Excess returns JSON 429. Every
+one-second inspection revalidates cookie expiry/logout, live guild membership
+and blocklist BEFORE writing data or a heartbeat. Revocation sends only a fixed
+access event {status:401|403|404} and closes. Shutdown/not-ready closes streams;
+app shutdown wakes idle waits, cancels overdue tasks, and releases all slots.
+Writes have a five-second timeout; client disconnects/errors release slots.
+
+The server inspects snapshots each second but sends only changed state, queue,
+listeners, activity or recent history. A seek discontinuity also sends state;
+ordinary progress does not generate per-second data. A snapshot is a full bundle
+{state,listeners,activity,history}; state has the ordinary viewer-specific shape.
+Heartbeats are SSE comment frames ": heartbeat" every 15 seconds. Headers sent
+before prepare include Content-Type text/event-stream, Cache-Control no-cache,
+X-Accel-Buffering no, nosniff, DENY and no-referrer. Traefik should preserve Host
+and stream chunks immediately. Do not apply response buffering/compression
+middlewares to this endpoint; X-Accel-Buffering mainly addresses nginx-compatible
+proxies, so verify actual Traefik flush/idle-timeout behavior during release.
+No proxy configuration is changed by this feature branch.
+
+EventSource is explicitly closed on an error and recreated after 1s, 2s, 4s;
+from the fourth consecutive failure it waits 60s and keeps ordinary polling.
+An initial connection with no snapshot has a 20s watchdog. Failures also make
+a normal authenticated state read to detect 401/403 that EventSource hides.
+A valid snapshot resets failures and stops polling. Unsupported EventSource
+and owner SharedSecret mode use polling. Switching guild closes/replaces the
+stream; hidden tabs stop streams and reads, and showing the tab refreshes and
+reconnects. Old callbacks and stale HTTP reads cannot overwrite another guild.
+Progress and lyric highlighting advance locally, stopping during pause.
+
+### Additional requirement 7: Discord notification channel
+
+All web mutations share context/channel_for, including per-item playlist play,
+playnext, seek, pause/resume, volume, skip/vote skip, repeat, remove, move and
+shuffle. Candidate order is current entry.channel, most recently inserted queued
+entry.channel, configured bound channels, system channel, remaining text channels,
+then the caller's voice-channel chat. Candidates are deduplicated and must belong
+to the guild, support messaging, satisfy BoundChannels/UnboundServers, and grant
+both caller and bot view_channel plus send_messages. A failing candidate falls
+through; no eligible candidate returns 403 instead of sending to a forbidden one.
+
+Insertion order is observed in memory rather than inferred after move/shuffle.
+For queues already present at dashboard startup without an insertion history,
+the initial queue order is the fallback until new insertions are observed.
+This limitation only affects the secondary candidate when there is no usable
+current entry channel. No live configuration or native Discord routing changes.
+
+### Round-6 isolated demo and test procedure
+
+Run after the feature commit. Only a clean Git archive is copied into the build;
+the base tag is read only. Every temporary image/container starts musicbot-webtest-.
+
+~~~sh
+ctx=$(mktemp -d /tmp/musicbot-webtest-r6.XXXXXX)
+git -C "$HOME/musicbot" archive feature/dashboard-round6 | tar -x -C "$ctx"
+printf '%s\n' 'FROM musicbot:ytdlp-base' 'WORKDIR /webtest' 'COPY . .' |
+  docker build --network none -t musicbot-webtest-r6:demo -f - "$ctx"
+docker run --rm --network none --name musicbot-webtest-r6-unit \
+  --entrypoint python3 musicbot-webtest-r6:demo \
+  -W 'error::DeprecationWarning:aiohttp.web_protocol' \
+  -m unittest discover -s tests -p 'test_web_dashboard*.py'
+docker run --rm --network none --name musicbot-webtest-r6-links \
+  --entrypoint python3 musicbot-webtest-r6:demo -m tools.test_compound_link
+(cd "$ctx" && node --check musicbot/web/dashboard.js &&
+  node --test tests/test_web_dashboard_frontend.cjs)
+docker run --rm -d --network none --name musicbot-webtest-r6-demo \
+  --entrypoint python3 musicbot-webtest-r6:demo \
+  -m tools.dashboard_demo --host 0.0.0.0 --port 8080 \
+  --public-origin http://127.0.0.1:18080
+python3 "$ctx/tools/dashboard_demo_relay.py" \
+  --container musicbot-webtest-r6-demo --port 18080
+~~~
+
+Keep relay running; from Windows PowerShell open a tunnel:
+
+~~~powershell
+ssh -N -L 127.0.0.1:18080:127.0.0.1:18080 -o ExitOnForwardFailure=yes your-vps
+~~~
+
+Open http://127.0.0.1:18080/; select a fake user. The demo uses no Discord client,
+OAuth provider, external lyric provider, downloader or real configuration.
+Artwork and listener avatars are local SVGs. Every six seconds its local timer
+alternates a fake Discord slash request and a fake web skip, exercising queue,
+activity, recent history and SSE; the fake queue is bounded to 12 items.
+
+1. Check known-duration total and estimates before/after the unknown-length song;
+   pause and change single/queue repeat to inspect the labels.
+2. Select Mine as Owner/member; try full-position arrows/delete and disabled
+   drag/shuffle. Observe the eight visible listeners plus folded remaining three.
+3. Inspect the three initial activity sources and new live records, skip voting
+   as member, a denied deletion, and the other guild's separate feed.
+4. In browser network tools check one events request and no per-second state
+   requests while it works. Disconnect/reconnect it repeatedly to exercise polling;
+   switch guild, hide/show tab, logout, and confirm the old stream closes.
+5. Visit /dashboard/quota (302 to /); /api/missing retains JSON; favicon paths
+   return locally. Use a 390px viewport and reduced motion.
+
+Stop relay/tunnel with Ctrl+C and remove only the named temporary resources:
+
+~~~sh
+docker stop musicbot-webtest-r6-demo
+docker image rm musicbot-webtest-r6:demo
+case "$ctx" in /tmp/musicbot-webtest-r6.*) rm -rf -- "$ctx";; esac
+~~~
+
+Live Discord, real-phone gestures and actual public Traefik buffering remain
+release acceptance items. This procedure does not deploy or change services.
+
+### Round-6 validation (2026-10-17, no deployment)
+
+Original backend 212, frontend 69 and compound-link 16 cases remain passing.
+Final offline suites: backend 268/268 (56 added), frontend 87/87 (18 added),
+compound-link 16/16; zero failures. Backend runs with aiohttp.web_protocol
+DeprecationWarning promoted to error. JS syntax, Python compilation and
+git diff --check pass. Test failure-injection warnings are expected assertions.
+
+17 real headless Chromium checks passed through the loopback relay: anonymous
+page without streams; fake Owner login and real EventSource; no per-second state
+polling; unknown-duration queue estimates; mine filtering; folded listeners;
+all three activity sources; timed fake additions; pause/resume local progress;
+390px layout without overflow; reduced motion; guild switching; real stream
+failure/backoff/polling; restored push; page redirect/API JSON/favicon; logout;
+and zero external page requests or uncaught JavaScript exceptions. Queue,
+listeners and activity were also visually inspected at 390px.
+
+An AST comparison against dev confirms that removing only the explicit observer
+imports, capture/result/finally blocks, queue-observer block and slash decorators
+restores the exact original bot.py and slash_commands.py syntax trees. Real text
+and slash volume callbacks were also executed with capture/finish/result failures
+injected: original mutations/replies and original exception propagation remain.
+
+Temporary containers/images use only musicbot-webtest- names and --network none.
+The archive-based test image copies no real operational configuration. No live
+Discord credentials, external providers or production services were used.
