@@ -10,6 +10,15 @@
   <script src="dashboard.js" defer></script>
 </head>
 <body>
+  <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
+    <div class="login-card"><span class="login-icon" aria-hidden="true">&#9835;</span>
+      <p class="eyebrow">你的音樂空間</p><h1 id="login-heading">一起聽音樂</h1>
+      <p>用你的 Discord 身分，選一首喜歡的歌。</p>
+      <p id="login-status" class="hint" role="status" aria-live="polite">正在確認登入狀態…</p>
+      <a id="discord-login" class="primary login-button" href="/auth/login" hidden>用 Discord 登入</a>
+    </div>
+  </section>
+  <div id="dashboard" hidden>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="音樂控制台首頁"><span aria-hidden="true">♫</span> 音樂控制台</a>
     <p class="eyebrow">你的音樂空間</p>
@@ -26,7 +35,9 @@
     </details>
   </aside>
   <main>
-    <header class="page-heading"><div><p class="eyebrow">此刻，聽點喜歡的</p><h1>一起聽音樂</h1></div><span class="badge">私人音樂室</span></header>
+    <header class="page-heading"><div><p class="eyebrow">此刻，聽點喜歡的</p><h1>一起聽音樂</h1></div><span id="owner-badge" class="badge">私人音樂室</span>
+      <div id="user-profile" class="user-profile" hidden><img id="user-avatar" alt="" referrerpolicy="no-referrer" hidden>
+        <span id="user-name"></span><button id="logout" type="button" class="subtle">登出</button></div></header>
     <section class="card request" aria-labelledby="request-heading">
       <h2 id="request-heading">下一首，想聽什麼？</h2>
       <form id="play-form">
@@ -56,7 +67,7 @@
       <ol id="queue" aria-describedby="drag-help"></ol>
       <p id="queue-empty" class="empty">下一首的空位，留給你。<br><span>查詢上方歌曲，確認後加入佇列。</span></p>
     </section>
-    <footer>每秒更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道</footer>
+    <footer id="identity-note">每秒更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道</footer>
   </main>
   <section class="playback-bar" aria-label="播放控制">
     <div class="bar-track"><div class="art mini-art"><span aria-hidden="true">♫</span><img id="bar-cover" alt="" hidden></div>
@@ -69,5 +80,6 @@
     </div>
     <div class="volume-row"><label for="volume">音量</label><input id="volume" type="range" min="1" max="100" value="15" disabled><output id="volume-label" for="volume">15%</output></div>
   </section>
+  </div>
 </body>
 </html>

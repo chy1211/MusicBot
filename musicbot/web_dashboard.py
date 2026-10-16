@@ -1,4 +1,4 @@
-"""Optional, owner-only HTTP dashboard. Never logs in to Discord on its own."""
+"""Optional HTTP dashboard with backwards-compatible owner or Discord identity."""
 from __future__ import annotations
 
 import asyncio
@@ -19,10 +19,11 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 from . import exceptions
-from .constructs import ErrorResponse
+from .constructs import ErrorResponse, Response
 from .i18n import _D
 from .spotify import Spotify
 from .utils import get_compound_link_ids
+from .web_dashboard_auth import DashboardAuth, USER_KEY
 
 log = logging.getLogger(__name__)
 STATIC = Path(__file__).with_name("web")
@@ -34,6 +35,13 @@ class DashboardConfig:
     host: str = "127.0.0.1"
     port: int = 8080
     shared_secret: str = field(default="", repr=False)
+
+    auth_mode: str = "owner"
+    public_url: str = ""
+    discord_client_id: str = ""
+    discord_client_secret: str = field(default="", repr=False)
+    session_secret: str = field(default="", repr=False)
+    session_hours: float = 168
 
     @classmethod
     def load(cls, path: Path) -> DashboardConfig:
@@ -48,8 +56,21 @@ class DashboardConfig:
         port = parser.getint("WebDashboard", "Port", fallback=8080)
         if not host or not 1 <= port <= 65535:
             raise ValueError("Invalid dashboard bind address or port")
+        mode = parser.get("WebDashboard", "AuthMode", fallback="owner").strip().lower()
+        if mode not in ("owner", "discord"):
+            raise ValueError("Invalid dashboard AuthMode")
+        # Ignore Discord-only options in owner mode for backwards compatibility.
+        options = {}
+        if mode == "discord":
+            options = {
+                "public_url": parser.get("WebDashboard", "PublicURL", fallback="").strip(),
+                "discord_client_id": parser.get("WebDashboard", "DiscordClientID", fallback="").strip(),
+                "discord_client_secret": parser.get("WebDashboard", "DiscordClientSecret", fallback="").strip(),
+                "session_secret": parser.get("WebDashboard", "SessionSecret", fallback="").strip(),
+                "session_hours": parser.getfloat("WebDashboard", "SessionHours", fallback=168),
+            }
         return cls(True, host, port, parser.get(
-            "WebDashboard", "SharedSecret", fallback="").strip())
+            "WebDashboard", "SharedSecret", fallback="").strip(), auth_mode=mode, **options)
 
 
 class APIError(Exception):
@@ -82,7 +103,7 @@ def revision(player) -> str:
     return hashlib.sha256(str(identities).encode()).hexdigest()
 
 
-class Dashboard:
+class Dashboard(DashboardAuth):
     def __init__(self, bot, config: DashboardConfig):
         self.bot = bot
         self.config = config
@@ -91,9 +112,15 @@ class Dashboard:
         self.locks = defaultdict(asyncio.Lock)
         self.resolve_tasks = {}
         self.previews = {}
+        self.rate_limits = {}
+        self.init_auth()
         self.app = web.Application(
             middlewares=[self.guard], client_max_size=16 * 1024)
         self.app.router.add_get("/", self.index)
+        self.app.router.add_get("/auth/session", self.auth_session)
+        self.app.router.add_get("/auth/login", self.auth_login)
+        self.app.router.add_get("/auth/callback", self.auth_callback)
+        self.app.router.add_post("/auth/logout", self.auth_logout)
         self.app.router.add_get("/dashboard.css", self.asset)
         self.app.router.add_get("/dashboard.js", self.asset)
         self.app.router.add_get("/api/guilds", self.guilds)
@@ -110,31 +137,64 @@ class Dashboard:
         self.app.router.add_delete(
             "/api/guilds/{guild_id}/queue/{position}", self.mutate)
 
+    def authenticate(self, request):
+        if not self.discord_auth:
+            return
+        user = self.session_user(request)
+        if user is None:
+            raise APIError(401, "請先用 Discord 登入。")
+        request[USER_KEY] = user
+
+    def request_action(self, request):
+        if request.path == "/api/guilds":
+            return "guilds"
+        if request.method == "DELETE" and "position" in request.match_info:
+            return "remove"
+        action = request.path.rsplit("/", 1)[-1]
+        return action if action in {
+            "state", "resolve", "play", "pause", "resume", "skip",
+            "volume", "repeat", "move", "shuffle", "logout", "login", "callback",
+        } else "unknown"
+
     @web.middleware
     async def guard(self, request, handler):
+        api = request.path.startswith("/api/")
+        logout = request.path == "/auth/logout"
         try:
-            if request.path.startswith("/api/"):
-                # A custom header + no CORS prevents cross-site forms/fetches,
-                # including when the optional shared secret is empty.
+            if self.discord_auth and (api or logout):
+                # Authentication first: all unauthenticated APIs are uniformly 401.
+                self.authenticate(request)
+            elif self.discord_auth:
+                user = self.session_user(request)
+                if user is not None:
+                    request[USER_KEY] = user
+            if self.discord_auth and (api or request.path.startswith("/auth/")):
+                # Never infer trust from Forwarded headers supplied by a client.
+                if request.host.lower() != urlsplit(self.public_origin).netloc.lower():
+                    raise APIError(403, "公開網址不符，請從控制台網址操作。")
+                origin = request.headers.get("Origin")
+                if origin and origin != self.public_origin:
+                    raise APIError(403, "不允許跨網站操作。")
+            if api or logout:
                 if request.headers.get("X-MusicBot-Dashboard") != "1":
                     raise APIError(403, "請從音樂控制台操作。")
                 origin = request.headers.get("Origin")
-                if origin and urlsplit(origin).netloc != request.host:
+                if (not self.discord_auth and origin
+                        and urlsplit(origin).netloc != request.host):
                     raise APIError(403, "不允許跨網站操作。")
-                if self.config.shared_secret:
+                # Discord sessions replace the owner-mode optional shared secret.
+                if not self.discord_auth and self.config.shared_secret:
                     token = request.headers.get("Authorization", "")
                     expected = "Bearer " + self.config.shared_secret
                     if not hmac.compare_digest(token.encode(), expected.encode()):
                         raise APIError(401, "共享密鑰錯誤或尚未填寫。")
-                if (not self.bot.is_ready() or not self.bot.init_ok
-                        or self.bot.logout_called):
+                if api and (not self.bot.is_ready() or not self.bot.init_ok
+                            or self.bot.logout_called):
                     raise APIError(503, "機器人尚未就緒，請稍後再試。")
             response = await handler(request)
         except APIError as exc:
-            log.warning("Dashboard request rejected: HTTP %d", exc.status)
             response = web.json_response({"error": str(exc)}, status=exc.status)
         except exceptions.MusicbotException as exc:
-            log.warning("Dashboard command rejected (%s)", type(exc).__name__)
             try:
                 guild_id = request.match_info.get("guild_id", "")
                 ssd = self.bot.server_data.get(int(guild_id)) if guild_id.isdigit() else None
@@ -142,26 +202,39 @@ class Dashboard:
                 response = web.json_response(
                     {"error": "機器人拒絕操作：" + message},
                     status=403 if isinstance(exc, exceptions.PermissionsError) else 400)
-            except Exception:
-                log.exception("Dashboard error response formatting failed")
+            except Exception as formatting_error:
+                log.error("Dashboard error formatting failed (%s)", type(formatting_error).__name__)
                 response = web.json_response(
                     {"error": "操作失敗，已記錄錯誤。"}, status=500)
+        except web.HTTPRedirection as exc:
+            response = exc
         except web.HTTPException as exc:
-            log.warning("Dashboard HTTP error: %d", exc.status)
             response = web.json_response(
                 {"error": "請求內容、路徑或方法不正確。"}, status=exc.status)
-        except Exception:
-            log.exception("Dashboard request failed")
+        except Exception as exc:
+            # Exceptions can contain URLs, authorization codes or provider tokens.
+            log.error("Dashboard request failed (%s)", type(exc).__name__)
             response = web.json_response(
                 {"error": "操作失敗，已記錄錯誤；請重新整理後再試。"}, status=500)
+        if api or logout or request.path in ("/auth/login", "/auth/callback"):
+            uid = (request.get(USER_KEY) or {}).get("id")
+            if uid is None and not self.discord_auth:
+                uid = str(self.bot.config.owner_id)
+            raw_gid = request.match_info.get("guild_id", "")
+            gid = raw_gid if raw_gid.isascii() and raw_gid.isdigit() and len(raw_gid) <= 20 else "-"
+            log.info("Dashboard operation user=%s guild=%s action=%s status=%d",
+                     uid or "-", gid, self.request_action(request), response.status)
         response.headers.update({
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
             "Referrer-Policy": "no-referrer",
             "Content-Security-Policy": (
                 "default-src 'self'; img-src 'self' https: http:; "
                 "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"),
         })
+        if isinstance(response, web.HTTPException):
+            raise response
         return response
 
     async def index(self, _request):
@@ -182,18 +255,30 @@ class Dashboard:
         guild = self.bot.get_guild(int(raw))
         if not guild or getattr(guild, "unavailable", False):
             raise APIError(404, "找不到可用的伺服器。")
-        owner = guild.get_member(self.bot.config.owner_id)
+        uid = int(request[USER_KEY]["id"]) if self.discord_auth else self.bot.config.owner_id
+        owner = guild.get_member(uid)
         if owner is None:
-            raise APIError(403, "OwnerID 本人不在這個伺服器。")
+            raise APIError(403, "你不是這個伺服器的成員。" if self.discord_auth
+                           else "OwnerID 本人不在這個伺服器。")
+        self.check_blocked(owner)
         return guild, owner
 
-    async def guilds(self, _request):
-        return web.json_response({"guilds": [
-            {"id": str(g.id), "name": g.name}
-            for g in self.bot.guilds
-            if not getattr(g, "unavailable", False)
-            and g.get_member(self.bot.config.owner_id) is not None
-        ]})
+    def check_blocked(self, member):
+        if not self.discord_auth or member.id == self.bot.config.owner_id:
+            return
+        blocklist = getattr(self.bot.config, "user_blocklist", None)
+        if blocklist is not None and blocklist.is_blocked(member):
+            raise APIError(403, "你已被機器人的使用者封鎖清單擋下。")
+
+    async def guilds(self, request):
+        uid = int(request[USER_KEY]["id"]) if self.discord_auth else self.bot.config.owner_id
+        result = []
+        for guild in self.bot.guilds:
+            member = guild.get_member(uid)
+            if not getattr(guild, "unavailable", False) and member is not None:
+                self.check_blocked(member)
+                result.append({"id": str(guild.id), "name": guild.name})
+        return web.json_response({"guilds": result})
 
     def snapshot(self, guild):
         player = self.bot.get_player_in(guild)
@@ -239,22 +324,86 @@ class Dashboard:
                 return channel
         raise APIError(403, "找不到符合綁定設定且雙方都能發言的頻道。")
 
-    async def context(self, guild, owner, command):
-        permissions = self.bot.permissions.for_user(owner)
-        # Match the owner command gate; do not construct permissive fake users.
-        if (owner.id != self.bot.config.owner_id
-                and not permissions.can_use_command(command)):
+    def command_permission(self, member, permissions, command, sub=""):
+        if (member.id != self.bot.config.owner_id
+                and not permissions.can_use_command(command, sub)):
             raise APIError(403, "沒有使用這個指令的權限。")
-        if not owner.voice or not owner.voice.channel:
+
+    def bot_voice_channel(self, guild):
+        voice = getattr(guild.me, "voice", None)
+        if voice and voice.channel:
+            return voice.channel
+        player = self.bot.get_player_in(guild)
+        client = getattr(player, "voice_client", None)
+        if client and getattr(client, "is_connected", lambda: True)():
+            return client.channel
+        return None
+
+    def voice_permission(self, guild, member, permissions, command):
+        if not member.voice or not member.voice.channel:
+            raise APIError(409, "請先加入 Discord 語音頻道。")
+        bot_channel = self.bot_voice_channel(guild)
+        if bot_channel is not None:
+            if bot_channel.id != member.voice.channel.id:
+                raise APIError(403, "你不在機器人的語音頻道。")
+        elif command != "play":
+            raise APIError(409, "機器人尚未加入語音頻道。")
+        elif not permissions.summonplay:
+            raise APIError(403, "沒有 summonplay 權限，無法把機器人叫進語音頻道。")
+
+    async def context(self, guild, owner, command, sub=""):
+        permissions = self.bot.permissions.for_user(owner)
+        self.command_permission(owner, permissions, command, sub)
+        if self.discord_auth:
+            self.voice_permission(guild, owner, permissions, command)
+        elif not owner.voice or not owner.voice.channel:
             raise APIError(409, "請先用 OwnerID 本人加入 Discord 語音頻道。")
         if permissions.ignore_non_voice and command in permissions.ignore_non_voice:
             await self.bot._check_ignore_non_voice(
                 SimpleNamespace(guild=guild, author=owner))
         channel = self.channel_for(guild, owner)
-        # Only play may summon a new player. Read-only requests never join voice.
         player = await self.bot.get_player(
             owner.voice.channel, create=permissions.summonplay if command == "play" else False)
+        if self.discord_auth:
+            # Membership, roles and voice may change while a connection is awaited.
+            owner = guild.get_member(owner.id)
+            if owner is None:
+                raise APIError(403, "你不是這個伺服器的成員。")
+            self.check_blocked(owner)
+            permissions = self.bot.permissions.for_user(owner)
+            self.command_permission(owner, permissions, command, sub)
+            self.voice_permission(guild, owner, permissions, command)
+            channel = self.channel_for(guild, owner)
+            if not player or not getattr(player, "voice_client", None):
+                raise APIError(409, "機器人尚未加入語音頻道。")
         return player, permissions, channel
+
+    @staticmethod
+    def repeat_commands(player, mode):
+        subs = []
+        if player.repeatsong and mode != "song":
+            subs.append("off")
+        if player.loopqueue and mode != "all":
+            subs.append("all")
+        if mode == "song" and not player.repeatsong:
+            subs.append("on")
+        if mode == "all" and not player.loopqueue:
+            subs.append("all")
+        return subs
+
+    USER_REQUESTS_PER_MINUTE = 12
+
+    def user_rate_limit(self, member):
+        if not self.discord_auth:
+            return
+        now = time.monotonic()
+        self.rate_limits = {uid: [t for t in times if t > now - 60]
+                            for uid, times in self.rate_limits.items()
+                            if times and times[-1] > now - 60}
+        times = self.rate_limits.setdefault(member.id, [])
+        if len(times) >= self.USER_REQUESTS_PER_MINUTE:
+            raise APIError(429, "點歌與解析過於頻繁，每人每分鐘最多 12 次，請稍後再試。")
+        times.append(now)
 
     @staticmethod
     def integer(data, key, minimum, maximum):
@@ -291,7 +440,8 @@ class Dashboard:
             karaoke_mode=False, playlist=SimpleNamespace(count_for_user=lambda _: 0))
 
     def addition_checks(self, player, owner, permissions):
-        if owner.id != self.bot.config.owner_id and not permissions.can_use_command("play"):
+        if (not self.discord_auth and owner.id != self.bot.config.owner_id
+                and not permissions.can_use_command("play")):
             raise APIError(403, "沒有點歌權限。")
         if (permissions.max_songs and
                 player.playlist.count_for_user(owner) >= permissions.max_songs):
@@ -340,6 +490,8 @@ class Dashboard:
         permissions = self.bot.permissions.for_user(owner)
         player = self.preview_player(guild)
         self.addition_checks(player, owner, permissions)
+        if self.discord_auth:
+            self.command_permission(owner, permissions, "play", query.split()[0])
         parsed = urlsplit(query)
         if (parsed.scheme and parsed.scheme not in ("http", "https")
                 and ("://" in query or parsed.scheme in ("file", "data", "javascript", "spotify"))):
@@ -417,6 +569,7 @@ class Dashboard:
         data = await self.payload(request)
         query = self.query(data)
         guild, owner = self.guild_owner(request)
+        self.user_rate_limit(owner)
         # Admission is separate from mutation locks; timed-out extractions retain
         # their slot until the coroutine completes (executor work cannot be killed).
         if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
@@ -437,6 +590,10 @@ class Dashboard:
         except Exception:
             log.warning("Dashboard preview extraction failed")
             raise APIError(502, "無法解析這個來源，請檢查連結或稍後再試。") from None
+        if self.discord_auth:
+            self.authenticate(request)
+            guild, owner = self.guild_owner(request)
+            self.command_permission(owner, self.bot.permissions.for_user(owner), "play", query.split()[0])
         now = time.monotonic()
         self.previews = {key: value for key, value in self.previews.items()
                          if value["expires"] > now}
@@ -476,6 +633,7 @@ class Dashboard:
         if request.method == "DELETE":
             action = "remove"
         if action == "play":
+            self.user_rate_limit(owner)
             query = self.query(data)
         elif action == "volume":
             self.integer(data, "volume", 1, 100)
@@ -483,11 +641,33 @@ class Dashboard:
             raise APIError(400, "重複模式必須是 off、song 或 all。")
 
         async with self.locks[guild.id]:
+            if self.discord_auth:
+                # Requests can queue behind another command; re-check current membership/session.
+                self.authenticate(request)
+                guild, owner = self.guild_owner(request)
+            sub = ""
+            if self.discord_auth:
+                sub = (query.split()[0] if action == "play" else
+                       str(data.get("volume", "")) if action == "volume" else
+                       {"song": "on", "all": "all", "off": "off"}.get(data.get("mode"), "") if action == "repeat" else
+                       str(data.get("from", "")) if action == "move" else
+                       request.match_info.get("position", "") if action == "remove" else "")
             preview = self.confirmed_preview(data, guild, owner) if action == "play" else None
+            if preview and preview["status"] == "done" and not self.discord_auth:
+                return web.json_response({"message": "這個選項已加入，未重複點播。",
+                                          "state": self.snapshot(guild)})
+            if self.discord_auth and action == "repeat":
+                current = self.bot.get_player_in(guild)
+                if current is not None:
+                    subs = self.repeat_commands(current, data["mode"])
+                    sub = subs[0] if subs else sub
+            player, permissions, channel = await self.context(guild, owner, action, sub)
+            if self.discord_auth:
+                self.authenticate(request)
+                guild, owner = self.guild_owner(request)
             if preview and preview["status"] == "done":
                 return web.json_response({"message": "這個選項已加入，未重複點播。",
                                           "state": self.snapshot(guild)})
-            player, permissions, channel = await self.context(guild, owner, action)
             ssd = self.bot.server_data[guild.id]
             if action in ("remove", "move", "shuffle"):
                 if not data.get("revision") or data["revision"] != revision(player):
@@ -513,10 +693,14 @@ class Dashboard:
                 if not player.current_entry:
                     raise APIError(409, "目前沒有播放中的歌曲。")
                 mode = data["mode"]
+                if self.discord_auth:
+                    # Target mode may require multiple original repeat subcommands.
+                    for repeat_sub in self.repeat_commands(player, mode):
+                        self.command_permission(owner, permissions, "repeat", repeat_sub)
                 if player.repeatsong and mode != "song":
-                    await self.bot.cmd_repeat(ssd, player, "off")
+                    response = await self.bot.cmd_repeat(ssd, player, "off")
                 if player.loopqueue and mode != "all":
-                    await self.bot.cmd_repeat(ssd, player, "all")
+                    response = await self.bot.cmd_repeat(ssd, player, "all")
                 if mode == "song" and not player.repeatsong:
                     response = await self.bot.cmd_repeat(ssd, player, "on")
                 if mode == "all" and not player.loopqueue:
@@ -530,6 +714,8 @@ class Dashboard:
                     permissions=permissions, player=player,
                     leftover_args=[], position=position)
             elif action == "move":
+                if self.discord_auth and not player.current_entry:
+                    raise APIError(409, "目前沒有播放中的歌曲。")
                 size = len(player.playlist.entries)
                 source = self.integer(data, "from", 1, size) - 1
                 target = self.integer(data, "to", 1, size) - 1
@@ -537,24 +723,42 @@ class Dashboard:
                 # Discord animation/message before the mutation (race window).
                 entry = player.playlist.delete_entry_at_index(source)
                 player.playlist.insert_entry_at_index(target, entry)
+                if self.discord_auth:
+                    response = Response(f"已將第 {source + 1} 首移到第 {target + 1} 首。")
             elif action == "shuffle":
                 player.playlist.shuffle()
+                if self.discord_auth:
+                    response = Response("已將佇列洗牌。")
             if isinstance(response, ErrorResponse):
                 raise APIError(409, response.description or "機器人無法完成操作。")
             if action in ("remove", "move", "shuffle"):
                 await self.bot.serialize_queue(guild)
             if preview:
                 preview["status"] = "done"
-            return web.json_response({"message": "已完成操作。",
-                                      "state": self.snapshot(guild)})
+            message = "已完成操作。"
+            if self.discord_auth and response is not None:
+                message = getattr(response, "content", "") or message
+                # Discord messages are sent by the bot, visibly attributed to the caller.
+                # Embed authors do not survive MusicBotResponse.to_markdown().
+                if not getattr(self.bot.config, "embeds", True):
+                    response.content = f"<@{owner.id}>\n" + message
+                    response.description = response.overload_description
+                if hasattr(response, "set_author"):
+                    response.set_author(name=getattr(owner, "display_name", owner.name))
+                if hasattr(self.bot, "safe_send_message"):
+                    try:
+                        await asyncio.wait_for(self.bot.safe_send_message(channel, response), 10)
+                    except Exception as exc:
+                        log.warning("Dashboard Discord response failed (%s)", type(exc).__name__)
+            return web.json_response({"message": message, "state": self.snapshot(guild)})
 
     async def start(self):
         self.runner = web.AppRunner(self.app, access_log=None, shutdown_timeout=5)
         await self.runner.setup()
         self.site = web.TCPSite(self.runner, self.config.host, self.config.port)
         await self.site.start()
-        log.info("Owner web dashboard started on %s:%d",
-                 self.config.host, self.config.port)
+        log.info("%s web dashboard started on %s:%d",
+                 self.config.auth_mode, self.config.host, self.config.port)
 
     async def close(self):
         tasks = list(self.resolve_tasks.values())
@@ -566,6 +770,9 @@ class Dashboard:
         if runner:
             await runner.cleanup()
         self.site = None
+        self.sessions.clear()
+        self.oauth_states.clear()
+        self.rate_limits.clear()
 
 
 async def start_dashboard(bot, config_path: Path):
@@ -585,6 +792,6 @@ async def start_dashboard(bot, config_path: Path):
         if dashboard is not None:
             try:
                 await dashboard.close()
-            except Exception:
-                log.exception("Dashboard cleanup after failed startup failed")
+            except Exception as cleanup_error:
+                log.error("Dashboard cleanup failed (%s)", type(cleanup_error).__name__)
         return None

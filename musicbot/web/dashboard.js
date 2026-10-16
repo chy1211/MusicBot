@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 let secret = "", selected = "", state = null, busy = false, connected = false;
 let queueRevision = null, generation = 0, loading = false, stateGeneration = 0;
+let authMode = null, authenticated = false;
 const labels = {playing: "播放中", paused: "已暫停", stopped: "已停止", disconnected: "尚未加入語音"};
 function notice(message, error = false) {
   $("notice").textContent = message;
@@ -13,22 +14,79 @@ function duration(seconds) {
   const m = Math.floor(seconds / 60) % 60;
   return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(seconds % 60).padStart(2, "0");
 }
+function authDisplay() {
+  const signedIn = authMode === "owner" || authenticated;
+  $("dashboard").hidden = !signedIn;
+  $("login-screen").hidden = signedIn;
+  $("discord-login").hidden = authMode !== "discord";
+  $("auth").hidden = authMode !== "owner";
+  $("owner-badge").hidden = authMode !== "owner";
+  $("user-profile").hidden = authMode !== "discord" || !authenticated;
+  $("identity-note").textContent = authMode === "discord"
+    ? "每秒更新 · 以你的 Discord 身分與權限操作 · 操作前請加入機器人所在的語音頻道"
+    : "每秒更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道";
+}
+function signedOut(message = "登入後即可查看你的伺服器並點歌。") {
+  ++generation; ++stateGeneration;
+  authenticated = false; connected = false; loading = false; selected = "";
+  secret = ""; $("secret").value = ""; $("query").value = "";
+  $("guild").replaceChildren(); $("user-name").textContent = "";
+  $("user-avatar").removeAttribute("src"); $("user-avatar").hidden = true;
+  resetView(); state = null; controls(); authDisplay();
+  $("login-status").textContent = message;
+  $("connection").textContent = "尚未登入";
+  notice("");
+}
+async function initialize() {
+  try {
+    const response = await fetch("/auth/session", {cache: "no-store", credentials: "same-origin"});
+    if (!response.ok) throw new Error("無法確認登入狀態，請重新整理頁面。");
+    const session = await response.json();
+    if (!["owner", "discord"].includes(session.auth_mode) || typeof session.authenticated !== "boolean" ||
+        (session.auth_mode === "owner" && !session.authenticated))
+      throw new Error("登入狀態無效，請重新整理頁面。");
+    authMode = session.auth_mode;
+    authenticated = session.authenticated;
+    if (authMode === "discord") {
+      secret = "";
+      if (!authenticated || !session.user) { signedOut(); return; }
+      $("user-name").textContent = session.user.name;
+      if (/^https:\/\//i.test(session.user.avatar || "")) {
+        $("user-avatar").src = session.user.avatar; $("user-avatar").hidden = false;
+      }
+    }
+    authDisplay(); await connect();
+  } catch (error) {
+    signedOut(error.message);
+    $("login-status").classList.toggle("error", true);
+  }
+}
+async function logout() {
+  if (authMode !== "discord" || !authenticated || busy) return;
+  busy = true; controls();
+  try { await api("/auth/logout", "POST", {}); signedOut("已登出。"); }
+  catch (error) { if (authenticated) notice(error.message, true); }
+  finally { busy = false; controls(); }
+}
 async function api(path, method = "GET", data) {
   const headers = {"X-MusicBot-Dashboard": "1"};
-  if (secret) headers.Authorization = "Bearer " + secret;
+  if (authMode === "owner" && secret) headers.Authorization = "Bearer " + secret;
   if (data !== undefined) headers["Content-Type"] = "application/json";
-  const response = await fetch(path, {method, headers, cache: "no-store",
+  const response = await fetch(path, {method, headers, cache: "no-store", credentials: "same-origin",
     body: data === undefined ? undefined : JSON.stringify(data)});
-  const body = await response.json();
+  const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 401) $("auth").open = true;
+    if (response.status === 401) {
+      if (authMode === "discord") signedOut(body.error || "登入已過期，請重新登入。");
+      else $("auth").open = true;
+    }
     const error = new Error(body.error || "連線失敗，請稍後再試。");
     error.status = response.status; throw error;
   }
   return body;
 }
 function controls() {
-  const usable = connected && !busy && !!selected;
+  const usable = (authMode === "owner" || authenticated) && connected && !busy && !!selected;
   const hasPlayer = usable && state && state.status !== "disconnected";
   for (const id of ["toggle", "skip", "repeat", "volume"]) $(id).disabled = !hasPlayer;
   $("enqueue").disabled = !usable || resolving;
@@ -37,6 +95,7 @@ function controls() {
   });
   $("shuffle").disabled = !hasPlayer || !state.queue.length;
   $("guild").disabled = busy;
+  $("logout").disabled = busy;
   document.querySelectorAll("#queue button").forEach((button) => {
     button.disabled = !hasPlayer || button.dataset.boundary === "1";
   });
@@ -297,6 +356,7 @@ function resetView() {
     repeat: "off", queue: [], revision: ""});
 }
 async function connect() {
+  if (authMode !== "owner" && !authenticated) return;
   const epoch = ++generation;
   loading = true; connected = false; selected = ""; state = null;
   resetView(); controls(); $("connection").textContent = "連線中";
@@ -309,7 +369,7 @@ async function connect() {
       option.value = guild.id; option.textContent = guild.name; $("guild").append(option);
     }
     selected = $("guild").value;
-    if (!selected) { notice("目前沒有 OwnerID 本人所在的可用伺服器。"); return; }
+    if (!selected) { notice(authMode === "owner" ? "目前沒有 OwnerID 本人所在的可用伺服器。" : "目前沒有你與機器人共同所在的伺服器。"); return; }
     await refresh(epoch);
     if (connected) notice("已連線，可以開始點歌。");
   } catch (error) {
@@ -322,7 +382,7 @@ async function connect() {
   }
 }
 async function poll() {
-  if (!busy && !loading) {
+  if ((authMode === "owner" || authenticated) && !busy && !loading) {
     if (selected) await refresh();
     else await connect();
   }
@@ -350,4 +410,6 @@ $("repeat").addEventListener("change", () => act("repeat", {mode: $("repeat").va
 $("volume").addEventListener("input", () => { $("volume-label").value = $("volume").value + "%"; });
 $("volume").addEventListener("change", () => act("volume", {volume: Number($("volume").value)}));
 $("shuffle").addEventListener("click", () => act("queue/shuffle", {revision: state.revision}));
-connect().finally(() => window.setTimeout(poll, 1000));
+$("logout").addEventListener("click", logout);
+$("user-avatar").addEventListener("error", () => { $("user-avatar").hidden = true; });
+initialize().finally(() => window.setTimeout(poll, 1000));
