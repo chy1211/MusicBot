@@ -1,4 +1,4 @@
-# Web dashboard: round 7 (development only)
+# Web dashboard: round 8 (development only)
 
 Optional aiohttp dashboard inside the bot event loop, without another Discord
 client or dependency. The round-7 branch starts at dev 9af6f8d (round 6). This feature branch is not deployed. The public production
@@ -1061,3 +1061,70 @@ The offline demo has links above the request input: 示範空佇列 empties only
 queues and pauses its automatic queue changes; 還原示範佇列 restores them. Choose
 the empty example, inspect five distinct recommendations and click Add, then
 confirm the normal preview. These demo-only switches make no outbound requests.
+
+### Duplicate reminders
+
+Track previews show a reminder beside confirmation when the source is already at
+complete-queue position N, currently playing, or both. Playlist selection rows mark
+queued tracks 已在佇列 (or 正在播放); allowed items stay checked. Warnings update
+with received state without rebuilding the preview or changing selections. Users
+can still confirm duplicates; this is advisory, not a new playback restriction.
+
+Comparison stays in the browser and uses only existing current/queue/preview URLs.
+YouTube watch, youtu.be, mobile/music, shorts, embed, live and nocookie forms compare
+by case-sensitive 11-character video ID, ignoring playlist/time/share parameters.
+Other HTTP(S) URLs normalize scheme/host/default port, trailing slash, fragment,
+query order and common tracking parameters (utm_*, fbclid, gclid); meaningful query
+values and path case remain distinct. Redirects, alternate non-YouTube source URLs
+and the same recording uploaded under different IDs cannot be identified offline.
+
+In the offline demo, 重複單曲範例 / 重複歌單範例 restore fake queues and fill the
+request input; click 查詢 to inspect reminders and confirm normally. Manual empty/
+filled examples keep automatic queue changes paused; 自動更新示範 resumes them.
+All art, extraction, login, lyrics and example URLs remain local/fake.
+
+### Round-8 isolated validation and demo
+
+Run from the round-8 worktree. Archive only committed files; use a fresh tag:
+
+~~~sh
+ctx=$(mktemp -d /tmp/musicbot-webtest-r8.XXXXXX)
+git archive HEAD | tar -x -C "$ctx"
+printf '%s\n' 'FROM musicbot:ytdlp-base' 'WORKDIR /webtest' 'COPY . .' |
+  docker build --network none -t musicbot-webtest-r8:final -f - "$ctx"
+docker run --rm --network none --name musicbot-webtest-r8-unit \
+  --entrypoint python3 musicbot-webtest-r8:final \
+  -W 'error::DeprecationWarning:aiohttp.web_protocol' \
+  -m unittest discover -s tests -p 'test_web_dashboard*.py'
+docker run --rm --network none --name musicbot-webtest-r8-links \
+  --entrypoint python3 musicbot-webtest-r8:final -m tools.test_compound_link
+node --check musicbot/web/dashboard.js
+node --test tests/test_web_dashboard_frontend.cjs tests/test_web_dashboard_pwa.cjs
+docker run --rm -d --network none --name musicbot-webtest-r8-demo \
+  --entrypoint python3 musicbot-webtest-r8:final \
+  -m tools.dashboard_demo --host 0.0.0.0 --port 8080 \
+  --public-origin http://127.0.0.1:18080
+python3 tools/dashboard_demo_relay.py --container musicbot-webtest-r8-demo --port 18080
+~~~
+
+Use the existing loopback relay and the Windows tunnel documented above (your-vps).
+No bridge, production mounts or credentials. Check desktop keys and help; search by
+title/requester together with My requests; switch to empty recommendations; use
+the two duplicate examples, then confirm a duplicate single/batch normally. Fake
+away/denied users exercise voice/command restrictions. Browser/mobile tests use
+only the demo. All new controls use existing reduced-motion rules and touch sizes.
+
+After stopping the relay/tunnel, stop only musicbot-webtest-r8-demo and remove only
+the new musicbot-webtest-r8:final tag and the specific /tmp/musicbot-webtest-r8.*
+context. The main checkout, dev, existing tags, configuration and data stay untouched.
+
+Round-8 validation (no deployment): backend 311 passed (original 306 + 5),
+frontend 117 passed (original 101 + 16), compound links 16 passed, zero failures.
+Node syntax checks and git diff --check passed. Chrome's credential-free demo
+verified question-mark/Esc help, slash focus with N typed into input, Space pause,
++10-second seek, combined filters retaining positions 1/3, recommendation preview
+then confirmation, duplicate position 1, and four batch duplicate tags with all
+21 eligible items still checked. At width 390 the help entry was hidden and the
+document had no horizontal overflow; denied-user pause/skip/seek stayed disabled.
+Real Discord/OAuth, production proxy playback and physical-phone gestures were
+not exercised. URL matching is advisory and does not resolve remote redirects.

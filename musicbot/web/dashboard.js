@@ -399,9 +399,32 @@ function keyboardShortcut(event) {
 document.addEventListener("keydown", keyboardShortcut);
 $("shortcuts-help").addEventListener("click", shortcutsHelp);
 $("shortcuts-close").addEventListener("click", () => $("shortcuts-dialog").close());
-let resolving = false, resolveGeneration = 0, previewResults = [];
+let resolving = false, resolveGeneration = 0, previewResults = [], previewDuplicates = [];
+function duplicateNote(parent, url, batch = false) {
+  const note = document.createElement(batch ? "small" : "p");
+  note.className = batch ? "duplicate-tag" : "hint duplicate-note";
+  note.setAttribute("role", "status");
+  previewDuplicates.push({note, key: songIdentity(url), batch});
+  parent.append(note);
+}
+function updateDuplicateNotes() {
+  const queued = new Map();
+  for (const song of state?.queue || []) {
+    const key = songIdentity(song.url);
+    if (key && !queued.has(key)) queued.set(key, song.position);
+  }
+  const current = songIdentity(state?.current?.url);
+  for (const {note, key, batch} of previewDuplicates) {
+    const position = key ? queued.get(key) : undefined;
+    const playing = !!key && key === current;
+    note.textContent = position !== undefined
+      ? batch ? "已在佇列" : "這首已經在佇列第 " + position + " 首" + (playing ? "，且目前正在播放" : "")
+      : playing ? batch ? "正在播放" : "這首目前正在播放" : "";
+    note.hidden = !note.textContent;
+  }
+}
 function clearPreview() {
-  ++resolveGeneration; resolving = false; previewResults = [];
+  ++resolveGeneration; resolving = false; previewResults = []; previewDuplicates = [];
   buttonBusy($("enqueue"), false);
   $("preview-panel").hidden = true; $("preview-results").replaceChildren();
 }
@@ -481,7 +504,8 @@ async function resolveQuery() {
           const text = document.createElement("span");
           text.textContent = item.title + " · " + (item.duration ? duration(item.duration) : "長度未知") +
             (item.reason ? " · 無法加入：" + item.reason : " · 可加入");
-          label.append(checkbox, text); li.append(label); list.append(li);
+          label.append(checkbox, text); duplicateNote(label, item.url, true);
+          li.append(label); list.append(li);
         }
         info.append(tools, list);
       }
@@ -508,9 +532,11 @@ async function resolveQuery() {
         alternate.textContent = action === "play" ? "下一首播放" : "加入佇列";
         alternate.addEventListener("click", () => confirmSong(action === "play" ? "playnext" : "play", alternate));
         article.append(alternate);
+        duplicateNote(article, song.url);
       }
       $("preview-results").append(article);
     }
+    updateDuplicateNotes();
     notice("請確認預覽，再選擇加入方式。預覽五分鐘內有效。");
   } catch (error) {
     if (epoch === generation && requestId === resolveGeneration) notice(error.message, true);
@@ -553,7 +579,7 @@ function render(next, force = false) {
     $("volume").value = state.volume; $("volume-label").value = state.volume + "%";
   }
   if (force || document.activeElement !== $("repeat")) $("repeat").value = state.repeat;
-  renderQueue(); renderRecommendations(); controls(); updateQueueTimes(); renderCommunity(state);
+  renderQueue(); renderRecommendations(); updateDuplicateNotes(); controls(); updateQueueTimes(); renderCommunity(state);
 }
 async function act(action, data = {}, method = "POST") {
   if (busy || !selected || !connected) return;
