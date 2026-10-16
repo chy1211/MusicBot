@@ -862,3 +862,32 @@ UI: favorite current track, save queue/history tracks via picker, create/rename/
 delete lists, remove tracks, up/down ordering, enqueue all or checked tracks.
 Revision conflicts return 409. The demo seeds separate fake libraries under a
 TemporaryDirectory, cleaned at app shutdown; no real data directory is used.
+
+## Owner autoplaylist administration (round 7)
+
+Owner capability is reported by GET /api/library; the UI hides management and
+the current-song autoplaylist button from all other users. Server authorization
+always compares the session identity to bot.config.owner_id (403 otherwise),
+then checks target guild membership and the existing guards.
+
+GET /api/guilds/{guild}/admin/autoplaylist?q=<100-char-search>&page=1 returns
+{total,matched,page,page_size:50,tracks:[{index,url,title}],revision}.
+It uses the active server_data[guild].autoplaylist, not a separate copy or a
+client-selected filename. Legacy local paths are hidden. Titles are not
+automatically fetched; no extractor/network lookup occurs for browsing.
+
+POST at the same path accepts {revision,url} or {revision,current:true}.
+DELETE accepts {revision,index}. Invalid URLs/duplicates return 400; stale
+revision returns 409. Each mutation first backs up the source to
+data/web_dashboard/backups/autoplaylist/<filename>.<YYYYmmdd-HHMMSS>
+(a random suffix resolves same-second collisions), retaining the newest 30 per
+source file. Backups are fsynced, private mode 0600, outside config/.
+Writes call only native AutoPlaylist.add_track / remove_track(delete_from_ap=True),
+preserving their update lock, comments and removed log behavior. Memory is
+immediately the native list; disk is checked afterward because native methods
+swallow write errors. On mismatch the list is reloaded and an error returned.
+Existing player autoplaylist shuffle-cycle copies keep native command behavior;
+new selections use the updated source at the next refill. No bulk clear/overwrite.
+
+The offline demo uses a real AutoPlaylist in TemporaryDirectory, fake URLs and
+fake cache callbacks, shared by its fake guilds. No real config/data is accessed.

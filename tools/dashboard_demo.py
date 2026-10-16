@@ -74,7 +74,7 @@ class DemoBot:
         self.denied_perms.can_use_command = lambda *_: False
         self.permissions = NS(for_user=lambda member: self.perms if member.id == 42 else
                               self.denied_perms if member.id == 45 else self.member_perms)
-        self.filecache = NS()
+        self.filecache = NS(remove_autoplay_cachemap_entry_by_url=lambda *_: None)
         self.dashboard = None
         self.members = {}
         self.guilds, self.players, self.server_data = [], {}, {}
@@ -299,6 +299,17 @@ class DemoDashboard(Dashboard):
             self.playlist_store.path(uid).parent.mkdir(parents=True, exist_ok=True)
             import json
             self.playlist_store.path(uid).write_text(json.dumps(value), encoding="utf-8")
+        from musicbot.autoplaylist import AutoPlaylist
+        bot.config.auto_playlist_dir = Path(self.demo_temp.name) / "playlists"
+        bot.config.auto_playlist_dir.mkdir()
+        apl_path = bot.config.auto_playlist_dir / "default.txt"
+        apl_path.write_text("# Demo only\nhttps://example.test/track/0\nhttps://example.test/track/1\n", encoding="utf-8")
+        apl = AutoPlaylist(apl_path, bot)
+        apl.data = apl._read_playlist()
+        apl._is_loaded = True
+        for gid in bot.server_data:
+            bot.server_data[gid] = NS(autoplaylist=apl)
+        self.backup_root = Path(self.demo_temp.name) / "backups"
         bot.dashboard = self
         for guild in bot.guilds:
             for index in range(5, -1, -1):
