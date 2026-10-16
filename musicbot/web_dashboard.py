@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 from aiohttp import web
+from discord import ChannelType
 
 from . import exceptions
 from .constructs import ErrorResponse, Response
@@ -27,6 +28,10 @@ from .i18n import _D
 from .spotify import Spotify
 from .utils import get_compound_link_ids
 from .web_dashboard_auth import DashboardAuth, USER_KEY
+from .web_dashboard_events import DashboardEvents
+from .web_dashboard_activity import capture, finish
+
+ACTIVITY_KEY = web.RequestKey("dashboard_activity", object)
 
 log = logging.getLogger(__name__)
 STATIC = Path(__file__).with_name("web")
@@ -122,7 +127,7 @@ def requester(entry, guild=None):
             "avatar": public_url(getattr(getattr(person, "display_avatar", None), "url", ""))}
 
 
-def track(entry, guild=None) -> dict | None:
+def track(entry, guild=None, viewer=None) -> dict | None:
     if entry is None:
         return None
     return {
@@ -131,6 +136,10 @@ def track(entry, guild=None) -> dict | None:
         "thumbnail": public_url(getattr(entry, "thumbnail_url", "")),
         "duration": float(getattr(entry, "duration", 0) or 0),
         "requester": requester(entry, guild),
+        "mine": bool(viewer is not None and getattr(viewer, "id", None) is not None
+                     and getattr((getattr(entry, "author", None) or getattr(entry, "member", None)
+                                  or (getattr(entry, "meta", None) or {}).get("author")
+                                  or (getattr(entry, "meta", None) or {}).get("member")), "id", None) == viewer.id),
     }
 
 
@@ -165,7 +174,7 @@ def revision(player) -> str:
     return hashlib.sha256(str(identities).encode()).hexdigest()
 
 
-class Dashboard(DashboardAuth):
+class Dashboard(DashboardAuth, DashboardEvents):
     def __init__(self, bot, config: DashboardConfig):
         self.bot = bot
         self.config = config
@@ -178,10 +187,15 @@ class Dashboard(DashboardAuth):
         self.lyrics_rate_limits = {}
         self.lyrics_client = LyricsClient()
         self.recent_history = defaultdict(lambda: deque(maxlen=50))
+        self.activities = defaultdict(lambda: deque(maxlen=100))
+        self.queue_arrivals = defaultdict(list)
         self.init_auth()
         self.app = web.Application(
             middlewares=[self.guard], client_max_size=16 * 1024)
+        self.init_events()
         self.app.router.add_get("/", self.index)
+        self.app.router.add_get("/favicon.svg", self.favicon)
+        self.app.router.add_get("/favicon.ico", self.favicon)
         self.app.router.add_get("/auth/session", self.auth_session)
         self.app.router.add_get("/auth/login", self.auth_login)
         self.app.router.add_get("/auth/callback", self.auth_callback)
@@ -190,6 +204,10 @@ class Dashboard(DashboardAuth):
         self.app.router.add_get("/dashboard.js", self.asset)
         self.app.router.add_get("/api/guilds", self.guilds)
         self.app.router.add_get("/api/guilds/{guild_id}/state", self.state)
+        self.app.router.add_get("/api/guilds/{guild_id}/listeners", self.listeners)
+        self.app.router.add_get("/api/guilds/{guild_id}/activity", self.activity)
+        self.app.router.add_get("/api/guilds/{guild_id}/events", self.events,
+                                name="dashboard_events", allow_head=False)
         self.app.router.add_get("/api/guilds/{guild_id}/history", self.history)
         self.app.router.add_get("/api/guilds/{guild_id}/lyrics", self.lyrics)
         self.app.router.add_post(
@@ -219,7 +237,7 @@ class Dashboard(DashboardAuth):
             return "remove"
         action = request.path.rsplit("/", 1)[-1]
         return action if action in {
-            "state", "history", "lyrics", "resolve", "play", "playnext", "seek", "pause", "resume", "skip",
+            "state", "listeners", "activity", "events", "history", "lyrics", "resolve", "play", "playnext", "seek", "pause", "resume", "skip",
             "volume", "repeat", "move", "shuffle", "logout", "login", "callback",
         } else "unknown"
 
@@ -227,6 +245,7 @@ class Dashboard(DashboardAuth):
     async def guard(self, request, handler):
         api = request.path.startswith("/api/")
         logout = request.path == "/auth/logout"
+        events = request.method == "GET" and request.match_info.route.name == "dashboard_events"
         try:
             if self.discord_auth and (api or logout):
                 # Authentication first: all unauthenticated APIs are uniformly 401.
@@ -243,7 +262,14 @@ class Dashboard(DashboardAuth):
                 if origin and origin != self.public_origin:
                     raise APIError(403, "不允許跨網站操作。")
             if api or logout:
-                if request.headers.get("X-MusicBot-Dashboard") != "1":
+                if events:
+                    if request.headers.get("Sec-Fetch-Site") not in (None, "same-origin"):
+                        raise APIError(403, "不允許跨網站即時連線。")
+                    # EventSource cannot send Bearer headers. Never put the secret
+                    # in a URL or silently bypass legacy owner protection.
+                    if not self.discord_auth and self.config.shared_secret:
+                        raise APIError(403, "共享密鑰模式請使用一般更新。")
+                elif request.headers.get("X-MusicBot-Dashboard") != "1":
                     raise APIError(403, "請從音樂控制台操作。")
                 origin = request.headers.get("Origin")
                 if (not self.discord_auth and origin
@@ -276,8 +302,14 @@ class Dashboard(DashboardAuth):
         except web.HTTPRedirection as exc:
             response = exc
         except web.HTTPException as exc:
-            response = web.json_response(
-                {"error": "請求內容、路徑或方法不正確。"}, status=exc.status)
+            if (exc.status == 404 and request.method == "GET"
+                    and request.path not in ("/api", "/auth")
+                    and not request.path.startswith(("/api/", "/auth/", "/static/", "/assets/"))
+                    and not Path(request.path).suffix):
+                response = web.HTTPFound(location="/")
+            else:
+                response = web.json_response(
+                    {"error": "請求內容、路徑或方法不正確。"}, status=exc.status)
         except Exception as exc:
             # Exceptions can contain URLs, authorization codes or provider tokens.
             log.error("Dashboard request failed (%s)", type(exc).__name__)
@@ -291,8 +323,18 @@ class Dashboard(DashboardAuth):
             gid = raw_gid if raw_gid.isascii() and raw_gid.isdigit() and len(raw_gid) <= 20 else "-"
             log.info("Dashboard operation user=%s guild=%s action=%s status=%d",
                      uid or "-", gid, self.request_action(request), response.status)
+        if api and request.method in ("POST", "DELETE") and self.request_action(request) in {
+                "play", "playnext", "seek", "pause", "resume", "skip", "volume", "repeat", "remove", "move", "shuffle"}:
+            try:
+                value = request.get(ACTIVITY_KEY)
+                if value is None:
+                    guild, member = self.guild_owner(request)
+                    value = capture(self, guild, member, self.request_action(request), "web")
+                finish(value, response.status < 400)
+            except Exception as exc:
+                log.warning("Dashboard activity failed (%s)", type(exc).__name__)
         response.headers.update({
-            "Cache-Control": "no-store",
+            "Cache-Control": "no-cache" if events and response.prepared else "no-store",
             "X-Content-Type-Options": "nosniff",
             "X-Frame-Options": "DENY",
             "Referrer-Policy": "no-referrer",
@@ -303,6 +345,10 @@ class Dashboard(DashboardAuth):
         if isinstance(response, web.HTTPException):
             raise response
         return response
+
+    async def favicon(self, _request):
+        return web.Response(text=(STATIC / "favicon.svg").read_text(encoding="utf-8"),
+                            content_type="image/svg+xml")
 
     async def index(self, _request):
         return web.Response(
@@ -371,6 +417,9 @@ class Dashboard(DashboardAuth):
 
     async def history(self, request):
         guild, _member = self.guild_owner(request)
+        return web.json_response(self.history_snapshot(guild))
+
+    def history_snapshot(self, guild):
         rows = []
         for item in self.recent_history.get(guild.id, ()):
             public = {key: item[key] for key in
@@ -400,8 +449,7 @@ class Dashboard(DashboardAuth):
         elif getattr(config, "enable_queue_history_global", False):
             # Never disclose the global URL pool to a member of one guild.
             source = "dashboard_memory_global_history_unscoped"
-        return web.json_response({"history": rows[:50], "source": source,
-                                  "resets_on_restart": True})
+        return {"history": rows[:50], "source": source, "resets_on_restart": True}
 
     LYRICS_REQUESTS_PER_MINUTE = 12
 
@@ -444,18 +492,25 @@ class Dashboard(DashboardAuth):
         return (hashlib.sha256(str((id(player), id(entry))).encode()).hexdigest()
                 if entry is not None else "")
 
-    def snapshot(self, guild):
+    def snapshot(self, guild, viewer=None):
+        community = {"listeners": self.listener_snapshot(guild),
+                     "activity": self.activity_snapshot(guild)}
         player = self.bot.get_player_in(guild)
         if player is None:
-            return {"guild_id": str(guild.id), "status": "disconnected",
+            return {**community, "guild_id": str(guild.id), "status": "disconnected",
                     "current": None, "progress": 0, "volume": None,
                     "repeat": "off", "queue": [], "revision": ""}
         entries = list(player.playlist.entries)
+        known = self.queue_arrivals[guild.id]
+        live = {id(entry) for entry in entries}
+        known[:] = [key for key in known if key in live]
+        known_ids = set(known)
+        known.extend(id(entry) for entry in entries if id(entry) not in known_ids)
         return {
-            "guild_id": str(guild.id),
+            **community, "guild_id": str(guild.id),
             "status": ("paused" if player.is_paused else "playing"
                        if player.is_playing else "stopped"),
-            "current": (dict(track(player.current_entry, guild),
+            "current": (dict(track(player.current_entry, guild, viewer),
                              seekable=self.is_seekable(player.current_entry),
                              track_token=self.track_token(player))
                         if player.current_entry else None),
@@ -463,23 +518,61 @@ class Dashboard(DashboardAuth):
             "volume": round(player.volume * 100),
             "repeat": ("song" if player.repeatsong else
                        "all" if player.loopqueue else "off"),
-            "queue": [dict(track(entry, guild), position=i)
+            "queue": [dict(track(entry, guild, viewer), position=i)
                       for i, entry in enumerate(entries, 1)],
             "revision": revision(player),
         }
 
     async def state(self, request):
-        guild, _owner = self.guild_owner(request)
-        return web.json_response(self.snapshot(guild))
+        guild, member = self.guild_owner(request)
+        return web.json_response(self.snapshot(guild, member))
+
+    def note_queue_entry(self, guild, entry):
+        """Observe insertion order only; never mutate the actual playlist."""
+        player = self.bot.get_player_in(guild)
+        entries = list(player.playlist.entries) if player else []
+        live = {id(item) for item in entries}
+        known = self.queue_arrivals[guild.id]
+        known[:] = [key for key in known if key in live and key != id(entry)]
+        known_ids = set(known)
+        known.extend(id(item) for item in entries
+                     if id(item) != id(entry) and id(item) not in known_ids)
+        if id(entry) in live:
+            known.append(id(entry))
 
     def channel_for(self, guild, owner):
         bound = self.bot.config.bound_channels
         has_bound = any(c.id in bound for c in guild.channels)
         restrict = bool(bound) and (has_bound or not self.bot.config.unbound_servers)
-        candidates = ([guild.get_channel(cid) for cid in sorted(bound)]
-                      + [owner.voice.channel, guild.system_channel]
-                      + list(guild.text_channels))
+        player = self.bot.get_player_in(guild)
+        current = getattr(player, "current_entry", None)
+        # Queue order can be moved/shuffled. Object identity insertion order is
+        # tracked below, so "latest requested" does not mean "last in queue".
+        entries = list(player.playlist.entries) if player else []
+        known = self.queue_arrivals[guild.id]
+        live = {id(entry) for entry in entries}
+        known[:] = [key for key in known if key in live]
+        known_ids = set(known)
+        known.extend(id(entry) for entry in entries if id(entry) not in known_ids)
+        by_id = {id(entry): entry for entry in entries}
+        latest = by_id.get(known[-1]) if known else None
+        voice = getattr(getattr(owner, "voice", None), "channel", None)
+        candidates = ([getattr(current, "channel", None), getattr(latest, "channel", None)]
+                      + [guild.get_channel(cid) for cid in sorted(bound)]
+                      + [guild.system_channel] + list(guild.text_channels) + [voice])
+        # An older web request may itself have stored a voice chat as
+        # entry.channel. Voice chat remains the last fallback in that case too.
+        preferred = [channel for channel in candidates[:-1]
+                     if channel is not None
+                     and getattr(channel, "type", None) not in (ChannelType.voice, ChannelType.stage_voice)
+                     and getattr(channel, "id", None) != getattr(voice, "id", None)]
+        candidates = preferred + [voice]
+        seen = set()
         for channel in candidates:
+            if channel is not None and channel.id in seen:
+                continue
+            if channel is not None:
+                seen.add(channel.id)
             if (channel is None or getattr(channel, "guild", None) != guild
                     or not hasattr(channel, "typing")
                     or (restrict and channel.id not in bound)):
@@ -497,7 +590,7 @@ class Dashboard(DashboardAuth):
             raise APIError(403, "沒有使用這個指令的權限。")
 
     def bot_voice_channel(self, guild):
-        voice = getattr(guild.me, "voice", None)
+        voice = getattr(getattr(guild, "me", None), "voice", None)
         if voice and voice.channel:
             return voice.channel
         player = self.bot.get_player_in(guild)
@@ -934,6 +1027,7 @@ class Dashboard(DashboardAuth):
             raise APIError(400, "重複模式必須是 off、song 或 all。")
 
         async with self.locks[guild.id]:
+            request[ACTIVITY_KEY] = capture(self, guild, owner, action, "web")
             if self.discord_auth:
                 # Requests can queue behind another command; re-check current membership/session.
                 self.authenticate(request)
@@ -951,7 +1045,7 @@ class Dashboard(DashboardAuth):
                 raise APIError(400, "下一首播放目前只支援單曲，請選取單曲來源。")
             if preview and preview["status"] == "done" and not self.discord_auth:
                 return web.json_response({"message": "這個選項已加入，未重複點播。",
-                                          "state": self.snapshot(guild), **(preview.get("summary") or {})})
+                                          "state": self.snapshot(guild, owner), **(preview.get("summary") or {})})
             if self.discord_auth and action == "repeat":
                 current = self.bot.get_player_in(guild)
                 if current is not None:
@@ -965,7 +1059,7 @@ class Dashboard(DashboardAuth):
                 guild, owner = self.guild_owner(request)
             if preview and preview["status"] == "done":
                 return web.json_response({"message": "這個選項已加入，未重複點播。",
-                                          "state": self.snapshot(guild), **(preview.get("summary") or {})})
+                                          "state": self.snapshot(guild, owner), **(preview.get("summary") or {})})
             ssd = self.bot.server_data[guild.id]
             if action in ("remove", "move", "shuffle"):
                 if not data.get("revision") or data["revision"] != revision(player):
@@ -1093,10 +1187,11 @@ class Dashboard(DashboardAuth):
                     response.set_author(name=getattr(owner, "display_name", owner.name))
                 if hasattr(self.bot, "safe_send_message"):
                     try:
+                        channel = self.channel_for(guild, owner)
                         await asyncio.wait_for(self.bot.safe_send_message(channel, response), 10)
                     except Exception as exc:
                         log.warning("Dashboard Discord response failed (%s)", type(exc).__name__)
-            return web.json_response({"message": message, "state": self.snapshot(guild), **summary})
+            return web.json_response({"message": message, "state": self.snapshot(guild, owner), **summary})
 
     async def start(self):
         # Capture a song already playing when an optional dashboard starts.
@@ -1113,6 +1208,7 @@ class Dashboard(DashboardAuth):
                  self.config.auth_mode, self.config.host, self.config.port)
 
     async def close(self):
+        await self.shutdown_events()
         tasks = list(self.resolve_tasks.values())
         for task in tasks:
             task.cancel()
@@ -1127,6 +1223,8 @@ class Dashboard(DashboardAuth):
         self.rate_limits.clear()
         self.lyrics_rate_limits.clear()
         self.recent_history.clear()
+        self.activities.clear()
+        self.queue_arrivals.clear()
 
 
 async def start_dashboard(bot, config_path: Path):

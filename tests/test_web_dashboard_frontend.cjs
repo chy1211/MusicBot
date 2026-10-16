@@ -110,13 +110,21 @@ async function setup(options = {}) {
     }
     return {ok: status === 200, status, json: async () => body};
   }
-  const context = vm.createContext({document, fetch, URL, AbortController, window: {setTimeout: (...args) => timers.push(args), clearTimeout() {},
+  const streams = [];
+  class FakeEventSource {
+    constructor(url) { this.url = url; this.listeners = {}; this.closed = false; streams.push(this); }
+    addEventListener(name, handler) { this.listeners[name] = handler; }
+    close() { this.closed = true; }
+    emit(name, data) { return this.listeners[name]?.({data: JSON.stringify(data)}); }
+  }
+  const context = vm.createContext({document, fetch, URL, AbortController,
+    EventSource: options.events ? FakeEventSource : undefined, window: {setTimeout: (...args) => timers.push(args), clearTimeout() {},
     requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
     matchMedia: () => ({matches: !!options.reducedMotion}),
     innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
   vm.runInContext(code, context);
   await flush();
-  return {document, elements, states, requests, context, timers, frames, scrolls, session,
+  return {document, elements, states, requests, context, timers, frames, scrolls, session, streams,
     element: (id) => document.getElementById(id),
     run: (expression) => vm.runInContext(expression, context),
     hook: (value) => { hook = value; }};
@@ -1186,4 +1194,232 @@ test("blurring a pointer seek cancels safely while keyboard blur commits its fin
   slider.listeners.keydown({key: "End"}); slider.value = "180"; slider.listeners.input();
   await slider.listeners.blur();
   assert.deepEqual(app.requests.find((request) => request.url.endsWith("/seek")).data, {position: 180});
+});
+
+test("queue estimates add current remainder and previous durations", async () => {
+  const app = await setup();
+  assert.equal(app.run("queueSchedule(state,30).total"), "共 0 小時 3 分");
+  assert.equal(app.run("queueSchedule(state,30).times.get(1)"), "約 3 分鐘後");
+  assert.equal(app.run("queueSchedule(state,30).times.get(2)"), "約 4 分鐘後");
+  assert.equal(app.element("queue").children[0].children[2].children[2].textContent, "約 3 分鐘後");
+});
+
+test("unknown duration makes subsequent estimates undetermined", async () => {
+  const app = await setup();
+  app.states[1].queue[0].duration = 0;
+  await app.run("refresh()");
+  assert.match(app.run("queueSchedule(state).total"), /已知.*含長度未知/);
+  assert.match(app.run("queueSchedule(state).times.get(1)"), /分鐘/);
+  assert.equal(app.run("queueSchedule(state).times.get(2)"), "時間未定");
+  app.states[1].current.duration = 0;
+  await app.run("refresh()");
+  assert.equal(app.run("queueSchedule(state).times.get(1)"), "時間未定");
+});
+
+test("paused stopped and single repeat never invent start times", async () => {
+  const app = await setup();
+  for (const [status,repeat,expected] of [
+    ["paused","off","暫停中，時間順延"],["stopped","off","時間未定"],
+    ["playing","song","單曲重複中，時間未定"]]) {
+    app.states[1].status = status; app.states[1].repeat = repeat;
+    await app.run("refresh()");
+    assert.equal(app.run("queueSchedule(state).times.get(1)"), expected);
+  }
+});
+
+test("queue repeat shows first traversal and rounds long totals", async () => {
+  const app = await setup();
+  app.states[1].repeat = "all"; app.states[1].queue[0].duration = 3661;
+  await app.run("refresh()");
+  assert.equal(app.run("queueSchedule(state).total"), "共 1 小時 4 分");
+  assert.match(app.element("queue-timing-note").textContent,/本輪/);
+  assert.match(app.run("queueSchedule(state).times.get(1)"),/分鐘/);
+});
+
+test("local progress advances only playing and caps at duration", async () => {
+  const app = await setup();
+  app.run("stateAt = Date.now() - 10000");
+  assert.ok(app.run("localProgress()") >= 40);
+  app.run('state.status = "paused"');
+  assert.equal(app.run("localProgress()"),30);
+  app.run('state.status = "playing"; stateAt = Date.now()-999999');
+  assert.equal(app.run("localProgress()"),180);
+  app.run("connected = false");
+  assert.equal(app.run("localProgress()"),30);
+});
+
+test("my queue filter uses full positions for move and delete", async () => {
+  const app = await setup();
+  app.states[1].queue[1].mine = true;
+  await app.run("refresh()");
+  await app.element("queue-mine").listeners.click();
+  const row = app.element("queue").children[0];
+  assert.equal(row.dataset.position,"2");
+  assert.equal(app.element("queue").children.length,1);
+  assert.equal(app.element("queue-count").textContent,"2");
+  assert.equal(row.children[4].children[0].disabled,true);
+  assert.equal(app.element("shuffle").disabled,true);
+  await row.children[4].children[1].listeners.click();
+  assert.deepEqual(app.requests.find(r=>r.url.endsWith("queue/move")).data,
+    {from:2,to:1,revision:"revision-1"});
+  await app.element("queue").children[0].children[4].children[3].listeners.click();
+  assert.equal(app.requests.find(r=>r.method==="DELETE").url,"api/guilds/1/queue/1");
+});
+
+test("my filter disables pointer sorting and reports empty selection", async () => {
+  const app = await setup();
+  app.states[1].queue[0].mine = true;
+  await app.run("refresh()");
+  await app.element("queue-mine").listeners.click();
+  const handle = app.element("queue").children[0].children[4].children[0];
+  handle.listeners.pointerdown({button:0,isPrimary:true,pointerId:1,pointerType:"mouse"});
+  assert.equal(app.run("drag"),null);
+  app.states[1].queue[0].mine = false;
+  await app.run("refresh()");
+  assert.equal(app.element("queue").children.length,0);
+  assert.match(app.element("queue-empty").textContent,/沒有你點播/);
+  await app.element("queue-all").listeners.click();
+  assert.equal(app.element("queue").children.length,2);
+});
+
+test("listeners fold above eight and render names as text", async () => {
+  const app = await setup();
+  app.states[1].listeners = {connected:true,channel:"Music",members:
+    Array.from({length:11},(_,i)=>({name:i===0?"<script>unsafe</script>":"Member "+i,avatar:"javascript:evil"}))};
+  await app.run("refresh()");
+  const list = app.element("listeners-list");
+  assert.equal(list.children.length,9);
+  assert.equal(list.children[0].children[1].textContent,"<script>unsafe</script>");
+  assert.equal(list.children[0].children[0].src,undefined);
+  assert.equal(list.children[8].tag,"details");
+  assert.match(list.children[8].children[0].textContent,/3/);
+  delete app.states[1].listeners;
+  await app.run("refresh()");
+  assert.match(app.element("listeners-status").textContent,/目前不在語音頻道/);
+});
+
+test("activity displays Taiwan time source result and safe song text", async () => {
+  const app = await setup();
+  app.states[1].activity = {activity:[{actor:"Friend",detail:"點歌：<script>",source:"discord_slash",
+    result:"成功",time:Date.UTC(2026,0,1,1,2,3)/1000}]};
+  await app.run("refresh()");
+  const row = app.element("activity-list").children[0];
+  assert.equal(row.children[0].textContent,"Friend・點歌：<script>");
+  assert.match(row.children[1].textContent,/09:02:03.*Discord 斜線.*成功/);
+});
+
+const snapshot = (state) => ({state:clone(state),history:{history:[]}});
+test("SSE connects without headers and supersedes periodic fetches", async () => {
+  const app = await setup({events:true});
+  assert.equal(app.streams[0].url,"/api/guilds/1/events");
+  app.streams[0].emit("snapshot",snapshot(app.states[1]));
+  const count = app.requests.length;
+  await app.run("poll()");
+  assert.equal(app.requests.length,count);
+  assert.equal(app.run("fallbackPolling"),false);
+  assert.equal(app.element("connection").textContent,"即時連線");
+});
+
+test("SSE pushes community and history without optional REST polling", async () => {
+  const app = await setup({events:true});
+  app.states[1].volume = 72;
+  app.states[1].activity = {activity:[{actor:"Friend",detail:"暫停",source:"web",result:"成功",time:1}]};
+  const count = app.requests.length;
+  app.streams[0].emit("snapshot",snapshot(app.states[1]));
+  assert.equal(app.element("volume").value,72);
+  assert.equal(app.element("activity-list").children.length,1);
+  assert.equal(app.requests.length,count);
+});
+
+test("SSE reconnect backoff and repeated failure polling fallback", async () => {
+  const app = await setup({events:true});
+  app.streams[0].emit("snapshot",snapshot(app.states[1]));
+  const delays = [];
+  for (let i=0;i<4;i++) {
+    const old = app.streams.at(-1), before = app.timers.length;
+    await old.onerror();
+    assert.equal(old.closed,true);
+    const retry = app.timers.slice(before).at(-1);
+    delays.push(retry[1]);
+    assert.equal(app.run("fallbackPolling"),true);
+    const count = app.requests.length;
+    await app.run("poll()");
+    assert.ok(app.requests.length>count);
+    retry[0]();
+  }
+  assert.deepEqual(delays,[1000,2000,4000,60000]);
+  app.streams.at(-1).emit("snapshot",snapshot(app.states[1]));
+  assert.equal(app.run("eventFailures"),0);
+  assert.equal(app.run("fallbackPolling"),false);
+});
+
+test("SSE switch guild closes old stream ignores stale callbacks", async () => {
+  const app = await setup({events:true});
+  const old = app.streams[0];
+  app.element("guild").value = "2";
+  await app.element("guild").listeners.change();
+  assert.equal(old.closed,true);
+  assert.equal(app.streams.at(-1).url,"/api/guilds/2/events");
+  old.emit("snapshot",snapshot(app.states[1]));
+  assert.equal(app.element("title").textContent,"Second");
+  app.streams.at(-1).emit("snapshot",snapshot(app.states[2]));
+  assert.equal(app.element("connection").textContent,"即時連線");
+});
+
+test("SSE hiding tab closes stream and showing resumes", async () => {
+  const app = await setup({events:true});
+  const old = app.streams[0];
+  old.emit("snapshot",snapshot(app.states[1]));
+  app.document.hidden = true;
+  await app.document.listeners.visibilitychange();
+  assert.equal(old.closed,true);
+  const count = app.requests.length;
+  await app.run("poll()");
+  assert.equal(app.requests.length,count);
+  app.document.hidden = false;
+  await app.document.listeners.visibilitychange();
+  assert.equal(app.streams.length,2);
+});
+
+test("SSE expiry clears all private UI and closes connection", async () => {
+  const app = await setup({events:true,session:{auth_mode:"discord",authenticated:true,
+    user:{id:"43",name:"Friend",avatar:""}}});
+  const stream = app.streams[0];
+  stream.emit("snapshot",snapshot(app.states[1]));
+  stream.emit("access",{status:401});
+  assert.equal(stream.closed,true);
+  assert.equal(app.run("authenticated"),false);
+  assert.equal(app.element("queue").children.length,0);
+  assert.equal(app.element("activity-list").children.length,0);
+  assert.equal(app.element("dashboard").hidden,true);
+});
+
+test("SSE construction timeout and absent support retain polling", async () => {
+  const app = await setup({events:true});
+  const timeout = app.timers.find(timer=>timer[1]===20000);
+  assert.ok(timeout);
+  await timeout[0]();
+  assert.equal(app.streams[0].closed,true);
+  assert.equal(app.run("fallbackPolling"),true);
+  const plain = await setup();
+  assert.equal(plain.run("fallbackPolling"),true);
+});
+
+test("legacy shared secret never enters EventSource URL", async () => {
+  const app = await setup({events:true});
+  app.element("secret").value = "fixture-secret";
+  app.element("auth-form").listeners.submit({preventDefault(){}});
+  await flush();
+  assert.equal(app.streams.length,1);
+  assert.equal(app.streams[0].closed,true);
+  assert.equal(app.run("fallbackPolling"),true);
+  assert.ok(app.streams.every(s=>!s.url.includes("fixture-secret")));
+});
+
+test("SSE wrong-guild data closes and reconnects safely", async () => {
+  const app = await setup({events:true});
+  app.streams[0].emit("snapshot",snapshot(app.states[2]));
+  await flush();
+  assert.equal(app.streams[0].closed,true);
+  assert.equal(app.element("title").textContent,"First");
 });

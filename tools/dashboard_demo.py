@@ -90,12 +90,24 @@ class DemoBot:
                          permissions_for=lambda _: NS(view_channel=True, send_messages=True))
             for uid in (42, 43, 45):
                 members[uid].voice = NS(channel=channel, deaf=False, self_deaf=False)
+            for uid, member in members.items():
+                member.display_avatar = NS(url=f"{self.origin}/demo-cover/{uid % 5}.svg")
             channel.members = [members[uid] for uid in (42, 43, 45)]
+            # Include enough listeners to exercise folding, plus bots to exclude.
+            channel.members += [NS(id=100+i, name=f"聽眾 {i+1}", display_name=f"聽眾 {i+1}",
+                                   display_avatar=NS(url=f"{self.origin}/demo-cover/{i % 5}.svg"),
+                                   voice=NS(channel=channel, deaf=False, self_deaf=False),
+                                   bot=False) for i in range(8)]
+            channel.members += [NS(id=900, name="示範機器人", bot=True)]
             guild.me.voice = NS(channel=channel)
             guild.get_member = members.get
             guild.get_channel = lambda cid, ch=channel: ch if cid == ch.id else None
-            guild.system_channel = channel
-            guild.channels = guild.text_channels = [channel]
+            text = NS(id=gid * 10 + 1, guild=guild, name="點歌文字頻道", typing=self.noop,
+                      permissions_for=lambda _: NS(view_channel=True, send_messages=True))
+            guild.get_channel = lambda cid, vc=channel, tc=text: next(
+                (ch for ch in (vc, tc) if ch.id == cid), None)
+            guild.system_channel = text
+            guild.channels, guild.text_channels = [channel, text], [text]
             self.guilds.append(guild)
             self.server_data[gid] = None
             self.players[gid] = NS(
@@ -106,9 +118,13 @@ class DemoBot:
                 repeatsong=False, loopqueue=False, karaoke_mode=False,
                 skip_state=SkipState(), tick=time.monotonic())
             player = self.players[gid]
-            player.current_entry.author, player.current_entry.channel = owner, channel
+            player.current_entry.author, player.current_entry.channel = owner, text
             for index, song in enumerate(player.playlist.entries):
-                song.author, song.channel = members[43] if index == 1 else owner, channel
+                song.author, song.channel = members[43] if index == 1 else owner, text
+                if index == 2:
+                    song = self.song(20, title="示範直播（長度未知）", duration=0)
+                    song.author, song.channel = owner, text
+                    player.playlist.entries[index] = song
                 if index == 3:
                     song.author, song.channel = None, None
             def skip(p=player, g=guild):
@@ -144,7 +160,7 @@ class DemoBot:
         now = time.monotonic()
         if player.is_playing and player.current_entry:
             player.progress += now - player.tick
-            if player.progress >= player.current_entry.duration:
+            if (player.current_entry.duration or 0) > 0 and player.progress >= player.current_entry.duration:
                 player.skip()
         player.tick = now
         return player
@@ -211,6 +227,8 @@ class DemoBot:
                 player.playlist.entries.appendleft(song)
             else:
                 player.playlist.entries.append(song)
+            if self.dashboard:
+                self.dashboard.note_queue_entry(channel.guild, song)
             if validator is not None:
                 validator.enqueued = True
 
@@ -275,7 +293,57 @@ class DemoDashboard(Dashboard):
                 song.channel = guild.system_channel
                 self.record_play(guild, song, played_at=time.time() - (index + 1) * 180)
             self.record_play(guild, bot.players[guild.id].current_entry)
+            for index, source in enumerate(("web", "discord_text", "discord_slash")):
+                self.record_activity(guild, "Owner" if index == 0 else "一般成員",
+                    "play", source, "點歌：" + TITLES[index], "成功",
+                    timestamp=time.time() - 30 * (3-index))
+        self.demo_step = 0
+        self.app.cleanup_ctx.append(self.demo_updates)
         self.app.router.add_post("/demo-login/{user}", self.fake_callback)
+
+    def demo_tick(self):
+        """Deterministic local simulation, usable without starting its timer."""
+        self.demo_step += 1
+        for guild in self.bot.guilds:
+            player = self.bot.players[guild.id]
+            if self.demo_step % 2:
+                song = self.bot.song(self.demo_step, title=f"即時示範歌曲 {self.demo_step}")
+                song.author, song.channel = self.bot.members[guild.id][43], guild.system_channel
+                player.playlist.entries.append(song)
+                self.note_queue_entry(guild, song)
+                while len(player.playlist.entries) > 12:
+                    player.playlist.entries.popleft()
+                self.record_activity(guild, "一般成員", "play", "discord_slash",
+                                     "點歌：" + song.title, "成功")
+            else:
+                title = getattr(player.current_entry, "title", "")
+                player.skip()
+                self.record_activity(guild, "Owner", "skip", "web", "跳過：" + title, "成功")
+            # Keep the timing edge case visible even in a long-running demo.
+            while len(player.playlist.entries) > 10:
+                player.playlist.entries.popleft()
+            if not any(not song.duration for song in player.playlist.entries):
+                unknown = self.bot.song(20, title="示範直播（長度未知）", duration=0)
+                unknown.author, unknown.channel = self.bot.members[guild.id][42], guild.system_channel
+                player.playlist.entries.insert(max(0, len(player.playlist.entries)-1), unknown)
+                self.note_queue_entry(guild, unknown)
+            if not player.playlist.entries[-1].duration:
+                following = self.bot.song(1)
+                following.author, following.channel = self.bot.members[guild.id][42], guild.system_channel
+                player.playlist.entries.append(following)
+                self.note_queue_entry(guild, following)
+
+    async def demo_updates(self, _app):
+        async def run():
+            while True:
+                await asyncio.sleep(6)
+                self.demo_tick()
+        task = asyncio.create_task(run())
+        try:
+            yield
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
     def fake_response(self, key):
         uid, name = FAKE_USERS[key]
