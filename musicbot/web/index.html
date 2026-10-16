@@ -43,6 +43,7 @@
         <label class="sr-only" for="query">歌曲連結或搜尋關鍵字</label>
         <div class="input-row"><input id="query" type="text" maxlength="2000" placeholder="貼上歌曲／播放清單連結，或輸入歌名" required>
           <button id="enqueue" class="primary" type="submit" disabled>查詢</button></div>
+        <div class="request-mode"><label for="request-action">查詢用途</label><select id="request-action"><option value="play">加入佇列</option><option value="playnext">下一首播放（單曲）</option></select></div>
       </form>
       <section id="preview-panel" hidden aria-label="點歌預覽">
         <div class="section-top"><h3>確認你的選擇</h3><button id="preview-close" class="subtle" type="button">清除預覽</button></div>
@@ -55,7 +56,16 @@
       <div class="track-info"><p class="eyebrow" id="now-heading">正在播放</p><span id="play-status" class="badge">尚未連線</span>
         <h2 id="title">選一首喜歡的歌</h2><p id="subtitle" class="muted">請先加入 Discord 語音頻道</p>
         <a id="source-link" class="source-link" target="_blank" rel="noopener noreferrer" hidden>在來源網站開啟 ↗</a>
+        <button id="lyrics-toggle" class="subtle" type="button" aria-expanded="false" aria-controls="lyrics-panel" disabled>歌詞 ♫</button>
+        <div class="progress-row hero-progress"><span id="hero-elapsed">0:00</span><input id="hero-progress" type="range" min="0" max="1" step="1" value="0" aria-label="正在播放：跳到指定時間" disabled><span id="hero-duration">0:00</span></div>
+        <p class="hint seek-hint">拖動或按左右鍵，放開後跳轉。</p>
       </div>
+    </section>
+    <section id="lyrics-panel" class="card lyrics-panel" aria-labelledby="lyrics-heading" hidden>
+      <div class="section-top"><div><p class="eyebrow">跟著旋律，讀一句</p><h2 id="lyrics-heading">歌詞</h2></div><button id="lyrics-close" class="subtle" type="button" aria-label="關閉歌詞">關閉 ×</button></div>
+      <p id="lyrics-status" class="hint" role="status" aria-live="polite"></p>
+      <div id="lyrics-content" class="lyrics-content" tabindex="0" aria-label="歌詞內容"></div>
+      <form id="lyrics-search-form" class="lyrics-search" hidden><label for="lyrics-query">試試歌名與演出者</label><div class="input-row"><input id="lyrics-query" type="search" maxlength="200" placeholder="歌名 演出者" required><button id="lyrics-search" type="submit">搜尋歌詞</button></div></form>
     </section>
     <section class="card queue" aria-labelledby="queue-heading">
       <div class="section-top"><div><p class="eyebrow">讓旋律接下去</p><h2 id="queue-heading">接下來 <span id="queue-count">0</span></h2></div>
@@ -64,6 +74,12 @@
       <div class="queue-head" aria-hidden="true"><span>＃</span><span>歌曲</span><span>長度</span></div>
       <ol id="queue" aria-describedby="drag-help"></ol>
       <p id="queue-empty" class="empty">下一首的空位，留給你。<br><span>查詢上方歌曲，確認後加入佇列。</span></p>
+    </section>
+    <section class="card history" aria-labelledby="history-heading">
+      <div class="section-top"><div><p class="eyebrow">再聽一次，也很好</p><h2 id="history-heading">最近播過</h2></div><button id="history-refresh" class="subtle" type="button" disabled>重新整理</button></div>
+      <p class="hint">這個伺服器最近播放的 50 首歌曲。</p>
+      <p id="history-status" class="hint" role="status">尚無播放紀錄。</p>
+      <ol id="history-list" class="history-list"></ol>
     </section>
     <footer id="identity-note">每秒更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道</footer>
   </main>
@@ -74,7 +90,7 @@
       <div class="transport"><button id="toggle" class="primary" aria-label="播放或暫停" disabled>播放 ▶</button>
         <button id="skip" aria-label="跳過目前歌曲" disabled>跳過 ⏭</button>
         <label class="repeat-label" for="repeat">重複<select id="repeat" disabled><option value="off">關閉</option><option value="song">單曲</option><option value="all">整個佇列</option></select></label></div>
-      <div class="progress-row"><span id="elapsed">0:00</span><progress id="progress" value="0" max="1" aria-label="歌曲播放進度"></progress><span id="duration">0:00</span></div>
+      <div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1" step="1" value="0" aria-label="底部播放列：跳到指定時間" disabled><span id="duration">0:00</span></div>
     </div>
     <div class="volume-row"><label for="volume">音量</label><input id="volume" type="range" min="1" max="100" value="15" disabled><output id="volume-label" for="volume">15%</output></div>
   </section>

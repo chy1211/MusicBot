@@ -1065,6 +1065,14 @@ class MusicBot(commands.Bot):
         Event called by MusicPlayer when playback of an entry is started.
         """
         log.debug("Running on_player_play")
+        # Optional web metadata history observes the actual playback event.
+        # It must never interrupt Discord playback if its own serialization fails.
+        dashboard = getattr(self, "_web_dashboard", None)
+        if dashboard is not None:
+            try:
+                dashboard.record_play(player.voice_client.channel.guild, entry)
+            except Exception as exc:
+                log.warning("Dashboard history recording failed (%s)", type(exc).__name__)
         ssd_ = self.server_data[player.voice_client.channel.guild.id]
         await self._handle_guild_auto_pause(player)
         await self.reset_player_inactivity(player)

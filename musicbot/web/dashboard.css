@@ -38,3 +38,22 @@ select option{background:#1c1c22}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(max-width:760px){.notice{right:16px}.sidebar .brand{font-size:16px;margin:0;padding:6px 10px}.source-link{font-size:11px;padding:6px 10px}.preview-item>div{min-width:0}.preview-item>.primary{white-space:normal}.playlist-selection{max-height:50vh}.page-heading{gap:10px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.is-loading::before{display:none}#queue>li.dragging{transform:none!important}}
+
+/* Round five: seeking, recent songs and an inline lyrics reading room. */
+.request-mode{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;color:var(--muted);font-size:12px}.request-mode select{font-size:12px;min-height:44px;padding:8px 12px}
+.track-info{flex:1}.hero-progress{margin-top:18px;max-width:600px}.seek-hint{margin-top:2px}
+.progress-row input[type=range]{flex:1;width:100%;min-width:40px;height:44px;min-height:44px;cursor:pointer;touch-action:pan-y}
+.progress-row input:disabled{cursor:default;opacity:.45}.progress-row>span{flex-shrink:0;min-width:28px}
+#lyrics-toggle{margin-top:12px;margin-left:8px}.lyrics-panel .section-top{margin-bottom:16px}
+.lyrics-content{max-height:390px;overflow:auto;overscroll-behavior:contain;padding:12px 16px;scroll-padding:36px;border-radius:16px;background:rgba(0,0,0,.15);scrollbar-width:thin}
+.lyrics-content:empty{display:none}.lyrics-content p{padding:10px 0;color:var(--muted);font-size:18px;line-height:1.6;transition:color .2s,transform .2s;overflow-wrap:anywhere}
+.lyrics-content .current-line{color:var(--text);font-weight:750;transform:translateX(5px)}.plain-lyrics{white-space:pre-wrap;line-height:2;color:var(--text)}
+.lyrics-search{margin-top:18px}.lyrics-search>label{display:block;font-size:12px;color:var(--muted);margin-bottom:8px}
+.history-list{list-style:none;padding:0;margin:14px 0 0;max-height:580px;overflow:auto;scrollbar-width:thin}
+.history-list>li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--line)}
+.history-info{min-width:0}.history-info>p{overflow-wrap:anywhere;font-size:14px}.history-info small{font-size:11px}.requester-avatar{height:18px;width:18px;border-radius:50%;vertical-align:middle;object-fit:cover;margin-left:7px}
+.history-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}.history-actions button{font-size:12px;padding:8px 14px}.history-actions a{color:var(--green);font-size:12px;min-height:44px;display:inline-flex;align-items:center}
+.preview-item:has(.preview-alternate){grid-template-columns:64px minmax(0,1fr) auto}.preview-alternate{grid-column:3;justify-self:stretch;font-size:12px;margin-top:-8px}.preview-item:has(.preview-alternate)>.primary{align-self:end}.playlist-next-hint{margin-top:12px!important}
+@media(max-width:760px){.hero-progress{margin-left:calc(-108px - 18px);margin-top:24px}.seek-hint{margin-left:calc(-108px - 18px);font-size:10px}.now-playing{padding-bottom:12px}.progress-row{gap:7px}.preview-item:has(.preview-alternate){grid-template-columns:48px minmax(0,1fr)}.preview-item>.preview-alternate{grid-column:2;justify-self:start;margin-top:0}.lyrics-content{max-height:42vh;padding:10px}.lyrics-content p{font-size:17px}.lyrics-search .input-row{flex-wrap:wrap}.lyrics-search input{min-width:160px}.history-list>li{grid-template-columns:38px minmax(0,1fr);gap:10px}.history-list .queue-cover{width:38px;height:38px}.history-actions{grid-column:2;justify-content:flex-start}.history .section-top{align-items:flex-start}.history h2{font-size:21px}#lyrics-toggle{margin-left:0}.progress-row input[type=range]{touch-action:pan-y}}
+
+:root{--bar:128px}@media(max-width:1100px){:root{--bar:184px}.playback-bar{--bar:184px}}@media(max-width:760px){:root{--bar:216px}.playback-bar{--bar:216px}}

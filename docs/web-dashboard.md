@@ -1,12 +1,13 @@
-# Web dashboard: round 4 (implemented and tested, not deployed)
+# Web dashboard: round 5 (implemented and tested, not deployed)
 
 Optional aiohttp dashboard inside the bot event loop, without another Discord
-client or dependency. Production dev ae9cc53 already uses Discord login. This round-4 branch is
-not deployed. Default AuthMode=owner preserves legacy OwnerID behavior when
-the key is missing. That mode still requires external SSO.
-Removing SSO is appropriate only after separately deploying and verifying
-AuthMode=discord over HTTPS. This branch changes no production configuration,
-container, release tag, proxy, firewall or system service.
+client or dependency. Production dev remains 5ac807b (round 4, deployed
+2026-10-17); this round-5 feature branch is not deployed. The public production
+dashboard already uses Discord login. Each caller acts with their own guild
+membership, permissions and voice state. Default AuthMode=owner preserves legacy
+OwnerID behavior when the key is missing; owner mode requires external SSO.
+This branch changes no production configuration, container, release tag, proxy,
+firewall or system service.
 
 ## Configuration and Discord Developer Portal
 
@@ -135,8 +136,12 @@ voice again before executing.
 | API under /api/guilds/{id} | Command permission | Discord-mode voice | Existing implementation |
 | --- | --- | --- | --- |
 | GET /state | none; membership/blocklist | none | get_player_in |
-| POST /resolve | play, query first argument | none; never summons | extract_info, _do_song_blocklist_check, can_use_extractor, playlist/entry gates |
+| POST /resolve | play or playnext (action), query first argument | none; never summons | extract_info, _do_song_blocklist_check, can_use_extractor, playlist/entry gates |
 | POST /play | play, query first argument | same bot voice; absent bot needs caller voice + summonplay | cmd_play -> _cmd_play -> Playlist |
+| POST /playnext | playnext, query first argument | same bot voice; absent bot needs caller voice + summonplay | cmd_playnext -> _cmd_play(head=True); single only |
+| POST /seek | seek, absolute seconds | same bot voice | cmd_seek; observed track_token |
+| GET /history | none; membership/blocklist | none | playback-start metadata + loaded guild URL history |
+| GET /lyrics | none; membership/blocklist + separate 12/min | none | anonymous LRCLIB adapter |
 | POST /pause | pause | same bot voice | cmd_pause |
 | POST /resume | resume | same bot voice | cmd_resume |
 | POST /skip | skip | same bot voice | cmd_skip, actual author, message=None, existing skip_state |
@@ -148,7 +153,7 @@ voice again before executing.
 
 Every mutation requires same bot voice even with empty IgnoreNonVoice and even
 for the logged-in Owner. Configured IgnoreNonVoice also calls the existing check.
-Only play may create a player. Missing voice/bot returns 409; another voice
+Only play/playnext may create a player. Missing voice/bot returns 409; another voice
 channel returns 403. Text responses follow bound-channel, UnboundServers and
 member/bot view/send checks. Command author is the real caller; Discord messages
 are sent by the bot with caller attribution, not by impersonating the user.
@@ -170,7 +175,7 @@ percent, repeat, queue and revision. Errors return {error}: 400 malformed/comman
 429 admission limit, 502 provider failure, 504 resolver timeout. Denied preview
 items may instead return allowed=false with a reason in a successful result list.
 
-POST /resolve {query} extracts metadata only. Keywords return up to five choices,
+POST /resolve {query,action?} extracts metadata only (action defaults to play). Keywords return up to five choices,
 bounded by MaxSearchItems. Playlist results now contain every extracted child up
 to 200 entries, with a scrollable checklist, rather than a ten-song sample.
 
@@ -254,7 +259,7 @@ host/port. The current-track link uses target=_blank, rel="noopener noreferrer".
 Move: {from,to,revision}, 1-based. Shuffle/remove: {revision}. Stale/concurrent
 queue requests return 409. Volume: integer 1..100. Repeat: off/song/all.
 
-Discord mode allows **12 combined resolve/play attempts per user per rolling
+Discord mode allows **12 combined resolve/play/playnext attempts per user per rolling
 60 seconds**, across guilds and sessions; owner mode is unaffected. Additionally
 one resolver per guild, two overall. Resolve deadlines are 20 seconds without
 holding playback mutation locks; timed-out work retains its slot until finished.
@@ -414,3 +419,166 @@ Every test/demo container uses --network none. The browser reaches only the
 fake demo via the loopback relay and SSH tunnel. No release commands or real
 credentials were used. Worktree and temporary Docker resources are removed
 after the commit; feature/dashboard-round4 remains for later review.
+
+
+## Round 5: seek, playnext, recent plays and lyrics (not deployed)
+
+New authenticated endpoints under /api/guilds/{id}:
+
+| Method/path | Input | Output | Permission / voice / existing function |
+| --- | --- | --- | --- |
+| POST /seek | {"position":62.5,"track_token":"state current token"} absolute seconds, finite number, not boolean | {message,state} | seek; same bot voice; cmd_seek |
+| POST /playnext | {"query":"https://example.test/song","preview_id":"..."} | {message,state} | playnext; same bot voice; cmd_playnext -> _cmd_play(head=True) |
+| GET /history | none | {history:[track + played_at],source,resets_on_restart:true} | membership/blocklist only; no voice |
+| GET /lyrics | optional ?query=artist%20song (manual keywords) | {status,title,artist,plain_lyrics,lines:[{time,text}],track_key} | membership/blocklist only; no voice |
+
+POST /resolve accepts optional action="play" (default) or "playnext" and checks
+that command's permission, including the URL/first argument. The query-use selector
+supports callers with playnext permission but no play permission. A single-song
+preview can be confirmed with either button; the chosen command's current
+permissions are always checked again. A preview remains a single-use choice,
+so switching action after completion never adds it twice. All normal queue/song,
+blocklist, extractor and karaoke limits still apply.
+Round 5 offers playnext for single tracks only. Playlist insertion is rejected
+rather than reversing a list through repeated head insertions. Ordinary playlist
+selection remains the round-4 play path.
+
+State current adds seekable (boolean) and an opaque track_token tied to the
+player and playback entry. The browser returns the observed track_token with
+seek; an old token returns 409. Legacy position-only requests still compare the
+entry before waiting for the guild lock/context and after any connection await,
+rejecting a track change instead of moving the next song.
+
+Seek accepts absolute 0..duration inclusive; unknown-duration/stream entries and
+out-of-range values fail without modifying the queue. Only URL/local entries are
+seekable. cmd_seek restarts the same entry via the existing ffmpeg seek mechanism,
+which may have codec-dependent accuracy. Both now-playing and bottom-bar range
+inputs support pointer, touch and arrow keys. Input previews both time displays;
+only release/keyup/committed change submits. Polling updates state without replacing
+an active drag. A changed guild/track, pointer cancel or Escape cancels the draft.
+
+Recent plays are captured on playback-start events, including native Discord
+requests with no browser open. The optional bot hook is synchronous, bounded and
+exception-isolated; disabling/missing dashboard leaves native commands unchanged.
+Every guild keeps at most 50 minimal records in memory. Names/avatar URLs are
+resolved from the current guild member cache; only Discord user IDs are retained
+internally, never sent as requester fields. Historical guild-history URLs can
+supplement this view when already enabled; legacy URL-only entries have unknown
+time/requester/length rather than invented metadata. Global-only history has no guild attribution, so it cannot safely backfill old
+songs: this mode uses guild-scoped event metadata only and reports
+source=dashboard_memory_global_history_unscoped. Shared global URLs are never
+exposed as another guild's history. No options.ini change is needed.
+Seeking restarts an entry and therefore can add another start record.
+New metadata clears on process restart; existing enabled URL history follows the
+bot's original persistence behavior. Replay uses a fresh play preview and the
+logged-in caller's current restrictions. Times display in Asia/Taipei; old
+URL-only entries explicitly show an unknown time.
+
+Lyrics use the backend's LRCLIB metadata lookup and search fallback. The browser
+only calls same-origin APIs and creates lyric text nodes, preserving CSP and
+avoiding HTML injection. Synced LRC highlights and scrolls the current line with
+playback progress; plain text displays as a paragraph. Missing lyrics and provider
+errors retain manual search. Guild/track changes invalidate stale responses.
+Reduced-motion disables smooth scrolling and decorative movement.
+
+The provider boundary sends only song title, artist and duration (or manual song
+keywords), with a project User-Agent, a dedicated unauthenticated HTTP session,
+no redirects and no forwarded user/session/bot headers. The overall lookup budget
+is eight seconds. Successful and not-found results are cached for one hour (at most 200 entries);
+unavailable responses use a 30-second negative cache/cooldown. Each person gets
+12 lyric requests per rolling minute across guilds, including cache hits. Provider
+requests are serialized with a 200 ms minimum interval, honor Retry-After on
+429/503, refuse redirects and non-JSON bodies, and cap responses at 512 KiB. Song metadata is cleaned before lookup: common Official/MV/video/
+audio/lyrics/quality labels, bracket decorations, labeled video suffixes and featuring
+suffixes; artist/title separators are recognized. Artist metadata is preferred
+when available. Search candidates are checked for plausible title/duration
+matches; manual search deliberately relaxes artist/duration matching. No requester
+information is sent to LRCLIB.
+Protocol reference: https://lrclib.net/docs (checked 2026-10-17).
+
+### Round-5 isolated demo and tests
+
+All Docker names/tags created for this round start musicbot-webtest-. The base
+musicbot:ytdlp-base tag is only read. Build from a Git archive, never from the
+operational directory. Run on the VPS after the feature commit:
+
+~~~sh
+ctx=$(mktemp -d /tmp/musicbot-webtest-r5.XXXXXX)
+git -C "$HOME/musicbot" archive feature/dashboard-round5 | tar -x -C "$ctx"
+printf '%s\n' 'FROM musicbot:ytdlp-base' 'WORKDIR /webtest' 'COPY . .' |
+  docker build --network none -t musicbot-webtest-r5:demo -f - "$ctx"
+
+docker run --rm --network none --name musicbot-webtest-r5-unit \
+  --entrypoint python3 musicbot-webtest-r5:demo \
+  -W 'error::DeprecationWarning:aiohttp.web_protocol' \
+  -m unittest discover -s tests -p 'test_web_dashboard*.py'
+docker run --rm --network none --name musicbot-webtest-r5-links \
+  --entrypoint python3 musicbot-webtest-r5:demo -m tools.test_compound_link
+(cd "$ctx" && node --check musicbot/web/dashboard.js &&
+  node --test tests/test_web_dashboard_frontend.cjs)
+
+docker run --rm -d --network none --name musicbot-webtest-r5-demo \
+  --entrypoint python3 musicbot-webtest-r5:demo \
+  -m tools.dashboard_demo --host 0.0.0.0 --port 8080 \
+  --public-origin http://127.0.0.1:18080
+python3 "$ctx/tools/dashboard_demo_relay.py" \
+  --container musicbot-webtest-r5-demo --port 18080
+~~~
+
+Keep the relay running and open a Windows PowerShell SSH tunnel:
+
+~~~powershell
+ssh -N -L 127.0.0.1:18080:127.0.0.1:18080 -o ExitOnForwardFailure=yes your-vps
+~~~
+
+Open http://127.0.0.1:18080/ and choose the fake Owner:
+
+1. Drag/click either progress slider, hold it while polling continues, release,
+   then use keyboard arrows. The fake clock moves to the requested position.
+2. Search any word or https://example.test/track/0, then choose 下一首播放.
+   The current song continues and the new song appears first in the queue.
+   A playlist offers ordinary selection only. Member/away/denied users show the
+   same permission/voice denials as the authenticated API.
+3. Open 最近播過: fake songs include Owner and 一般成員. Source links use
+   example.test; 再點一次 opens a permission-checked play preview. Skipping records
+   the next started song and the two demo guilds remain separate.
+4. Open 歌詞 on 夜色慢行 for original synced demo lyrics. Seek to 45 seconds to
+   see the highlight change. 窗邊的午後 (also guild 2's initial song) has original
+   plain text. 島嶼來信 has no match; manually search 夜色慢行 to find fake lyrics.
+   FakeLyricsClient replaces LRCLIB entirely; no provider request can occur.
+
+Stop relay/tunnel with Ctrl+C, then remove only these named resources:
+
+~~~sh
+docker stop musicbot-webtest-r5-demo
+docker image rm musicbot-webtest-r5:demo
+case "$ctx" in /tmp/musicbot-webtest-r5.*) rm -rf -- "$ctx";; esac
+~~~
+
+No production container/configuration, service, proxy, firewall or network
+configuration is changed by this workflow. Live Discord voice, actual LRCLIB
+matching, external TLS and real-phone interaction still need a separately
+authorized release/acceptance window.
+
+
+### Round-5 validation (2026-10-17, no deployment)
+
+Original baseline: backend 171/171, frontend 46/46, compound-link 16/16.
+Final round-5 suites: backend 212/212 (35 API/provider regressions and six demo
+cases added), frontend 69/69, compound-link 16/16; zero failures. Python runs with
+aiohttp.web_protocol DeprecationWarning promoted to an error. JS syntax and
+git diff --check pass.
+
+Nine real headless Chromium checks passed against the fake-login demo through
+the loopback relay: both seek inputs/history rendered; actual mouse drag held
+across polling and release; keyboard hold/release; synced lyric highlighting;
+playnext before existing songs while retaining current; recent replay preview;
+390px viewport without horizontal overflow; emulated touch release; plain and
+missing lyrics with manual fake search. No external requests occurred. Native
+range capture behavior was exercised and fixed; the VM suite now includes it.
+
+Independent review also reproduced and fixed full-duration playnext limits
+(complete days and fractional seconds), stale seek during lock/context awaits,
+and disabled alternate buttons on disallowed previews. No Discord client,
+real voice, actual LRCLIB query or real-phone touchscreen was used. These remain
+acceptance items for a separately authorized release.
