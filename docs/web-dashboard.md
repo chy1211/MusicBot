@@ -891,3 +891,43 @@ new selections use the updated source at the next refill. No bulk clear/overwrit
 
 The offline demo uses a real AutoPlaylist in TemporaryDirectory, fake URLs and
 fake cache callbacks, shared by its fake guilds. No real config/data is accessed.
+
+## Owner permissions page (round 7)
+
+GET /api/guilds/{guild}/admin/permissions -> {groups,limits,activity}.
+Only OwnerID in that target guild is authorized. The listed fields are MaxSongs,
+MaxSongLength, MaxPlaylistLength, MaxSearchItems, AllowPlaylists, InstaSkip,
+SkipLooped, Remove, SkipWhenAbsent, BypassKaraokeMode, SummonNoVoice, Extractors,
+CommandWhitelist/CommandBlacklist, GrantToRoles/UserList. IDs in the latter two
+are resolved in that guild to names; absent entries become 未知角色/未知成員.
+Virtual groups are displayed read-only if absent from the file.
+
+PATCH at the same path accepts exactly {group,field,old_value,value}.
+Only the four fields MaxSongs (0-10000), MaxSongLength (0-86400 seconds),
+MaxPlaylistLength (0-10000) and AllowPlaylists (JSON boolean) are editable in
+existing disk groups. Zero retains native unlimited semantics. The confirmation
+dialog shows the group, field and old/new values; stale old_value returns 409.
+
+Transaction under the dashboard administration lock:
+1. Validate caller, field/value and current value. Read original bytes.
+2. Back up the original to data/web_dashboard/backups/permissions/
+   permissions.ini.<YYYYmmdd-HHMMSS>, same-second suffix if necessary, newest 30.
+3. Replace only the value span of the target line (or append the missing field
+   at the end of that group). Preserve comments, ordering, spaces and line ends.
+4. Write a sibling temporary file, flush/fsync, parse with native Permissions.
+   Failed parsing removes the temp, returns 400 and leaves the original intact.
+5. Recheck session, membership, disk bytes and live object identity. Atomically
+   replace the original, fsync its directory.
+6. Rebuild Permissions(bot._perms_file), set_owner_id(bot.config.owner_id),
+   await async_validate(bot), then replace bot.permissions, matching native reload.
+   Any failure after replacement atomically restores backup bytes and the original
+   live object; no success is reported. A restore failure is reported explicitly.
+7. Append 管理：修改權限 群組 欄位 舊值→新值 to a bounded owner-only management
+   activity list (100, memory only). Shared guild activity/SSE does not include it.
+
+No save command, config serializer or options.ini access is used. Existing
+Discord commands and bot.py/permissions.py/autoplaylist.py are unchanged.
+Concurrent external edits before replacement cause 409. Native Discord permission
+editing is outside this web lock; avoid simultaneous administration from both UIs.
+The demo uses a real Permissions parser on a fake permissions.ini located wholly
+inside TemporaryDirectory and replaces its in-memory object through the same API.

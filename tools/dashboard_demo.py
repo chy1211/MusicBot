@@ -310,6 +310,20 @@ class DemoDashboard(Dashboard):
         for gid in bot.server_data:
             bot.server_data[gid] = NS(autoplaylist=apl)
         self.backup_root = Path(self.demo_temp.name) / "backups"
+        from musicbot.permissions import Permissions
+        bot._perms_file = Path(self.demo_temp.name) / "permissions.ini"
+        bot._perms_file.write_text("[Owner (auto)]\nMaxPlaylistLength = 30\nMaxSearchItems = 5\n"
+            "[Default]\nMaxSongs = 3\nMaxSongLength = 210\nAllowPlaylists = no\n"
+            "MaxSearchItems = 5\nSummonNoVoice = yes\nBypassKaraokeMode = yes\n"
+            "[No commands]\nUserList = 45\nCommandWhitelist = __demo_denied__\n", encoding="utf-8")
+        bot.permissions = Permissions(bot._perms_file)
+        bot.permissions.set_owner_id(bot.config.owner_id)
+        bot.perms = bot.permissions.owner_group
+        bot.member_perms = bot.permissions.default_group
+        for members in bot.members.values():
+            for member in members.values():
+                member.roles = []
+
         bot.dashboard = self
         for guild in bot.guilds:
             for index in range(5, -1, -1):

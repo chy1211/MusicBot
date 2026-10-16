@@ -5,6 +5,8 @@ function adminClear() {
   $("nav-admin").hidden = true; $("admin-panel").hidden = true;
   $("autoplaylist-current").hidden = true; $("admin-apl-list").replaceChildren();
   $("admin-permissions")?.replaceChildren();
+  if (typeof pendingPermission !== "undefined") pendingPermission = null;
+  $("permission-confirm-dialog").close?.();
 }
 async function adminCapability() {
   const epoch = generation, token = ++adminEpoch;

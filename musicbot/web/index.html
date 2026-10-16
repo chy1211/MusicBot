@@ -11,6 +11,7 @@
   <script src="/dashboard.js" defer></script>
   <script src="/library.js" defer></script>
   <script src="/admin.js" defer></script>
+  <script src="/permissions.js" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -115,6 +116,7 @@
 <div class="selection-tools"><button id="admin-apl-prev" type="button">上一頁</button><button id="admin-apl-next" type="button">下一頁</button></div>
 <form id="admin-apl-add" class="input-row"><label for="admin-apl-url">新增網址</label><input id="admin-apl-url" type="url" maxlength="2000" required><button id="admin-apl-add-button" type="submit">新增</button></form>
 <div id="admin-permissions"></div></section>
+<dialog id="permission-confirm-dialog"><h2>確認修改權限</h2><p id="permission-confirm-text"></p><div class="selection-tools"><button id="permission-confirm" type="button">確認修改</button><button id="permission-cancel" type="button">取消</button></div></dialog>
     <footer id="identity-note">即時更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道</footer>
   </main>
   <section class="playback-bar" aria-label="播放控制">
