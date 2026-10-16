@@ -509,8 +509,28 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         return (hashlib.sha256(str((id(player), id(entry))).encode()).hexdigest()
                 if entry is not None else "")
 
+    def control_capabilities(self, guild, viewer):
+        """Viewer-only hints; mutation handlers still authorize every request."""
+        result = dict.fromkeys(("pause", "resume", "skip", "seek"), False)
+        if viewer is None or self.bot.get_player_in(guild) is None:
+            return result
+        permissions = self.bot.permissions.for_user(viewer)
+        for command in result:
+            try:
+                self.command_permission(viewer, permissions, command)
+                if self.discord_auth or command == "seek":
+                    self.voice_permission(guild, viewer, permissions, command)
+                elif not viewer.voice or not viewer.voice.channel:
+                    continue
+                self.channel_for(guild, viewer)
+                result[command] = True
+            except APIError:
+                pass
+        return result
+
     def snapshot(self, guild, viewer=None):
-        community = {"listeners": self.listener_snapshot(guild),
+        community = {"capabilities": self.control_capabilities(guild, viewer),
+                     "listeners": self.listener_snapshot(guild),
                      "activity": self.activity_snapshot(guild)}
         player = self.bot.get_player_in(guild)
         if player is None:

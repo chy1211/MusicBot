@@ -31,13 +31,22 @@ class Element {
   setPointerCapture(id) { this.capture = id; }
   hasPointerCapture(id) { return this.capture === id; }
   releasePointerCapture() { this.capture = null; }
-  closest() { return this.tag === "li" ? this : this.parent?.closest(); }
+  closest(selector = "") {
+    if (selector.includes("input, select")) {
+      if (["input", "select", "textarea"].includes(this.tag) || this.isContentEditable ||
+          ["textbox", "combobox", "menu", "menuitem"].includes(this.attributes.role)) return this;
+      return this.parent?.closest(selector);
+    }
+    if (selector === "button, a, summary") return ["button", "a", "summary"].includes(this.tag) ? this : this.parent?.closest(selector);
+    return this.tag === "li" ? this : this.parent?.closest(selector);
+  }
   getBoundingClientRect() {
     if (!this.layout) return {height: 110};
     const index = this.parent?.children.indexOf(this) || 0;
     const shift = parseFloat((this.style.transform || "").replace("translateY(", "")) || 0;
     return {height: 74, top: 200 + index * 74 + shift, bottom: 274 + index * 74 + shift};
   }
+  click() { if (!this.disabled) return this.listeners.click?.(); }
   showModal() { this.open = true; }
   close() { this.open = false; }
   scrollIntoView(options) { this.scrolled = options; }
@@ -51,6 +60,7 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 const clone = (value) => JSON.parse(JSON.stringify(value));
 function initial(id) {
   return {guild_id: String(id), status: "playing",
+    capabilities: {pause: true, resume: true, skip: true, seek: true},
     current: {title: id === 1 ? "First" : "Second", duration: 180, seekable: true, thumbnail: ""},
     progress: 30, volume: 15, repeat: "off", revision: "revision-" + id,
     queue: [{title: "<img onerror=evil>", position: 1, duration: 60},
@@ -61,7 +71,11 @@ async function setup(options = {}) {
   const document = {activeElement: null, hidden: false, body: new Element("body"), listeners: {},
     addEventListener(name, fn) { this.listeners[name] = fn; },
     elementFromPoint() { return this.hit; },
-    querySelector() { return new Element(); },
+    querySelector(selector) {
+      if (selector.startsWith("dialog[open]")) return [...elements.entries()]
+        .find(([id, el]) => id.endsWith("-dialog") && el.open)?.[1] || null;
+      return new Element();
+    },
     getElementById(id) {
       if (!elements.has(id)) elements.set(id, new Element(id === "guild" ? "select" : "div"));
       return elements.get(id);
@@ -122,7 +136,7 @@ async function setup(options = {}) {
   const context = vm.createContext({document, fetch, URL, AbortController,
     EventSource: options.events ? FakeEventSource : undefined, window: {setTimeout: (...args) => timers.push(args), clearTimeout() {},
     requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
-    matchMedia: () => ({matches: !!options.reducedMotion}),
+    matchMedia: (query) => ({matches: query.includes("reduced-motion") ? !!options.reducedMotion : !options.mobile}),
     innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
   vm.runInContext(code, context);
   if (options.round7) for (const name of ["library.js", "admin.js", "permissions.js"])
@@ -1554,4 +1568,89 @@ test("round7 logout clears private playlists and owner management",async()=>{
   assert.equal(app.element("library-list").children.length,0);
   assert.equal(app.element("nav-admin").hidden,true);
   assert.equal(app.element("admin-apl-list").children.length,0);
+});
+
+function shortcutEvent(app, key, extra = {}) {
+  const event = {key, target: app.document.body, prevented: false,
+    preventDefault() { this.prevented = true; }, ...extra};
+  return {event, result: app.document.listeners.keydown(event)};
+}
+test("round8 shortcuts reuse playback buttons, seek tokens and request focus", async () => {
+  const app = await setup();
+  app.states[1].current.track_token = "observed"; await app.run("refresh()");
+  await shortcutEvent(app, " ").result; await shortcutEvent(app, " ").result;
+  await shortcutEvent(app, "N").result;
+  await shortcutEvent(app, "ArrowRight").result;
+  const seek = app.requests.find(r => r.url.endsWith("/seek"));
+  assert.ok(seek.data.position >= 40 && seek.data.position < 41);
+  assert.equal(seek.data.track_token, "observed");
+  app.states[1].progress = 5; await app.run("refresh()");
+  await shortcutEvent(app, "ArrowLeft").result;
+  assert.equal(app.requests.filter(r => r.url.endsWith("/seek")).at(-1).data.position, 0);
+  shortcutEvent(app, "/");
+  assert.equal(app.element("query").focused, true);
+  assert.deepEqual(app.requests.filter(r => ["/pause","/resume","/skip"].some(s => r.url.endsWith(s))).map(r => r.url),
+    ["api/guilds/1/pause","api/guilds/1/resume","api/guilds/1/skip"]);
+});
+test("round8 shortcuts ignore input select textarea editable ancestors and menu", async () => {
+  const app = await setup();
+  const before = app.requests.length;
+  for (const tag of ["input", "select", "textarea", "editable", "menu"]) {
+    const target = new Element(tag);
+    if (tag === "editable") target.isContentEditable = true;
+    if (tag === "menu") target.setAttribute("role", "menu");
+    const child = new Element("span"); target.append(child);
+    for (const key of [" ", "n", "ArrowLeft", "ArrowRight", "/", "?"])
+      await shortcutEvent(app, key, {target: child}).result;
+    app.document.activeElement = target;
+    await shortcutEvent(app, "n").result;
+    app.document.activeElement = null;
+  }
+  assert.equal(app.requests.length, before);
+  assert.notEqual(app.element("shortcuts-dialog").open, true);
+});
+test("round8 shortcuts ignore modifiers composing repeats and every open dialog", async () => {
+  const app = await setup(), before = app.requests.length;
+  for (const flag of ["ctrlKey", "altKey", "metaKey", "isComposing", "repeat", "defaultPrevented"])
+    for (const key of [" ", "N", "ArrowRight", "/", "?"])
+      await shortcutEvent(app, key, {[flag]: true}).result;
+  for (const id of ["library-save-dialog", "permission-confirm-dialog"]) {
+    app.element(id).showModal();
+    for (const key of [" ", "n", "ArrowLeft", "/", "?"]) await shortcutEvent(app, key).result;
+    assert.notEqual(app.element("shortcuts-dialog").open, true);
+    app.element(id).close();
+  }
+  assert.equal(app.requests.length, before);
+});
+test("round8 disabled capabilities stopped tracks busy disconnected and mobile do nothing", async () => {
+  const app = await setup();
+  app.states[1].capabilities = {pause:false,resume:false,skip:false,seek:false};
+  await app.run("refresh()");
+  for (const id of ["toggle", "skip", "progress"]) assert.equal(app.element(id).disabled, true);
+  const before = app.requests.length;
+  for (const key of [" ", "n", "ArrowRight"]) await shortcutEvent(app, key).result;
+  assert.equal(app.requests.length, before);
+  app.states[1].capabilities = {pause:true,resume:true,skip:true,seek:true};
+  for (const status of ["stopped", "disconnected"]) {
+    app.states[1].status = status; await app.run("refresh()");
+    const count = app.requests.length;
+    for (const key of [" ", "n", "ArrowRight"]) await shortcutEvent(app, key).result;
+    assert.equal(app.requests.length, count);
+  }
+  const mobile = await setup({mobile:true}), count = mobile.requests.length;
+  for (const key of [" ", "n", "?", "/"]) await shortcutEvent(mobile,key).result;
+  assert.equal(mobile.requests.length,count);
+  assert.notEqual(mobile.element("shortcuts-dialog").open,true);
+});
+test("round8 help opens from question mark or button and closes with Esc or close", async () => {
+  const app = await setup(), before = app.requests.length;
+  assert.equal(shortcutEvent(app, "?").event.prevented, true);
+  assert.equal(app.element("shortcuts-dialog").open,true);
+  await shortcutEvent(app, "n").result;
+  assert.equal(app.requests.length,before);
+  shortcutEvent(app, "Escape"); assert.equal(app.element("shortcuts-dialog").open,false);
+  app.element("shortcuts-help").click(); assert.equal(app.element("shortcuts-dialog").open,true);
+  app.element("shortcuts-close").click(); assert.equal(app.element("shortcuts-dialog").open,false);
+  const css = fs.readFileSync(path.join(__dirname,"../musicbot/web/dashboard.css"),"utf8");
+  assert.match(css,/\.desktop-shortcuts\{display:none\}/);
 });
