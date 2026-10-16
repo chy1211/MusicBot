@@ -128,9 +128,12 @@ function controls() {
   const usable = (authMode === "owner" || authenticated) && connected && !busy && !!selected;
   const hasPlayer = usable && state && state.status !== "disconnected";
   for (const id of ["toggle", "skip", "repeat", "volume"]) $(id).disabled = !hasPlayer;
+  const active = hasPlayer && !!state.current && ["playing", "paused"].includes(state.status);
+  $("toggle").disabled = !active || state.capabilities?.[state.status === "playing" ? "pause" : "resume"] !== true;
+  $("skip").disabled = !active || state.capabilities?.skip !== true;
   $("enqueue").disabled = !usable || resolving;
   $("request-action").disabled = !usable || resolving;
-  const seekable = hasPlayer && !!state.current && state.current.duration > 0 && state.current.seekable === true;
+  const seekable = active && state.capabilities?.seek === true && state.current.duration > 0 && state.current.seekable === true;
   for (const id of ["progress", "hero-progress"]) $(id).disabled = !seekable;
   $("lyrics-toggle").disabled = !hasPlayer || !state.current;
   $("favorite").disabled = !hasPlayer || !safeURL(state?.current?.url);
@@ -333,9 +336,48 @@ function installDrag(handle, row, from, rev) {
     if (drag && drag.handle === handle) cancelDrag();
   });
 }
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") cancelDrag("已取消拖曳。");
-});
+function shortcutEditing(target) {
+  return !!(target?.isContentEditable || target?.closest?.(
+    'input, select, textarea, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], [role="menu"], [role="menuitem"]'));
+}
+function shortcutsHelp() {
+  if (!document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]:not([hidden])'))
+    $("shortcuts-dialog").showModal();
+}
+function keyboardShortcut(event) {
+  if (event.key === "Escape") {
+    if ($("shortcuts-dialog").open) { event.preventDefault(); $("shortcuts-dialog").close(); }
+    cancelDrag("已取消拖曳。");
+    return;
+  }
+  if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey ||
+      !window.matchMedia?.("(hover: hover) and (pointer: fine)").matches ||
+      !(authMode === "owner" || authenticated) || $("dashboard").hidden ||
+      shortcutEditing(event.target) || shortcutEditing(document.activeElement) ||
+      document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]:not([hidden])')) return;
+  const key = event.key;
+  if (key === "?") { event.preventDefault(); shortcutsHelp(); return; }
+  if (key === "/" && !$("enqueue").disabled) {
+    event.preventDefault();
+    if (typeof libraryView === "function") libraryView("play");
+    $("query").focus(); return;
+  }
+  const id = key === " " ? "toggle" : key?.toLowerCase() === "n" ? "skip" : null;
+  // Preserve native Space activation on a focused button/link.
+  if (key === " " && event.target?.closest?.("button, a, summary")) return;
+  if (id && !$(id).disabled) { event.preventDefault(); return $(id).click(); }
+  if (["ArrowLeft", "ArrowRight"].includes(key) && !$("progress").disabled) {
+    event.preventDefault();
+    const input = $("progress");
+    if (!beginSeek(input, "shortcut")) return;
+    input.value = Math.max(0, Math.min(state.current.duration, localProgress() + (key === "ArrowLeft" ? -10 : 10)));
+    drawProgress(Number(input.value));
+    return commitSeek();
+  }
+}
+document.addEventListener("keydown", keyboardShortcut);
+$("shortcuts-help").addEventListener("click", shortcutsHelp);
+$("shortcuts-close").addEventListener("click", () => $("shortcuts-dialog").close());
 let resolving = false, resolveGeneration = 0, previewResults = [];
 function clearPreview() {
   ++resolveGeneration; resolving = false; previewResults = [];
@@ -526,6 +568,7 @@ async function refresh(epoch = generation, force = false) {
   }
 }
 function resetView() {
+  $("shortcuts-dialog").close();
   cancelDrag(); cancelSeek(); clearPreview(); resetHistory(); resetLyrics(true);
   queueMine = false; setQueueFilter(false);
   queueRevision = null;

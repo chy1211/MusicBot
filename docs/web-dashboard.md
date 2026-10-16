@@ -1011,3 +1011,29 @@ case "$ctx" in /tmp/musicbot-webtest-r7.*) rm -rf -- "$ctx";; esac
 Live Discord/OAuth, real-phone installation and production proxy behavior remain
 unverified until a separately authorized deployment. Nothing in this procedure
 changes dev, the production working tree/config/data, services or existing images.
+
+## Round 8: keyboard shortcuts (development only)
+
+Desktop shortcuts use the same enabled controls and click handlers as the page.
+There is no separate skip path: N retains the existing skip/vote behavior.
+
+| Key | Action |
+| --- | --- |
+| Space | Pause / resume |
+| N | Skip / vote to skip |
+| Left / Right | Seek -10 / +10 seconds, clamped to track bounds |
+| / | Focus the request input (opens the playback view) |
+| ? | Open keyboard help |
+| Esc | Close help / cancel queue dragging |
+
+Input, select, textarea, editable elements, menus and any open dialog suspend
+shortcuts. Ctrl/Alt/Meta, composition and held-key repeats are ignored. Help can
+also be closed with its button; its entry is hidden on phone/touch layouts.
+No current playing/paused track, missing permission or disabled control means no
+keyboard request is sent. Seeking retains the observed track token.
+
+Existing state/SSE now includes only the viewer's four boolean capabilities
+(pause, resume, skip, seek), using existing command, voice and channel checks.
+These are display hints; every mutation still performs its original authorization.
+No new endpoints, identity fields or other users' permissions are exposed.
+The offline demo supports the same keys; fake away/denied users show disabled controls.

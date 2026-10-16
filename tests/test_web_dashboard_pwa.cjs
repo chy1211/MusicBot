@@ -2,6 +2,7 @@
 const {test} = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 const code = fs.readFileSync(path.join(__dirname, "../musicbot/web/sw.js"), "utf8");
+const version = code.match(/const VERSION = "([^"]+)"/)[1];
 function setup() {
   const handlers = {}, cache = new Map(), puts = [], fetches = [], deleted = [];
   let offline = false, skipped = 0, claimed = 0;
@@ -10,7 +11,7 @@ function setup() {
     self: {location:{origin:"https://music.example.com"}, addEventListener:(name,fn)=>handlers[name]=fn,
       skipWaiting:async()=>skipped++, clients:{claim:async()=>claimed++}},
     caches:{open:async()=>store, match:async key=>cache.get(key),
-      keys:async()=>["musicbot-dashboard-old","unrelated","musicbot-dashboard-r7-2"], delete:async key=>deleted.push(key)},
+      keys:async()=>["musicbot-dashboard-old","unrelated",version], delete:async key=>deleted.push(key)},
     fetch:async request=>{fetches.push(request);if(offline)throw new Error("offline");return new Response("network",{status:200});}};
   vm.runInNewContext(code,context);
   async function event(name, request) {
