@@ -345,21 +345,28 @@ class DemoDashboard(Dashboard):
     async def index(self, request):
         # Demo-only switches; no production API or configuration is involved.
         mode = request.query.get("demo-queue")
-        if mode in ("empty", "filled"):
+        if mode in ("empty", "filled", "live"):
             self.demo_queue_mode = mode
             for gid, player in self.bot.players.items():
                 player.playlist.entries = deque() if mode == "empty" else deque(self.demo_queues[gid])
         response = await super().index(request)
         controls = ('<div class="request-mode" aria-label="示範操作">'
                     '<a class="source-link" href="/?demo-queue=empty">示範空佇列</a>'
-                    '<a class="source-link" href="/?demo-queue=filled">還原示範佇列</a></div>')
+                    '<a class="source-link" href="/?demo-queue=filled">還原示範佇列</a>'
+                    '<a class="source-link" href="/?demo-queue=filled&amp;demo-query=duplicate">重複單曲範例</a>'
+                    '<a class="source-link" href="/?demo-queue=filled&amp;demo-query=batch">重複歌單範例</a>'
+                    '<a class="source-link" href="/?demo-queue=live">自動更新示範</a></div>')
+        query = {"duplicate": "https://example.test/track/1",
+                 "batch": "https://example.test/playlist"}.get(request.query.get("demo-query"))
+        if query:
+            response.text = response.text.replace('id="query" type="text"', 'id="query" type="text" value="' + query + '"', 1)
         response.text = response.text.replace('<h2 id="request-heading">', controls + '<h2 id="request-heading">', 1)
         return response
 
     def demo_tick(self):
         """Deterministic local simulation, usable without starting its timer."""
-        if self.demo_queue_mode == "empty":
-            return  # Keep the recommendation scenario stable until restored.
+        if self.demo_queue_mode != "live":
+            return  # Keep manually selected scenarios stable until live is selected.
         self.demo_step += 1
         for guild in self.bot.guilds:
             player = self.bot.players[guild.id]

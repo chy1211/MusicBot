@@ -97,3 +97,8 @@ select option{background:#1c1c22}
 #queue-recommendations{margin-top:20px;border-top:1px solid var(--line);padding-top:16px}
 #recommendation-list>li>button{font-size:12px;min-height:44px}
 @media(max-width:760px){#recommendation-list>li{grid-template-columns:38px minmax(0,1fr) auto}}
+
+.duplicate-note{grid-column:3;margin-top:0;color:#ffd994;font-size:12px;max-width:220px;overflow-wrap:anywhere}
+.duplicate-tag{display:inline-block;flex-shrink:0;color:#ffd994;border:1px solid #ffd99455;border-radius:12px;padding:2px 8px;font-size:11px}
+.playlist-selection label{flex-wrap:wrap}.playlist-selection label>span{flex:1;min-width:100px}
+@media(max-width:760px){.duplicate-note{grid-column:2;max-width:none}}

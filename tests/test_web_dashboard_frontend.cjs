@@ -725,9 +725,9 @@ test("current source link only exposes HTTP links and requester display names", 
 function playlistReply() {
   return {title: "Playlist", kind: "playlist", url: "https://example.test/list", allowed: true,
     count: 3, checked_count: 3, eligible_count: 2, preview_id: "playlist-token", entries: [
-      {item_id: "1", title: "一", duration: 60, allowed: true},
-      {item_id: "2", title: "二", duration: 600, allowed: false, reason: "超過歌長"},
-      {item_id: "3", title: "三", duration: 60, allowed: true}]};
+      {item_id: "1", url: "https://example.test/batch/1", title: "一", duration: 60, allowed: true},
+      {item_id: "2", url: "https://example.test/batch/2", title: "二", duration: 600, allowed: false, reason: "超過歌長"},
+      {item_id: "3", url: "https://example.test/batch/3", title: "三", duration: 60, allowed: true}]};
 }
 async function playlistApp() {
   const app = await setup();
@@ -1743,4 +1743,84 @@ test("round8 recommendation rejection and stale guild button preserve existing b
   app.element("guild").value="2";await app.element("guild").listeners.change();
   const count=app.requests.length;await add.listeners.click();
   assert.equal(app.requests.length,count);assert.equal(app.element("queue-recommendations").hidden,true);
+});
+
+test("round8 YouTube identities unify watch short embed shorts live mobile and music links", async () => {
+  const app=await setup();
+  const urls=[
+    "https://www.youtube.com/watch?v=AbcDeFg1234&list=PLdemo&t=42",
+    "https://youtu.be/AbcDeFg1234?si=sharing",
+    "https://m.youtube.com/watch?feature=share&v=AbcDeFg1234",
+    "https://music.youtube.com/watch?v=AbcDeFg1234&list=RDdemo",
+    "https://www.youtube.com/shorts/AbcDeFg1234",
+    "https://www.youtube.com/embed/AbcDeFg1234?start=10",
+    "https://www.youtube-nocookie.com/embed/AbcDeFg1234",
+    "https://youtube.com/live/AbcDeFg1234?feature=share",
+    "http://youtube.com/v/AbcDeFg1234#t=1"];
+  for(const url of urls) {
+    app.context.testURL=url;assert.equal(app.run("songIdentity(testURL)"),"youtube:AbcDeFg1234",url);
+  }
+  assert.notEqual(app.run('songIdentity("https://youtube.com/watch?v=abcdefg1234")'),"youtube:AbcDeFg1234");
+  assert.notEqual(app.run('songIdentity("https://youtube.com.evil.test/watch?v=AbcDeFg1234")'),"youtube:AbcDeFg1234");
+  assert.equal(app.run('songIdentity("javascript:alert(1)")'),"");
+});
+test("round8 non YouTube normalization removes fragments tracking slash and orders query", async () => {
+  const app=await setup();
+  assert.equal(app.run('songIdentity(" HTTPS://EXAMPLE.test:443/song/?b=2&a=1&utm_source=share#fragment ")'),
+    app.run('songIdentity("https://example.test/song?a=1&b=2&fbclid=ignored")'));
+  assert.notEqual(app.run('songIdentity("https://example.test/song?a=2")'),
+    app.run('songIdentity("https://example.test/song?a=1")'));
+  assert.notEqual(app.run('songIdentity("https://example.test/Song")'),
+    app.run('songIdentity("https://example.test/song")'));
+  assert.equal(app.run('songIdentity("https://user:pass@example.test/song")'),"");
+});
+test("round8 track duplicate warning is adjacent remains confirmable and follows live positions", async () => {
+  const app=await setup();
+  app.states[1].queue[1].url="https://youtu.be/AbcDeFg1234";
+  await app.run("refresh()");
+  app.hook(url=>url.endsWith("/resolve")?Promise.resolve({ok:true,status:200,json:async()=>({results:[
+    {title:"Duplicate",kind:"track",url:"https://music.youtube.com/watch?v=AbcDeFg1234",allowed:true,preview_id:"duplicate"}
+  ]})}):null);
+  app.element("query").value="duplicate"; await app.run("resolveQuery()");
+  const card=app.element("preview-results").children[0],note=card.children.at(-1),button=card.children[2];
+  assert.equal(note.textContent,"這首已經在佇列第 2 首");
+  assert.equal(note.hidden,false);assert.equal(button.disabled,false);
+  app.states[1].queue[1].position=1;await app.run("refresh()");
+  assert.equal(note.textContent,"這首已經在佇列第 1 首");
+  await button.click();
+  assert.equal(app.requests.find(r=>r.url.endsWith("/play")).data.preview_id,"duplicate");
+});
+test("round8 currently playing reminder and removed duplicate update without rebuilding preview", async () => {
+  const app=await setup();
+  app.states[1].current.url="https://EXAMPLE.test:443/selected/#old";await app.run("refresh()");
+  app.element("query").value="song";await app.run("resolveQuery()");
+  const card=app.element("preview-results").children[0],note=card.children.at(-1);
+  assert.equal(note.textContent,"這首目前正在播放");
+  app.states[1].current.url="https://example.test/other";await app.run("refresh()");
+  assert.equal(note.hidden,true);assert.equal(app.element("preview-results").children[0],card);
+});
+test("round8 playlist duplicate tags never change selected items and follow queue updates", async () => {
+  const {app,card,button}=await playlistApp();
+  const list=card.children[1].children.at(-1);
+  const first=list.children[0].children[0], third=list.children[2].children[0];
+  app.context.batchURL=app.run("previewResults[0].entries[0].url");
+  app.states[1].queue[0].url=app.context.batchURL;
+  await app.run("refresh()");
+  assert.equal(first.children.at(-1).textContent,"已在佇列");
+  assert.equal(first.children[0].checked,true);
+  const selected=button.textContent;
+  app.states[1].queue[0].url="https://example.test/other";await app.run("refresh()");
+  assert.equal(first.children.at(-1).hidden,true);assert.equal(button.textContent,selected);
+  assert.equal(third.children[0].checked,true);
+  await button.click();
+  assert.ok(app.requests.find(r=>r.url.endsWith("/play")).data.selected_items.includes("1"));
+});
+
+test("round8 shortcuts respect busy disconnected and signed out control states", async () => {
+  const app=await setup();
+  for(const expression of ["busy=true;controls()","busy=false;connected=false;controls()","connected=true;signedOut()"]) {
+    app.run(expression);const before=app.requests.length;
+    for(const key of [" ","n","ArrowLeft","/"]) await shortcutEvent(app,key).result;
+    assert.equal(app.requests.length,before);
+  }
 });

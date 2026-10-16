@@ -176,3 +176,21 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.bot.players[1].playlist.entries), 1)
         await self.client.get("/?demo-queue=filled")
         self.assertEqual(len(self.bot.players[1].playlist.entries), 4)
+
+    async def test_demo_duplicate_examples_are_local_and_selectable(self):
+        await self.login("owner")
+        page = await (await self.client.get("/?demo-queue=filled&demo-query=duplicate")).text()
+        self.assertIn('value="https://example.test/track/1"', page)
+        self.assertIn("重複歌單範例", page)
+        self.dashboard.demo_tick()
+        before = await self.call(BASE + "state", method="GET")
+        preview = await self.call(BASE + "resolve", {"query": "https://example.test/track/1"})
+        item = preview["results"][0]
+        self.assertTrue(item["allowed"])
+        self.assertEqual(item["url"], before["queue"][0]["url"])
+        page = await (await self.client.get("/?demo-queue=filled&demo-query=batch")).text()
+        self.assertIn('value="https://example.test/playlist"', page)
+        preview = await self.call(BASE + "resolve", {"query": "https://example.test/playlist"})
+        self.assertTrue(preview["results"][0]["allowed"])
+        urls = {entry["url"] for entry in preview["results"][0]["entries"]}
+        self.assertIn(before["queue"][0]["url"], urls)
