@@ -1,8 +1,9 @@
-# Web dashboard: owner or Discord login (not deployed)
+# Web dashboard: round 4 (implemented and tested, not deployed)
 
 Optional aiohttp dashboard inside the bot event loop, without another Discord
-client or dependency. Default AuthMode=owner preserves the deployed OwnerID
-behavior when the key is missing. That mode still requires external SSO.
+client or dependency. Production dev ae9cc53 already uses Discord login. This round-4 branch is
+not deployed. Default AuthMode=owner preserves legacy OwnerID behavior when
+the key is missing. That mode still requires external SSO.
 Removing SSO is appropriate only after separately deploying and verifying
 AuthMode=discord over HTTPS. This branch changes no production configuration,
 container, release tag, proxy, firewall or system service.
@@ -134,7 +135,7 @@ voice again before executing.
 | API under /api/guilds/{id} | Command permission | Discord-mode voice | Existing implementation |
 | --- | --- | --- | --- |
 | GET /state | none; membership/blocklist | none | get_player_in |
-| POST /resolve | play, query first argument | none; never summons | extract_info, _do_song_blocklist_check, can_use_extractor, _do_playlist_checks |
+| POST /resolve | play, query first argument | none; never summons | extract_info, _do_song_blocklist_check, can_use_extractor, playlist/entry gates |
 | POST /play | play, query first argument | same bot voice; absent bot needs caller voice + summonplay | cmd_play -> _cmd_play -> Playlist |
 | POST /pause | pause | same bot voice | cmd_pause |
 | POST /resume | resume | same bot voice | cmd_resume |
@@ -170,17 +171,85 @@ percent, repeat, queue and revision. Errors return {error}: 400 malformed/comman
 items may instead return allowed=false with a reason in a successful result list.
 
 POST /resolve {query} extracts metadata only. Keywords return up to five choices,
-bounded by MaxSearchItems; playlists inspect all extracted entries but display
-the first ten. Blocklist, extractor, MaxSongs, MaxSongLength, AllowPlaylists,
-MaxPlaylistLength, source enablement and karaoke use the logged-in member.
-Unknown duration warns and is checked again at play. Mixed YouTube links offer
-separate video/playlist choices.
+bounded by MaxSearchItems. Playlist results now contain every extracted child up
+to 200 entries, with a scrollable checklist, rather than a ten-song sample.
 
-POST /play {query:selected_url, preview_id} confirms a choice. Tokens bind guild,
-user and URL for five minutes, with at most 100 cached choices. Play repeats the
-original restrictions. Duplicate successful confirmations never add twice;
-attempts consumed once cmd_play begins remain consumed on partial failure.
-The API also accepts legacy /play {query}; the browser uses explicit previews.
+~~~json
+{"results":[{"kind":"playlist","title":"Example","url":"https://example.test/list",
+ "preview_id":"opaque-server-token","count":240,"checked_count":200,
+ "eligible_count":190,"limit":200,"truncated":true,"allowed":true,"reason":"",
+ "warning":"Only the first 200 entries are offered; actual UI text is zh-TW.",
+ "entries":[{"item_id":"1","title":"Song","duration":180,
+ "url":"https://example.test/song","thumbnail":"","allowed":true,"reason":"",
+ "warning":""}]}],"expires_in":300}
+~~~
+
+count is the larger of extractor playlist_count and actual extracted entry count.
+checked_count is the offered subset size; eligible_count is its eligible count.
+Items beyond the cap cannot be selected. AllowPlaylists and MaxPlaylistLength
+gate the entire original list, including a one-song selection. MaxSongs checks
+the user's current queue before resolve; when slots remain, selection is
+permitted even if the whole list would not fit. Actual enqueue checks MaxSongs
+per song and returns partial success. Blocklist, extractor, MaxSongLength,
+source enablement and karaoke gates remain. Unknown duration warns and is checked
+again at play. Mixed YouTube links offer separate video/playlist choices.
+
+POST /play confirms a choice. Singles keep {query:selected_url,preview_id}.
+Playlist requests add a nonempty, unique list of string item IDs:
+
+~~~json
+{"query":"https://example.test/list","preview_id":"opaque-server-token",
+ "selected_items":["1","3","12"]}
+~~~
+
+The server stores the offered URLs/eligibility in the preview record. IDs are
+local to that preview; submitted URLs/unknown IDs, blocked items, duplicate IDs,
+wrong types and an empty selection are rejected before enqueue (400/403).
+Tokens bind user, guild and source URL for five minutes, at most 100 choices.
+Selection without a preview is 400. Missing selected_items on a playlist selects
+all eligible offered entries for compatibility. Singles reject selected_items.
+The server restores playlist order regardless of submitted ID order.
+
+Each selected item uses the original cmd_play -> _cmd_play -> Playlist path.
+A task-local ContextVar check runs after fresh extraction, before mutation:
+it rejects nested playlists and rechecks the live session/member, voice,
+command permission, AllowPlaylists, MaxPlaylistLength, MaxSongs, full duration,
+extractor and blocklist. The hook returns fresh permissions to _cmd_play.
+Other tasks/native Discord commands see no check. The original command records
+the actual enqueue before response work, so a failed reply does not miscount
+other concurrent additions. Upstream English messages are unchanged.
+
+The whole batch is one play rate-limit attempt; resolve is a separate attempt.
+The guild mutation lock covers the batch, preserving source order among dashboard
+mutations. Native Discord/round-robin behavior remains the bot's own. Each song
+has a 20-second budget; the batch has a 120-second enqueue budget. Expired
+remaining songs are reported as skipped. The UI shows a spinner with the selected
+count throughout; no streaming per-song progress endpoint is added.
+
+~~~json
+{"message":"已加入 2 首，略過 1 首。已達到可排入佇列的歌曲數量上限。",
+ "added":2,"skipped":1,
+ "results":[{"item_id":"1","title":"Song","added":true,"reason":""},
+            {"item_id":"3","title":"Another","added":true,"reason":""},
+            {"item_id":"12","title":"Last","added":false,"reason":"佇列上限"}],
+ "state":{"current":{},"queue":[]}}
+~~~
+
+A successful enqueue with failed response work has added=true plus a warning.
+Repeating a completed preview with the same canonical selection returns saved
+counts without enqueueing again. Changing a completed selection is 409. Once
+submission starts, an interrupted/uncertain batch cannot restart with that token:
+inspect the queue and resolve again. Session and membership are checked before
+the response; revoked sessions never receive a state snapshot.
+Legacy /play {query} still uses the original full-list behavior.
+
+State current and every queue track add requester: {name,avatar} only; no requester
+ID, roles, channel, email or other member data. Live guild display name wins,
+then retained author/member metadata. Autoplay is 自動播放; a restored entry with
+a channel but missing author is 點播者已離開或無法取得. Missing identity cannot
+be reconstructed after the bot discarded it. Avatar and source URLs use
+public_url: absolute HTTP(S) only, no userinfo/control characters or malformed
+host/port. The current-track link uses target=_blank, rel="noopener noreferrer".
 
 Move: {from,to,revision}, 1-based. Shuffle/remove: {revision}. Stale/concurrent
 queue requests return 409. Volume: integer 1..100. Repeat: off/song/all.
@@ -191,9 +260,49 @@ one resolver per guild, two overall. Resolve deadlines are 20 seconds without
 holding playback mutation locks; timed-out work retains its slot until finished.
 Python cannot kill an executing yt-dlp worker thread.
 
-Pointer sorting, touch hold (420ms), Escape/cancel/revision handling, keyboard
-up/down/remove, mobile layout and stale-response guards remain. Authenticated
-polling runs every second, or ten seconds while hidden.
+Pointer sorting uses a lifted/scaled source, transformed neighbours and FLIP
+reconciliation. A 409 animates back and retains the error toast before refreshing
+authoritative state. API unchanged: one move with observed {from,to,revision}.
+Touch hold is 420ms; Escape, lost capture, pointercancel and incoming revisions
+cancel without mutation. Keyboard up/down/remove remain. Reduced motion disables
+spinner rotation, FLIP and drag transforms; processing text remains.
+Polling runs every second, ten seconds while hidden.
+
+Query/confirm buttons expose aria-busy and CSS spinners, block duplicate submits,
+and restore state after failure/timeout. Client deadlines: resolve 25s, selected
+batch 150s, other requests 30s. Client timeout can follow a queue change: inspect
+state before retrying. Fixed aria-live=polite/aria-atomic toasts last 4.5s normally
+or 10s for errors. Old timers cannot erase newer messages. All-skipped batches use
+the error duration. Common denials use existing _D translations then zh-TW
+dashboard-only fallbacks for ownership, queue/playlist/song limits, karaoke,
+voice and command permissions; upstream English sources/catalogs are untouched.
+
+## Appearance and retained copy
+
+Reference access was limited to personal-data-inventory/web/v2.html, v2.css
+and build_v2_css.sh. No private data, APIs, databases, logs, other source files
+or personal copy were read/copied. That project was never modified.
+
+Shared tokens: background #05060d; text #f2f2f7; muted rgba(235,235,245,.6);
+accent #64d2ff, secondary #bf5af2; rgba(255,255,255,.12) borders; 22px glass
+panels, 16px secondary panels and capsule buttons. Glass uses the same 140deg
+white sheen, dark translucent fill, 30px blur/saturation and bright inset rims.
+Buttons use translucent #0a84ff with a top highlight. Sidebar, login, inputs,
+selection rows and toast share these tokens and 8/12/16/24px spacing.
+
+Differences: hand-written local CSS, without Tailwind tooling/CDN or Google Fonts;
+system stack -apple-system, BlinkMacSystemFont, SF Pro Text, Segoe UI, PingFang TC,
+Microsoft JhengHei, system-ui. Static radial wallpaper replaces animated colour
+blobs. No refraction filter or pointer spotlight. The playback bar is solid
+#1c1c22 for queue-text legibility. Functional sidebar/queue/control layout remains.
+
+Removed exactly the requested groups: 讓音樂繼續陪你 plus sound-bar decoration;
+sidebar-note including ◉ / 讓好歌 / 接著發生。 / 在 Discord 相聚，在這裡選歌。;
+the hint 先看預覽，再加入佇列。搜尋結果可挑選一首。.
+Retained for user decision: 你的音樂空間 (login/sidebar), 此刻，聽點喜歡的 (header),
+讓旋律接下去 (queue), 私人音樂室 (owner badge). Potentially decorative headings
+一起聽音樂, 下一首，想聽什麼？ and 確認你的選擇 also remain.
+Functional empty-state, drag instructions and error messages remain.
 
 ## Offline tests and fake-login demo
 
@@ -202,36 +311,50 @@ and backups. Existing dependency tags are read only; all new test images and
 containers start musicbot-webtest-. No production mounts.
 
 ~~~sh
-ctx=$(mktemp -d /tmp/musicbot-webtest-discord.XXXXXX)
-git -C "$HOME/musicbot" archive feature/dashboard-discord-login | tar -x -C "$ctx"
-printf '%s\n' 'FROM musicbot:ytdlp-base' 'WORKDIR /webtest' 'COPY . .' \
-  'ENTRYPOINT ["python3"]' | docker build --network none \
-  -t musicbot-webtest-discord:demo -f - "$ctx"
-docker run --rm --network none --name musicbot-webtest-discord-unit \
-  --entrypoint python3 musicbot-webtest-discord:demo \
+ctx=$(mktemp -d /tmp/musicbot-webtest-r4.XXXXXX)
+git -C "$HOME/musicbot" archive feature/dashboard-round4 | tar -x -C "$ctx"
+printf '%s\n' 'FROM musicbot:ytdlp-base' 'WORKDIR /webtest' 'COPY . .' |
+  docker build --network none -t musicbot-webtest-r4:demo -f - "$ctx"
+docker run --rm --network none --name musicbot-webtest-r4-unit \
+  --entrypoint python3 musicbot-webtest-r4:demo \
   -W 'error::DeprecationWarning:aiohttp.web_protocol' \
   -m unittest discover -s tests -p 'test_web_dashboard*.py'
-docker run --rm --network none --name musicbot-webtest-discord-links \
-  --entrypoint python3 musicbot-webtest-discord:demo -m tools.test_compound_link
-(cd "$ctx" && node --check musicbot/web/dashboard.js && \
+docker run --rm --network none --name musicbot-webtest-r4-links \
+  --entrypoint python3 musicbot-webtest-r4:demo -m tools.test_compound_link
+(cd "$ctx" && node --check musicbot/web/dashboard.js &&
   node --test tests/test_web_dashboard_frontend.cjs)
 ~~~
 
-Python tests use real command/Playlist logic with fake Discord boundaries.
-OAuth endpoints are local aiohttp mocks, including failures/timeouts/replay/expiry.
-No live OAuth, real token, download or Discord connection is used. Frontend uses
-Node VM/fake DOM without network.
+Tests use real commands/Playlist, fake Discord boundaries and local OAuth mocks.
+Node VM tests use a fake DOM with no network/dependencies. The base image's
+git-version warning is expected in an archive (no .git); it does not fail tests.
+No production configuration is mounted/copied.
 
-Demo default is a fake login picker using real Dashboard/assets/session code and
-fake guilds/extraction. Fake login endpoints exist **only in the demo executable**.
-Never deploy tools/dashboard_demo.py as the production dashboard.
+The demo uses real Dashboard/assets/sessions and a fake-login picker, with no
+Discord client, credentials, OAuth or downloads. Fake login exists only in the
+demo executable. The queue includes Owner/member/autoplay. The fake playlist has
+24 songs, three blocked. Owner can select all eligible songs. Member retains
+210-second/three-song limits and AllowPlaylists=false, so cannot add even one
+selected playlist item. Away reads only; denied has no command permissions.
+Real cmd_skip/cmd_remove still implement demo vote/permission behavior.
+
+Strict isolated browser demo, with relay in the foreground on the VPS:
 
 ~~~sh
-docker run --rm -d --name musicbot-webtest-discord-demo \
-  -p 127.0.0.1:18080:8080 --entrypoint python3 musicbot-webtest-discord:demo \
+docker run --rm -d --network none --name musicbot-webtest-r4-demo \
+  --entrypoint python3 musicbot-webtest-r4:demo \
   -m tools.dashboard_demo --host 0.0.0.0 --port 8080 \
   --public-origin http://127.0.0.1:18080
+python3 "$ctx/tools/dashboard_demo_relay.py" \
+  --container musicbot-webtest-r4-demo --port 18080
 ~~~
+
+The previous -p 127.0.0.1:18080:8080 demo needs Docker bridge networking;
+it cannot forward into --network none. This task requires isolation, so a small
+standard-library relay binds only 127.0.0.1:18080 and connects via docker exec
+stdio to the demo container's loopback. It accepts only musicbot-webtest-*
+container names and uses no production mounts or proxy changes. Every container
+actually used for round-4 verification uses --network none.
 
 Keep this Windows PowerShell tunnel open:
 
@@ -239,23 +362,19 @@ Keep this Windows PowerShell tunnel open:
 ssh -N -L 127.0.0.1:18080:127.0.0.1:18080 -o ExitOnForwardFailure=yes your-vps
 ~~~
 
-Open http://127.0.0.1:18080/ and click login. Choose owner, member, away or denied;
-logout then log back in to switch. Owner has unrestricted controls. Member has
-210-second/three-song limits, no playlists/instant skip and can remove only own
-songs (the second queued song initially). Away can read but not mutate. Denied
-can read but cannot resolve/control. Demo uses actual cmd_skip/cmd_remove.
-Try a keyword, HTTPS song URL, https://example.test/playlist or blocked.
-Optional --fake-login member auto-selects that user after clicking login;
---auth-mode owner shows the old owner-only demo.
+Open http://127.0.0.1:18080/, click login, choose Owner. Query
+https://example.test/playlist: 24 rows, 21 eligible/selected, three disabled.
+Try 全不選 (confirm disabled), 全選, then select only rows 3 and 5.
+加入選取的 2 首 adds only these in source order. Logout and choose member for
+whole-playlist denial and per-song length explanations. Try a keyword, HTTPS
+single-song URL or blocked for other previews.
 
-The port-forwarded demo needs Docker's default bridge; it makes no external
-requests. Unit tests always use --network none. Strict isolated demo tests use
-in-container TestServer without publishing a port.
+Stop relay/tunnel with Ctrl+C, then clean only these named resources:
 
 ~~~sh
-docker stop musicbot-webtest-discord-demo
-docker image rm musicbot-webtest-discord:demo
-case "$ctx" in /tmp/musicbot-webtest-discord.*) rm -rf -- "$ctx";; esac
+docker stop musicbot-webtest-r4-demo
+docker image rm musicbot-webtest-r4:demo
+case "$ctx" in /tmp/musicbot-webtest-r4.*) rm -rf -- "$ctx";; esac
 ~~~
 
 ## Limits before a separately authorized release
@@ -274,3 +393,24 @@ Many accounts can exhaust shared login/resolve quotas; edge DDoS/rate protection
 is still needed for internet exposure. Remote track covers can contact image
 hosts from the user's browser; no-referrer avoids sending the dashboard URL.
 Protect backend reachability, TLS and secrets during the separate deployment.
+
+
+## Round-4 validation (2026-10-17, no deployment)
+
+Baseline archive before edits: backend 145/145, frontend 35/35.
+Final suite: backend 171/171 (including 26 new round-4 cases), frontend 46/46
+(including 11 new cases), tools.test_compound_link 16/16; zero failures.
+Backend uses DeprecationWarning-as-error for aiohttp.web_protocol.
+node --check and git diff --check also pass.
+
+Chrome fake-data acceptance: login glass styling; 24-song preview with 21
+selected and three blocked; select none/all and only rows 3/5; exactly these
+two queued in source order; actual mouse drag first to third; member playlist
+denial; removing another user's song gives a fixed zh-TW toast; 390px layout
+has no horizontal overflow. Real phone long-press and live Discord/yt-dlp are
+not exercised. Pointer touch/reduced-motion/409 recovery are offline tests.
+
+Every test/demo container uses --network none. The browser reaches only the
+fake demo via the loopback relay and SSH tunnel. No release commands or real
+credentials were used. Worktree and temporary Docker resources are removed
+after the commit; feature/dashboard-round4 remains for later review.
