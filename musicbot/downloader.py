@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import pathlib
+import time
 from collections import UserDict
 from concurrent.futures import ThreadPoolExecutor
 from pprint import pformat
@@ -442,6 +443,7 @@ class Downloader:
         data["__input_subject"] = song_subject
         data["__header_data"] = headers or None
         data["__expected_filename"] = self.ytdl.prepare_filename(data)
+        data["__extracted_at"] = time.time()
 
         # ensure the UA is randomized with each new request if not set static.
         self.randomize_user_agent_string()
@@ -458,6 +460,29 @@ class Downloader:
         )
         """
         return YtdlpResponseDict(data)
+
+    async def download_from_info(self, data: Dict[str, Any]) -> "YtdlpResponseDict":
+        """
+        Download media using an extraction made earlier (when the song was queued)
+        instead of running a second full extraction. Saves one round of YouTube
+        page / player / JS-challenge requests, roughly 3-5 seconds per song.
+
+        :param: data:  a processed, sanitized single-video extraction dict.
+        :returns: YtdlpResponseDict like extract_info(download=True) would.
+        :raises: yt_dlp.utils.YoutubeDLError when the old format URLs no longer work;
+            the caller is expected to fall back to a fresh extraction.
+        """
+        src = copy.deepcopy(data)
+        # keep MusicBot's private keys out of yt-dlp, put them back afterwards.
+        private = {k: src.pop(k) for k in list(src) if k.startswith("__")}
+        result = await self.bot.loop.run_in_executor(
+            self.thread_pool,
+            functools.partial(self.unsafe_ytdl.process_ie_result, src, download=True),
+        )
+        result = self.ytdl.sanitize_info(result)
+        result.update(private)
+        result["__expected_filename"] = self.ytdl.prepare_filename(result)
+        return YtdlpResponseDict(result)
 
     async def _filtered_extract_info(
         self, song_subject: str, *args: Any, **kwargs: Any

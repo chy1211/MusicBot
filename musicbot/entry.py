@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 import os
+import time
 import re
 import shutil
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
@@ -698,6 +699,35 @@ class URLPlaylistEntry(BasePlaylistEntry):
         )
         self.set_audio_filter("loudnorm", loudnorm_opts)
 
+    # Format URLs from YouTube stay valid for hours; stay well inside that.
+    REUSE_EXTRACTION_MAX_AGE = 30 * 60
+
+    def _reusable_extraction(self) -> Optional[Dict[str, Any]]:
+        """
+        Return the processed single-video extraction made when this entry was
+        queued, if it is fresh enough to download from directly, else None.
+        Playlist imports, Spotify placeholders and restored queues fall back to
+        a normal extraction.
+        """
+        data: Dict[str, Any] = dict(self.info.data)
+        age = time.time() - float(data.get("__extracted_at", 0) or 0)
+        if age > self.REUSE_EXTRACTION_MAX_AGE:
+            return None
+        if data.get("_type") == "playlist":
+            # one-result searches are merged into the top level by the downloader,
+            # but yt-dlp needs the single entry itself to download.
+            entries = data.get("entries") or []
+            if len(entries) != 1 or not isinstance(entries[0], dict):
+                return None
+            entry = dict(entries[0])
+            for k, v in data.items():
+                if k.startswith("__") or k == "qhash":
+                    entry.setdefault(k, v)
+            data = entry
+        if data.get("_type", "video") != "video" or not data.get("formats"):
+            return None
+        return data
+
     async def _really_download(self) -> None:
         """
         Actually download the media in this entry into cache.
@@ -705,7 +735,21 @@ class URLPlaylistEntry(BasePlaylistEntry):
         log.info("Download started:  %r", self)
 
         info = None
+        reuse = self._reusable_extraction()
+        if reuse is not None:
+            try:
+                info = await self.downloader.download_from_info(reuse)
+                log.info("Download reused the queue-time extraction:  %r", self)
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                log.warning(
+                    "Reusing the queue-time extraction failed, extracting again.  Reason: %(raw_error)s",
+                    {"raw_error": e},
+                )
+                info = None
+
         for attempt in range(1, 4):
+            if info is not None:  # already downloaded from the queue-time extraction
+                break
             log.everything(  # type: ignore[attr-defined]
                 "Download attempt %s of 3...", attempt
             )
