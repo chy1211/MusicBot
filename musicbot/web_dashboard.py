@@ -198,6 +198,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.init_library()
         self.init_admin()
         self.app.router.add_get("/", self.index)
+        for path in ("manifest.webmanifest", "sw.js", "pwa.js", "offline.html",
+                     "icon-192.png", "icon-512.png", "apple-touch-icon.png"):
+            self.app.router.add_get("/" + path, self.pwa_asset)
         self.app.router.add_get("/favicon.svg", self.favicon)
         self.app.router.add_get("/favicon.ico", self.favicon)
         self.app.router.add_get("/auth/session", self.auth_session)
@@ -352,6 +355,13 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         if isinstance(response, web.HTTPException):
             raise response
         return response
+
+    async def pwa_asset(self, request):
+        name = request.path.lstrip("/")
+        types = {".webmanifest": "application/manifest+json", ".png": "image/png",
+                 ".html": "text/html", ".js": "text/javascript"}
+        return web.Response(body=(STATIC / name).read_bytes(),
+                            content_type=types[Path(name).suffix])
 
     async def favicon(self, _request):
         return web.Response(text=(STATIC / "favicon.svg").read_text(encoding="utf-8"),

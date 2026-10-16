@@ -5,7 +5,6 @@ import hashlib
 import logging
 import os
 import secrets
-import shutil
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -108,7 +107,11 @@ class DashboardAdmin(DashboardPermissions):
                 else:
                     url = data.get("url")
                 url = song({"title": "來源網址", "url": url, "duration": None})["url"]
-                self.bot._do_song_blocklist_check(url)
+                from .exceptions import MusicbotException
+                try:
+                    self.bot._do_song_blocklist_check(url)
+                except MusicbotException:
+                    fail(403, "這個來源已被封鎖清單擋下。")
                 if url in apl:
                     fail(400, "這首歌已在自動播放清單中。")
             else:

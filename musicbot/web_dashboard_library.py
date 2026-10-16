@@ -34,7 +34,7 @@ def song(value):
         fail(400, "歌曲標題須為 1 至 300 字。")
     if not isinstance(url, str) or len(url) > 2000 or not public_url(url) or any(c.isspace() for c in url):
         fail(400, "歌曲網址只接受 HTTP／HTTPS，最多 2000 字且不可包含空白。")
-    if length is not None and (type(length) not in (int, float) or not math.isfinite(length) or length < 0 or length > 31536000):
+    if length is not None and (type(length) not in (int, float) or not 0 <= length <= 31536000 or not math.isfinite(length)):
         fail(400, "歌曲長度須為非負秒數，或留空表示未知。")
     return {"title": title.strip(), "url": url, "duration": length,
             "added_at": time.time()}
@@ -92,21 +92,29 @@ class PlaylistStore:
             if path.stat().st_size > 16 * 1024 * 1024:
                 raise ValueError()
             value = json.loads(path.read_text(encoding="utf-8"))
-            assert value["version"] == 1 and set(value) == {"version", "playlists"}
+            if value["version"] != 1 or set(value) != {"version", "playlists"}:
+                raise ValueError()
             lists = value["playlists"]
-            assert isinstance(lists, list) and 1 <= len(lists) <= 21
+            if not isinstance(lists, list) or not 1 <= len(lists) <= 21:
+                raise ValueError()
             ids = set()
             for index, item in enumerate(lists):
-                assert set(item) == {"id", "name", "tracks"}
-                assert isinstance(item["id"], str) and item["id"] not in ids
-                assert item["id"] == "favorites" if index == 0 else len(item["id"]) == 24
+                if set(item) != {"id", "name", "tracks"}:
+                    raise ValueError()
+                if not isinstance(item["id"], str) or item["id"] in ids:
+                    raise ValueError()
+                if not (item["id"] == "favorites" if index == 0 else len(item["id"]) == 24 and all(c in "0123456789abcdef" for c in item["id"])):
+                    raise ValueError()
                 ids.add(item["id"])
                 name(item["name"])
-                assert isinstance(item["tracks"], list) and len(item["tracks"]) <= 200
+                if not isinstance(item["tracks"], list) or len(item["tracks"]) > 200:
+                    raise ValueError()
                 for track in item["tracks"]:
-                    assert set(track) == {"title", "url", "duration", "added_at"}
+                    if set(track) != {"title", "url", "duration", "added_at"}:
+                        raise ValueError()
                     song(track)
-                    assert type(track["added_at"]) in (int, float) and math.isfinite(track["added_at"])
+                    if type(track["added_at"]) not in (int, float) or not 0 < track["added_at"] < 10**12 or not math.isfinite(track["added_at"]):
+                        raise ValueError()
             return value
         except Exception as exc:
             # OSError must not be mistaken for corruption (e.g. permissions).
@@ -120,8 +128,10 @@ class PlaylistStore:
     def revision(value):
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
-    async def transact(self, uid, change=None, revision=None):
+    async def transact(self, uid, change=None, revision=None, authorize=None):
         async with self.locks[uid]:
+            if authorize is not None:
+                authorize()
             value = self.read(uid)
             if revision is not None and revision != self.revision(value):
                 fail(409, "歌單已更新，請重新整理後再操作。")
@@ -155,9 +165,14 @@ class DashboardLibrary:
 
     async def library(self, request):
         uid = self.library_identity(request)
+        def authorize():
+            if self.discord_auth:
+                self.authenticate(request)
+            if self.library_identity(request) != uid:
+                fail(403, "登入身分已變更，請重新登入。")
         owner = uid == self.bot.config.owner_id
         if request.method == "GET":
-            return web.json_response(dict(await self.playlist_store.transact(uid), owner=owner))
+            return web.json_response(dict(await self.playlist_store.transact(uid, authorize=authorize), owner=owner))
         data = await self.payload(request)
         if any(key in data for key in ("user_id", "filename", "path")):
             fail(400, "請求包含不支援的欄位。")
@@ -201,7 +216,7 @@ class DashboardLibrary:
                 fail(400, "不支援這個歌單操作。")
         if pid is not None and not isinstance(data.get("revision"), str):
             fail(400, "請提供歌單版本，重新整理後再操作。")
-        result = await self.playlist_store.transact(uid, change, data.get("revision"))
+        result = await self.playlist_store.transact(uid, change, data.get("revision"), authorize=authorize)
         return web.json_response(dict(result, owner=owner))
 
     async def library_play(self, request):
