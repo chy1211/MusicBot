@@ -53,7 +53,13 @@ def atomic_write(path, content):
     fd, tmp = tempfile.mkstemp(prefix="." + path.name + "-", dir=path.parent)
     try:
         if path.exists():
-            os.fchmod(fd, path.stat().st_mode & 0o777)
+            stat = path.stat()
+            os.fchmod(fd, stat.st_mode & 0o777)
+            try:
+                # The bot runs as root; keep host-owned files editable by their owner.
+                os.fchown(fd, stat.st_uid, stat.st_gid)
+            except OSError:
+                pass
         with os.fdopen(fd, "wb") as stream:
             stream.write(content)
             stream.flush()

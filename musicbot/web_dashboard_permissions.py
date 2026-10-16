@@ -117,7 +117,13 @@ class DashboardPermissions:
             phase = "parse"
             try:
                 fd, temp = tempfile.mkstemp(prefix=".permissions-web-", dir=path.parent)
-                os.fchmod(fd, path.stat().st_mode & 0o777)
+                stat = path.stat()
+                os.fchmod(fd, stat.st_mode & 0o777)
+                try:
+                    # Keep the host owner so permissions.ini stays editable over ssh.
+                    os.fchown(fd, stat.st_uid, stat.st_gid)
+                except OSError:
+                    pass
                 with os.fdopen(fd, "wb") as stream:
                     stream.write(updated)
                     stream.flush()
