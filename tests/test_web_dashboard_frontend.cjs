@@ -1654,3 +1654,47 @@ test("round8 help opens from question mark or button and closes with Esc or clos
   const css = fs.readFileSync(path.join(__dirname,"../musicbot/web/dashboard.css"),"utf8");
   assert.match(css,/\.desktop-shortcuts\{display:none\}/);
 });
+
+test("round8 queue search matches title or requester without case and combines with mine", async () => {
+  const app = await setup();
+  app.states[1].queue = [
+    {title:"Alpha",position:1,mine:false,requester:{name:"BoB"},duration:60},
+    {title:"Beta",position:2,mine:true,requester:{name:"Alice"},duration:60},
+    {title:"ALPHA live",position:3,mine:true,requester:{name:"Bob"},duration:60},
+    {title:"Delta",position:4,mine:true,requester:{name:"Alice"},duration:60}];
+  await app.run("refresh()");
+  const search = text => { app.element("queue-search").value=text;app.element("queue-search").listeners.input(); };
+  search("  bOB ");
+  assert.deepEqual(app.element("queue").children.map(r=>r.dataset.position),["1","3"]);
+  app.element("queue-mine").click();
+  assert.deepEqual(app.element("queue").children.map(r=>r.dataset.position),["3"]);
+  assert.equal(app.element("queue-match-count").textContent,"顯示 1／4 首");
+  const actions=app.element("queue").children[0].children[4].children;
+  await actions[1].listeners.click();
+  const move=app.requests.find(r=>r.url.endsWith("/queue/move"));
+  assert.deepEqual(move.data,{from:3,to:2,revision:"revision-1"});
+  // The same original song is now at complete-queue position 2.
+  await app.element("queue").children[0].children[4].children[3].listeners.click();
+  assert.equal(app.requests.find(r=>r.method==="DELETE").url,"api/guilds/1/queue/2");
+  search("missing");assert.equal(app.element("queue-empty").hidden,false);
+  search(""); app.element("queue-all").click();
+  assert.equal(app.element("queue").children.length,3);
+  assert.equal(app.element("shuffle").disabled,false);
+});
+test("round8 any search disables dragging and shuffle with a reason then restores", async () => {
+  const app=await setup();
+  app.element("queue-search").value="Two";app.element("queue-search").listeners.input();
+  const row=app.element("queue").children[0],handle=row.children[4].children[0];
+  assert.equal(handle.disabled,true);assert.equal(app.element("shuffle").disabled,true);
+  assert.match(app.element("drag-help").textContent,/搜尋篩選中.*停用拖曳與洗牌/);
+  handle.listeners.pointerdown({button:0,pointerId:1,pointerType:"mouse",clientX:40,clientY:210});
+  assert.equal(app.run("drag"),null);
+  const before=app.requests.length; await app.element("shuffle").listeners.click();
+  assert.equal(app.requests.length,before);
+  app.element("queue-search").value="";app.element("queue-search").listeners.input();
+  assert.equal(app.element("shuffle").disabled,false);
+  assert.equal(app.element("queue").children[0].children[4].children[0].disabled,false);
+  app.element("queue-search").value="Two";app.element("queue-search").listeners.input();
+  app.element("guild").value="2"; await app.element("guild").listeners.change();
+  assert.equal(app.element("queue-search").value,"");assert.equal(app.run("queueSearch"),"");
+});

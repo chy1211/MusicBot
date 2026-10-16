@@ -1037,3 +1037,13 @@ Existing state/SSE now includes only the viewer's four boolean capabilities
 These are display hints; every mutation still performs its original authorization.
 No new endpoints, identity fields or other users' permissions are exposed.
 The offline demo supports the same keys; fake away/denied users show disabled controls.
+
+### Queue search
+
+Search beside the queue heading filters titles and requester display names as you
+type (case-insensitive). It combines with All / My requests and shows a match count.
+Filtering never changes the queue or its numbering: up/down/delete still send the
+complete-queue position and observed revision. Any search or My requests disables
+dragging and shuffle, with a visible reason. Clear the search and choose All to
+restore them. Switching guilds or signing out clears the search.
+The demo's title/requester data can exercise both filters together.

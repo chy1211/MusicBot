@@ -146,7 +146,7 @@ function controls() {
   document.querySelectorAll("#preview-results input").forEach((input) => {
     input.disabled = !usable || input.dataset.boundary === "1";
   });
-  $("shuffle").disabled = !hasPlayer || !state.queue.length || queueMine;
+  $("shuffle").disabled = !hasPlayer || !state.queue.length || queueFiltered();
   $("guild").disabled = busy;
   $("logout").disabled = busy;
   document.querySelectorAll("#queue button").forEach((button) => {
@@ -164,7 +164,7 @@ function imageElement(url, className = "queue-cover") {
   return img;
 }
 function renderQueue() {
-  const signature = state.revision + queueMine + JSON.stringify(state.queue);
+  const signature = JSON.stringify([state.revision, queueMine, queueSearch, state.queue]);
   if (queueRevision === signature) return;
   const before = new Map(Array.from($("queue").children, (row) =>
     [row.dataset.key, row.getBoundingClientRect().top]));
@@ -173,9 +173,11 @@ function renderQueue() {
   queueRevision = signature;
   $("queue").replaceChildren();
   $("queue-count").textContent = String(state.queue.length);
-  const visible = queueMine ? state.queue.filter((song) => song.mine === true) : state.queue;
+  const visible = state.queue.filter((song) => (!queueMine || song.mine === true) &&
+    (!queueSearch || [song.title, requesterName(song)].some((text) => String(text || "").toLowerCase().includes(queueSearch))));
+  $("queue-match-count").textContent = queueFiltered() ? "顯示 " + visible.length + "／" + state.queue.length + " 首" : "";
   $("queue-empty").hidden = visible.length !== 0;
-  $("queue-empty").textContent = queueMine ? "目前沒有你點播的歌曲。" : "目前佇列是空的。";
+  $("queue-empty").textContent = queueSearch ? "沒有符合搜尋的歌曲。" : queueMine ? "目前沒有你點播的歌曲。" : "目前佇列是空的。";
   const occurrences = new Map();
   for (const song of visible) {
     const li = document.createElement("li");
@@ -199,8 +201,8 @@ function renderQueue() {
     handle.textContent = "⋮⋮"; handle.className = "drag-handle";
     handle.setAttribute("aria-label", "拖曳排序：" + song.title + "；鍵盤請用旁邊的上移或下移按鈕");
     handle.setAttribute("aria-describedby", "drag-help");
-    handle.title = queueMine ? "我的點歌篩選中，請用上下移按鈕" : "拖曳排序（手機長按）";
-    handle.dataset.boundary = queueMine ? "1" : "0";
+    handle.title = queueFiltered() ? "篩選中停用拖曳，請用上下移按鈕" : "拖曳排序（手機長按）";
+    handle.dataset.boundary = queueFiltered() ? "1" : "0";
     installDrag(handle, li, song.position, rev);
     actions.append(handle);
     for (const [text, label, target] of [["↑", "上移", song.position - 1], ["↓", "下移", song.position + 1], ["×", "刪除", null]]) {
@@ -308,7 +310,7 @@ function activateDrag() {
 }
 function installDrag(handle, row, from, rev) {
   handle.addEventListener("pointerdown", (event) => {
-    if (queueMine || event.button !== 0 || event.isPrimary === false || busy || !connected || drag) return;
+    if (handle.disabled || queueFiltered() || event.button !== 0 || event.isPrimary === false || busy || !connected || drag) return;
     drag = {handle, row, from, target: from, rev, pointerId: event.pointerId,
       x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY,
       active: false, touch: event.pointerType !== "mouse", epoch: generation};
@@ -570,6 +572,7 @@ async function refresh(epoch = generation, force = false) {
 function resetView() {
   $("shortcuts-dialog").close();
   cancelDrag(); cancelSeek(); clearPreview(); resetHistory(); resetLyrics(true);
+  queueSearch = ""; $("queue-search").value = "";
   queueMine = false; setQueueFilter(false);
   queueRevision = null;
   render({status: "disconnected", current: null, progress: 0, volume: null,
@@ -634,7 +637,7 @@ $("skip").addEventListener("click", () => act("skip"));
 $("repeat").addEventListener("change", () => act("repeat", {mode: $("repeat").value}));
 $("volume").addEventListener("input", () => { $("volume-label").value = $("volume").value + "%"; });
 $("volume").addEventListener("change", () => act("volume", {volume: Number($("volume").value)}));
-$("shuffle").addEventListener("click", () => act("queue/shuffle", {revision: state.revision}));
+$("shuffle").addEventListener("click", () => { if (!$("shuffle").disabled && !queueFiltered()) return act("queue/shuffle", {revision: state.revision}); });
 $("logout").addEventListener("click", logout);
 $("user-avatar").addEventListener("error", () => { $("user-avatar").hidden = true; });
 
@@ -855,7 +858,8 @@ $("request-action").addEventListener("change", () => { clearPreview(); controls(
 
 
 /* Shared-clock progress and queue estimates. Only received state resets the anchor. */
-let stateAt = Date.now(), queueMine = false;
+let stateAt = Date.now(), queueMine = false, queueSearch = "";
+function queueFiltered() { return queueMine || !!queueSearch; }
 function localProgress(now = Date.now()) {
   const base = Math.max(0, Number(state?.progress) || 0);
   const value = base + (connected && state?.status === "playing" ? Math.max(0, now - stateAt) / 1000 : 0);
@@ -897,9 +901,11 @@ function setQueueFilter(mine) {
   cancelDrag(); queueRevision = null;
   $("queue-all").setAttribute("aria-pressed", String(!mine));
   $("queue-mine").setAttribute("aria-pressed", String(mine));
-  $("drag-help").textContent = mine
-    ? "我的點歌：停用拖曳與洗牌；↑ ↓ 與刪除仍使用完整佇列的位置。"
+  const reason = [mine ? "我的點歌" : "", queueSearch ? "搜尋篩選中" : ""].filter(Boolean).join("＋");
+  $("drag-help").textContent = reason
+    ? reason + "：停用拖曳與洗牌；↑ ↓ 與刪除仍使用完整佇列的位置。"
     : "拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。";
+  $("shuffle").title = reason ? reason + "：停用洗牌，請先清除篩選。" : "將完整佇列洗牌";
   if (state) { renderQueue(); controls(); updateQueueTimes(); }
 }
 function renderCommunity(value) {
@@ -1003,6 +1009,10 @@ function localTick() {
   }
   window.setTimeout(localTick, 1000);
 }
+$("queue-search").addEventListener("input", () => {
+  queueSearch = $("queue-search").value.trim().toLowerCase();
+  setQueueFilter(queueMine);
+});
 $("queue-all").addEventListener("click", () => setQueueFilter(false));
 $("queue-mine").addEventListener("click", () => setQueueFilter(true));
 document.addEventListener("visibilitychange", async () => {

@@ -12,12 +12,12 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r8-1">
-  <script src="/dashboard.js?v=r8-1" defer></script>
-  <script src="/library.js?v=r8-1" defer></script>
-  <script src="/admin.js?v=r8-1" defer></script>
-  <script src="/permissions.js?v=r8-1" defer></script>
-  <script src="/pwa.js?v=r8-1" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r8-2">
+  <script src="/dashboard.js?v=r8-2" defer></script>
+  <script src="/library.js?v=r8-2" defer></script>
+  <script src="/admin.js?v=r8-2" defer></script>
+  <script src="/permissions.js?v=r8-2" defer></script>
+  <script src="/pwa.js?v=r8-2" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -84,8 +84,10 @@
     </section>
     <section class="card queue" aria-labelledby="queue-heading">
       <div class="section-top"><div><h2 id="queue-heading">接下來 <span id="queue-count">0</span> 首・<span id="queue-total">共 0 小時 0 分</span></h2></div>
-        <button id="shuffle" class="subtle" disabled>⇄ 洗牌</button></div>
+        <div class="queue-tools"><label for="queue-search">搜尋佇列<input id="queue-search" type="search" maxlength="200" placeholder="歌名或點播者"></label>
+        <button id="shuffle" class="subtle" type="button" disabled>⇄ 洗牌</button></div></div>
       <div class="queue-filters" role="group" aria-label="篩選點播者"><button id="queue-all" type="button" aria-pressed="true">全部</button><button id="queue-mine" type="button" aria-pressed="false">我的點歌</button></div>
+      <p id="queue-match-count" class="hint" role="status" aria-live="polite"></p>
       <p id="queue-timing-note" class="hint"></p>
       <p id="drag-help" class="hint">拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。</p>
       <div class="queue-head" aria-hidden="true"><span>＃</span><span>歌曲</span><span>長度</span></div>
