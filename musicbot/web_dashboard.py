@@ -30,6 +30,7 @@ from .utils import get_compound_link_ids
 from .web_dashboard_auth import DashboardAuth, USER_KEY
 from .web_dashboard_events import DashboardEvents
 from .web_dashboard_library import DashboardLibrary
+from .web_dashboard_admin import DashboardAdmin
 from .web_dashboard_activity import capture, finish
 
 ACTIVITY_KEY = web.RequestKey("dashboard_activity", object)
@@ -175,7 +176,7 @@ def revision(player) -> str:
     return hashlib.sha256(str(identities).encode()).hexdigest()
 
 
-class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary):
+class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin):
     def __init__(self, bot, config: DashboardConfig):
         self.bot = bot
         self.config = config
@@ -195,6 +196,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary):
             middlewares=[self.guard], client_max_size=16 * 1024)
         self.init_events()
         self.init_library()
+        self.init_admin()
         self.app.router.add_get("/", self.index)
         self.app.router.add_get("/favicon.svg", self.favicon)
         self.app.router.add_get("/favicon.ico", self.favicon)
@@ -205,6 +207,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary):
         self.app.router.add_get("/dashboard.css", self.asset)
         self.app.router.add_get("/dashboard.js", self.asset)
         self.app.router.add_get("/library.js", self.asset)
+        self.app.router.add_get("/admin.js", self.asset)
         self.app.router.add_get("/api/guilds", self.guilds)
         self.app.router.add_get("/api/guilds/{guild_id}/state", self.state)
         self.app.router.add_get("/api/guilds/{guild_id}/listeners", self.listeners)

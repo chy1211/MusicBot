@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/dashboard.css">
   <script src="/dashboard.js" defer></script>
   <script src="/library.js" defer></script>
+  <script src="/admin.js" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -24,7 +25,7 @@
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="音樂控制台首頁"><span aria-hidden="true">♫</span> 音樂控制台</a>
     <label for="guild">切換伺服器</label><select id="guild" aria-label="切換伺服器"></select>
-    <nav class="page-tabs" aria-label="頁面"><button id="nav-play" type="button" aria-pressed="true">播放</button><button id="nav-library" type="button">我的歌單</button></nav>
+    <nav class="page-tabs" aria-label="頁面"><button id="nav-play" type="button" aria-pressed="true">播放</button><button id="nav-library" type="button">我的歌單</button><button id="nav-admin" type="button" hidden>管理</button></nav>
     <span id="connection" class="badge" role="status">連線中</span>
     <details id="auth" class="auth">
       <summary>連線設定</summary>
@@ -59,6 +60,7 @@
       <div class="track-info"><p class="eyebrow" id="now-heading">正在播放</p><span id="play-status" class="badge">尚未連線</span>
         <h2 id="title">選一首喜歡的歌</h2><p id="subtitle" class="muted">請先加入 Discord 語音頻道</p>
         <a id="source-link" class="source-link" target="_blank" rel="noopener noreferrer" hidden>在來源網站開啟 ↗</a>
+        <button id="autoplaylist-current" class="subtle" type="button" hidden>加入自動播放清單</button>
         <button id="favorite" class="subtle" type="button">♡ 收藏</button>
         <button id="lyrics-toggle" class="subtle" type="button" aria-expanded="false" aria-controls="lyrics-panel" disabled>歌詞 ♫</button>
         <div class="progress-row hero-progress"><span id="hero-elapsed">0:00</span><input id="hero-progress" type="range" min="0" max="1" step="1" value="0" aria-label="正在播放：跳到指定時間" disabled><span id="hero-duration">0:00</span></div>
@@ -106,6 +108,13 @@
 <p id="library-empty" class="hint">歌單目前沒有歌曲。</p><ol id="library-list" class="library-list"></ol>
 </section>
 <dialog id="library-save-dialog"><h2>加到歌單</h2><label for="playlist-picker">選擇歌單</label><select id="playlist-picker"></select><div class="selection-tools"><button id="library-save-confirm" type="button">加入歌單</button><button id="library-save-cancel" type="button">取消</button></div></dialog>
+<section id="admin-panel" class="card" hidden aria-labelledby="admin-heading">
+<h2 id="admin-heading">管理</h2><h3>自動播放清單</h3>
+<form id="admin-apl-search" class="input-row"><label for="admin-apl-query">搜尋網址</label><input id="admin-apl-query" type="search" maxlength="100"><button id="admin-apl-search-button" type="submit">搜尋</button></form>
+<p id="admin-apl-count" role="status"></p><ol id="admin-apl-list" class="admin-apl-list"></ol>
+<div class="selection-tools"><button id="admin-apl-prev" type="button">上一頁</button><button id="admin-apl-next" type="button">下一頁</button></div>
+<form id="admin-apl-add" class="input-row"><label for="admin-apl-url">新增網址</label><input id="admin-apl-url" type="url" maxlength="2000" required><button id="admin-apl-add-button" type="submit">新增</button></form>
+<div id="admin-permissions"></div></section>
     <footer id="identity-note">即時更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道</footer>
   </main>
   <section class="playback-bar" aria-label="播放控制">

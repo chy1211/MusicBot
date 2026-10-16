@@ -55,6 +55,7 @@ function authDisplay() {
 function signedOut(message = "登入後即可查看你的伺服器並點歌。") {
   stopEvents();
   if (typeof libraryClear === "function") libraryClear();
+  if (typeof adminClear === "function") adminClear();
   ++generation; ++stateGeneration;
   authenticated = false; connected = false; loading = false; selected = "";
   secret = ""; $("secret").value = ""; $("query").value = "";
@@ -548,6 +549,7 @@ async function connect() {
     selected = $("guild").value;
     if (!selected) { notice(authMode === "owner" ? "目前沒有 OwnerID 本人所在的可用伺服器。" : "目前沒有你與機器人共同所在的伺服器。"); return; }
     await refresh(epoch);
+    if (connected && typeof adminCapability === "function") adminCapability();
     if (connected) { notice("已連線，可以開始點歌。"); startEvents(); }
   } catch (error) {
     if (epoch === generation) {
@@ -569,7 +571,9 @@ $("cover").addEventListener("error", () => { $("cover").hidden = true; });
 $("guild").addEventListener("change", async () => {
   stopEvents(); fallbackPolling = true;
   ++generation; selected = $("guild").value; state = null;
+  if (typeof adminClear === "function") adminClear();
   connected = false; resetView(); controls(); await refresh(); startEvents();
+  if (typeof adminCapability === "function") await adminCapability();
 });
 $("auth-form").addEventListener("submit", (event) => {
   event.preventDefault(); secret = $("secret").value.trim(); connect();
