@@ -12,7 +12,7 @@
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
     <div class="login-card"><span class="login-icon" aria-hidden="true">&#9835;</span>
-      <p class="eyebrow">你的音樂空間</p><h1 id="login-heading">一起聽音樂</h1>
+      <h1 id="login-heading">一起聽音樂</h1>
       <p>用你的 Discord 身分，選一首喜歡的歌。</p>
       <p id="login-status" class="hint" role="status" aria-live="polite">正在確認登入狀態…</p>
       <a id="discord-login" class="primary login-button" href="/auth/login" hidden>用 Discord 登入</a>
@@ -21,7 +21,6 @@
   <div id="dashboard" hidden>
   <aside class="sidebar">
     <a class="brand" href="/" aria-label="音樂控制台首頁"><span aria-hidden="true">♫</span> 音樂控制台</a>
-    <p class="eyebrow">你的音樂空間</p>
     <label for="guild">切換伺服器</label><select id="guild" aria-label="切換伺服器"></select>
     <span id="connection" class="badge" role="status">連線中</span>
     <details id="auth" class="auth">
@@ -34,7 +33,7 @@
     </details>
   </aside>
   <main>
-    <header class="page-heading"><div><p class="eyebrow">此刻，聽點喜歡的</p><h1>一起聽音樂</h1></div><span id="owner-badge" class="badge">私人音樂室</span>
+    <header class="page-heading"><div><h1>一起聽音樂</h1></div>
       <div id="user-profile" class="user-profile" hidden><img id="user-avatar" alt="" referrerpolicy="no-referrer" hidden>
         <span id="user-name"></span><button id="logout" type="button" class="subtle">登出</button></div></header>
     <section class="card request" aria-labelledby="request-heading">
@@ -62,13 +61,13 @@
       </div>
     </section>
     <section id="lyrics-panel" class="card lyrics-panel" aria-labelledby="lyrics-heading" hidden>
-      <div class="section-top"><div><p class="eyebrow">跟著旋律，讀一句</p><h2 id="lyrics-heading">歌詞</h2></div><button id="lyrics-close" class="subtle" type="button" aria-label="關閉歌詞">關閉 ×</button></div>
+      <div class="section-top"><div><h2 id="lyrics-heading">歌詞</h2></div><button id="lyrics-close" class="subtle" type="button" aria-label="關閉歌詞">關閉 ×</button></div>
       <p id="lyrics-status" class="hint" role="status" aria-live="polite"></p>
       <div id="lyrics-content" class="lyrics-content" tabindex="0" aria-label="歌詞內容"></div>
       <form id="lyrics-search-form" class="lyrics-search" hidden><label for="lyrics-query">試試歌名與演出者</label><div class="input-row"><input id="lyrics-query" type="search" maxlength="200" placeholder="歌名 演出者" required><button id="lyrics-search" type="submit">搜尋歌詞</button></div></form>
     </section>
     <section class="card queue" aria-labelledby="queue-heading">
-      <div class="section-top"><div><p class="eyebrow">讓旋律接下去</p><h2 id="queue-heading">接下來 <span id="queue-count">0</span></h2></div>
+      <div class="section-top"><div><h2 id="queue-heading">接下來 <span id="queue-count">0</span></h2></div>
         <button id="shuffle" class="subtle" disabled>⇄ 洗牌</button></div>
       <p id="drag-help" class="hint">拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。</p>
       <div class="queue-head" aria-hidden="true"><span>＃</span><span>歌曲</span><span>長度</span></div>
@@ -76,7 +75,7 @@
       <p id="queue-empty" class="empty">下一首的空位，留給你。<br><span>查詢上方歌曲，確認後加入佇列。</span></p>
     </section>
     <section class="card history" aria-labelledby="history-heading">
-      <div class="section-top"><div><p class="eyebrow">再聽一次，也很好</p><h2 id="history-heading">最近播過</h2></div><button id="history-refresh" class="subtle" type="button" disabled>重新整理</button></div>
+      <div class="section-top"><div><h2 id="history-heading">最近播過</h2></div><button id="history-refresh" class="subtle" type="button" disabled>重新整理</button></div>
       <p class="hint">這個伺服器最近播放的 50 首歌曲。</p>
       <p id="history-status" class="hint" role="status">尚無播放紀錄。</p>
       <ol id="history-list" class="history-list"></ol>
