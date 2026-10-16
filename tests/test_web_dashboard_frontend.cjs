@@ -87,7 +87,7 @@ async function setup(options = {}) {
         if (element.tag === (selector.endsWith("input") ? "input" : "button")) result.push(element);
         element.children.forEach(walk);
       }
-      walk(this.getElementById(selector.includes("preview") ? "preview-results" : selector.includes("history") ? "history-list" : "queue"));
+      walk(this.getElementById(selector.includes("preview") ? "preview-results" : selector.includes("history") ? "history-list" : selector.includes("recommendation") ? "recommendation-list" : "queue"));
       return result;
     }};
   const requests = [], timers = [], frames = [], scrolls = [], states = {1: initial(1), 2: initial(2)};
@@ -1697,4 +1697,50 @@ test("round8 any search disables dragging and shuffle with a reason then restore
   app.element("queue-search").value="Two";app.element("queue-search").listeners.input();
   app.element("guild").value="2"; await app.element("guild").listeners.change();
   assert.equal(app.element("queue-search").value,"");assert.equal(app.run("queueSearch"),"");
+});
+
+test("round8 empty recommendations deduplicate skip current unsafe and cap at five", async () => {
+  const app=await setup();
+  app.states[1].queue=[];app.states[1].current.url="https://www.youtube.com/watch?v=AbcDeFg1234";
+  await app.run("refresh()");
+  const rows=[
+    {title:"Current",url:"https://youtu.be/AbcDeFg1234?t=2"},
+    {title:"One",url:"https://example.test/one"},
+    {title:"One again",url:"https://EXAMPLE.test/one/#ignored"},
+    {title:"Unsafe",url:"javascript:alert(1)"},
+    ...Array.from({length:7},(_,i)=>({title:"Song "+i,url:"https://example.test/song/"+i}))];
+  app.context.historyFixture=rows;
+  app.run("applyHistory({history: historyFixture})");
+  assert.equal(app.element("queue-recommendations").hidden,false);
+  assert.deepEqual(app.element("recommendation-list").children.map(r=>r.children[1].children[0].textContent),
+    ["One","Song 0","Song 1","Song 2","Song 3"]);
+  app.states[1].queue=[{title:"Other",position:1}];await app.run("refresh()");
+  app.element("queue-search").value="missing";app.element("queue-search").listeners.input();
+  assert.equal(app.element("queue-recommendations").hidden,true); // True empty only, not filtered empty.
+  app.states[1].queue=[];await app.run("refresh()");app.run("applyHistory({history: []})");
+  assert.equal(app.element("queue-recommendations").hidden,true);
+});
+test("round8 recommendation add resolves and requires normal preview confirmation", async () => {
+  const app=await setup();
+  app.states[1].queue=[];await app.run("refresh()");
+  app.run('applyHistory({history:[{title:"Recent",url:"https://example.test/selected"}]})');
+  await app.element("recommendation-list").children[0].children[2].click();
+  const resolve=app.requests.find(r=>r.url.endsWith("/resolve"));
+  assert.deepEqual(resolve.data,{query:"https://example.test/selected",action:"play"});
+  assert.equal(app.requests.filter(r=>r.url.endsWith("/play")).length,0);
+  await app.element("preview-results").children[0].children[2].click();
+  assert.deepEqual(app.requests.find(r=>r.url.endsWith("/play")).data,
+    {query:"https://example.test/selected",preview_id:"preview-one"});
+});
+test("round8 recommendation rejection and stale guild button preserve existing boundaries", async () => {
+  const app=await setup();
+  app.states[1].queue=[];await app.run("refresh()");
+  app.run('applyHistory({history:[{title:"Recent",url:"https://example.test/selected"}]})');
+  const add=app.element("recommendation-list").children[0].children[2];
+  app.hook(url=>url.endsWith("/resolve")?Promise.resolve({ok:false,status:403,json:async()=>({error:"權限拒絕"})}):null);
+  await add.click();assert.equal(app.element("notice").textContent,"權限拒絕");
+  assert.equal(app.requests.filter(r=>r.url.endsWith("/play")).length,0);
+  app.element("guild").value="2";await app.element("guild").listeners.change();
+  const count=app.requests.length;await add.listeners.click();
+  assert.equal(app.requests.length,count);assert.equal(app.element("queue-recommendations").hidden,true);
 });

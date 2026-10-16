@@ -159,3 +159,20 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         long_song = next(item for item in history["history"] if item["duration"] > 210)
         result = await self.call(BASE + "resolve", {"query": long_song["url"]})
         self.assertFalse(result["results"][0]["allowed"])
+
+    async def test_demo_empty_switch_preserves_history_and_existing_play_flow(self):
+        await self.login("owner")
+        page = await (await self.client.get("/?demo-queue=empty")).text()
+        self.assertIn("還原示範佇列", page)
+        self.dashboard.demo_tick()
+        state = await self.call(BASE + "state", method="GET")
+        self.assertEqual(state["queue"], [])
+        history = await self.call(BASE + "history", method="GET")
+        self.assertGreaterEqual(len(history["history"]), 5)
+        song = next(s for s in history["history"] if s["url"] != state["current"]["url"])
+        preview = await self.call(BASE + "resolve", {"query": song["url"]})
+        item = preview["results"][0]
+        await self.call(BASE + "play", {"query": item["url"], "preview_id": item["preview_id"]})
+        self.assertEqual(len(self.bot.players[1].playlist.entries), 1)
+        await self.client.get("/?demo-queue=filled")
+        self.assertEqual(len(self.bot.players[1].playlist.entries), 4)

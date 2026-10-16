@@ -33,6 +33,24 @@ function safeURL(value) {
     return /^https?:$/.test(url.protocol) && !url.username && !url.password ? value : "";
   } catch { return ""; }
 }
+function songIdentity(value) {
+  const raw = safeURL(String(value || "").trim());
+  if (!raw) return "";
+  const url = new URL(raw), host = url.hostname.toLowerCase();
+  const parts = url.pathname.split("/").filter(Boolean);
+  const youtube = host === "youtube.com" || host.endsWith(".youtube.com") ||
+    host === "youtube-nocookie.com" || host.endsWith(".youtube-nocookie.com");
+  const id = host === "youtu.be" || host === "www.youtu.be" ? parts[0] :
+    youtube ? (url.pathname === "/watch" ? url.searchParams.get("v") :
+      ["shorts", "embed", "live", "v"].includes(parts[0]) ? parts[1] : "") : "";
+  if (id && /^[A-Za-z0-9_-]{11}$/.test(id)) return "youtube:" + id;
+  url.hash = "";
+  url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+  for (const key of [...url.searchParams.keys()])
+    if (/^utm_/i.test(key) || /^(fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
+  url.searchParams.sort();
+  return url.href;
+}
 function requesterName(song) { return song?.requester?.name || "自動播放"; }
 const reduceMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 function duration(seconds) {
@@ -146,6 +164,7 @@ function controls() {
   document.querySelectorAll("#preview-results input").forEach((input) => {
     input.disabled = !usable || input.dataset.boundary === "1";
   });
+  document.querySelectorAll("#recommendation-list button").forEach((button) => { button.disabled = !usable || resolving; });
   $("shuffle").disabled = !hasPlayer || !state.queue.length || queueFiltered();
   $("guild").disabled = busy;
   $("logout").disabled = busy;
@@ -534,7 +553,7 @@ function render(next, force = false) {
     $("volume").value = state.volume; $("volume-label").value = state.volume + "%";
   }
   if (force || document.activeElement !== $("repeat")) $("repeat").value = state.repeat;
-  renderQueue(); controls(); updateQueueTimes(); renderCommunity(state);
+  renderQueue(); renderRecommendations(); controls(); updateQueueTimes(); renderCommunity(state);
 }
 async function act(action, data = {}, method = "POST") {
   if (busy || !selected || !connected) return;
@@ -712,9 +731,46 @@ document.addEventListener("pointercancel", (event) => {
   }
 });
 
-let historyLoading = false, historyRequest = 0, historyUpdated = 0;
+let historyLoading = false, historyRequest = 0, historyUpdated = 0, recentHistory = [], recommendationRevision = null;
+function recommendationSongs(history, current) {
+  const seen = new Set([songIdentity(current?.url)]);
+  return history.filter((song) => {
+    const key = songIdentity(song.url);
+    if (!key || seen.has(key)) return false;
+    seen.add(key); return true;
+  }).slice(0, 5);
+}
+async function previewHistorySong(song, guild = selected, epoch = generation) {
+  if (busy || !connected || epoch !== generation || guild !== selected || !safeURL(song.url)) return;
+  $("query").value = song.url; $("request-action").value = "play";
+  await resolveQuery();
+  if (epoch === generation && guild === selected)
+    $("preview-panel").scrollIntoView?.({behavior: reduceMotion() ? "auto" : "smooth", block: "nearest"});
+}
+function renderRecommendations() {
+  const songs = state && !state.queue.length ? recommendationSongs(recentHistory, state.current) : [];
+  const signature = JSON.stringify([selected, generation, songs]);
+  $("queue-recommendations").hidden = songs.length === 0;
+  if (signature === recommendationRevision) return;
+  recommendationRevision = signature;
+  $("recommendation-list").replaceChildren();
+  const guild = selected, epoch = generation;
+  for (const song of songs) {
+    const row = document.createElement("li"), info = document.createElement("div");
+    info.className = "history-info";
+    const title = document.createElement("p"); title.textContent = song.title;
+    const meta = document.createElement("small");
+    meta.textContent = (song.duration ? duration(song.duration) : "長度未知") + " · 點播：" + requesterName(song);
+    info.append(title, meta);
+    const add = document.createElement("button"); add.type = "button"; add.textContent = "加入";
+    add.setAttribute("aria-label", "加入：" + song.title);
+    add.addEventListener("click", () => { if (!add.disabled) return previewHistorySong(song, guild, epoch); });
+    row.append(imageElement(song.thumbnail), info, add); $("recommendation-list").append(row);
+  }
+}
 function resetHistory() {
-  ++historyRequest; historyLoading = false; historyUpdated = 0;
+  ++historyRequest; historyLoading = false; historyUpdated = 0; recentHistory = [];
+  recommendationRevision = null; renderRecommendations();
   $("history-list").replaceChildren(); $("history-status").textContent = "尚無播放紀錄。";
 }
 function playedTime(timestamp) {
@@ -748,7 +804,8 @@ async function refreshHistory(manual = false) {
 function applyHistory(result, guild = selected, epoch = generation) {
   ++historyRequest; historyLoading = false;
     $("history-list").replaceChildren();
-    const entries = (result.history || []).slice(0, 50);
+    const entries = recentHistory = (result.history || []).slice(0, 50);
+    renderRecommendations();
     $("history-status").textContent = entries.length ? "播放時間以台灣時間顯示。" : "還沒有播放紀錄，先點一首喜歡的歌。";
     for (const song of entries) {
       const row = document.createElement("li"), info = document.createElement("div");
@@ -765,9 +822,7 @@ function applyHistory(result, guild = selected, epoch = generation) {
         const replay = document.createElement("button"); replay.type = "button"; replay.textContent = "再點一次";
         replay.addEventListener("click", async () => {
           if (replay.disabled || busy || epoch !== generation || guild !== selected) return;
-          $("query").value = song.url; $("request-action").value = "play";
-          await resolveQuery();
-          if (epoch === generation && guild === selected) $("preview-panel").scrollIntoView?.({behavior: reduceMotion() ? "auto" : "smooth", block: "nearest"});
+          await previewHistorySong(song, guild, epoch);
         });
         const link = document.createElement("a"); link.textContent = "來源 ↗";
         link.href = song.url; link.target = "_blank"; link.rel = "noopener noreferrer";

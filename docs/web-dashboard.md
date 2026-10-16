@@ -1047,3 +1047,17 @@ complete-queue position and observed revision. Any search or My requests disable
 dragging and shuffle, with a visible reason. Clear the search and choose All to
 restore them. Switching guilds or signing out clears the search.
 The demo's title/requester data can exercise both filters together.
+
+### Empty queue: recent recommendations
+
+Only an actually empty complete queue shows up to five recent tracks inside the
+queue card. The client deduplicates source URLs (including YouTube video IDs),
+skips the current track and unusable sources, and keeps newest-first order.
+No history means no recommendation section; filtering to zero results does not
+activate it. Add follows the existing request/resolve/preview/confirm flow, using
+the caller's current permissions, rate/length/queue limits and existing APIs.
+
+The offline demo has links above the request input: 示範空佇列 empties only fake
+queues and pauses its automatic queue changes; 還原示範佇列 restores them. Choose
+the empty example, inspect five distinct recommendations and click Add, then
+confirm the normal preview. These demo-only switches make no outbound requests.

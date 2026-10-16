@@ -93,3 +93,7 @@ select option{background:#1c1c22}
 .queue-tools label{display:grid;gap:4px;color:var(--muted);font-size:12px;min-width:0}
 .queue-tools input{width:200px;max-width:100%;font-size:14px}
 @media(max-width:760px){.queue .section-top{flex-wrap:wrap}.queue-tools{width:100%}.queue-tools label{flex:1}.queue-tools input{width:100%}}
+
+#queue-recommendations{margin-top:20px;border-top:1px solid var(--line);padding-top:16px}
+#recommendation-list>li>button{font-size:12px;min-height:44px}
+@media(max-width:760px){#recommendation-list>li{grid-template-columns:38px minmax(0,1fr) auto}}
