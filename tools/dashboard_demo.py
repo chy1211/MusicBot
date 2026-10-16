@@ -314,7 +314,7 @@ class DemoDashboard(Dashboard):
         bot._perms_file = Path(self.demo_temp.name) / "permissions.ini"
         bot._perms_file.write_text("[Owner (auto)]\nMaxPlaylistLength = 30\nMaxSearchItems = 5\n"
             "[Default]\nMaxSongs = 3\nMaxSongLength = 210\nAllowPlaylists = no\n"
-            "MaxSearchItems = 5\nSummonNoVoice = yes\nBypassKaraokeMode = yes\n"
+            "MaxSearchItems = 5\nSummonNoVoice = yes\nBypassKaraokeMode = yes\nExtractors = __\n"
             "[No commands]\nUserList = 45\nCommandWhitelist = __demo_denied__\n", encoding="utf-8")
         bot.permissions = Permissions(bot._perms_file)
         bot.permissions.set_owner_id(bot.config.owner_id)
