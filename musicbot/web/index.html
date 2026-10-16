@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>音樂控制台</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <script src="dashboard.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">Discord 音樂室</p><h1>音樂控制台<span class="dot"></span></h1></div>
+    <div class="server"><label for="guild">伺服器</label><select id="guild" aria-label="切換伺服器"></select>
+      <span id="connection" class="badge" role="status">連線中</span></div>
+  </header>
+  <main>
+    <details id="auth" class="auth">
+      <summary>連線設定 · 共享密鑰</summary>
+      <form id="auth-form"><label for="secret">共享密鑰（未設定時留白）</label>
+        <div class="input-row"><input id="secret" type="password" autocomplete="off" maxlength="1024">
+          <button type="submit">重新連線</button><button id="forget" type="button" class="subtle">清除</button></div>
+        <p class="hint">密鑰只保留在這個分頁的記憶體，重新整理後需重新填寫。</p>
+      </form>
+    </details>
+    <p id="notice" class="notice" role="status" aria-live="polite">正在讀取機器人狀態…</p>
+    <div class="layout">
+      <div class="left-column">
+        <section class="card player" aria-labelledby="now-heading">
+          <div class="section-top"><h2 id="now-heading">正在播放</h2><span id="play-status" class="badge">尚未連線</span></div>
+          <div class="track-main"><div class="art"><span aria-hidden="true">♫</span><img id="cover" alt="歌曲封面" hidden></div>
+            <div class="track-info"><p class="eyebrow">此刻的旋律</p><h3 id="title">選一首喜歡的歌</h3>
+              <p id="subtitle" class="muted">請先加入 Discord 語音頻道</p></div></div>
+          <progress id="progress" value="0" max="1" aria-label="歌曲播放進度"></progress>
+          <div class="time-row"><span id="elapsed">0:00</span><span id="duration">0:00</span></div>
+          <div class="transport"><button id="toggle" class="primary" disabled>播放</button>
+            <button id="skip" disabled>跳過 ⏭</button>
+            <label class="repeat-label" for="repeat">重複
+              <select id="repeat" disabled><option value="off">關閉</option><option value="song">單曲</option><option value="all">整個隊列</option></select></label></div>
+          <div class="volume-row"><label for="volume">音量</label><input id="volume" type="range" min="1" max="100" value="15" disabled>
+            <output id="volume-label" for="volume">15%</output></div>
+        </section>
+        <section class="card request" aria-labelledby="request-heading">
+          <p class="eyebrow">把好歌排進來</p><h2 id="request-heading">下一首，想聽什麼？</h2>
+          <form id="play-form"><label for="query">歌曲連結或搜尋關鍵字</label>
+            <textarea id="query" rows="2" maxlength="2000" placeholder="貼上歌曲／播放清單連結，或輸入歌名" required></textarea>
+            <div class="request-bottom"><p class="hint">關鍵字會搜尋並加入第一個結果。<br>沿用機器人的歌曲與隊列限制。</p>
+              <button id="enqueue" class="primary" type="submit" disabled>搜尋並點播 ＋</button></div>
+          </form>
+        </section>
+      </div>
+      <section class="card queue" aria-labelledby="queue-heading">
+        <div class="section-top"><div><p class="eyebrow">下一首的期待</p><h2 id="queue-heading">接下來 <span id="queue-count">0</span></h2></div>
+          <button id="shuffle" class="subtle" disabled>洗牌 ⇄</button></div>
+        <p class="hint">用 ↑ ↓ 調整順序；目前播放的歌曲不計入隊列。</p>
+        <ol id="queue"></ol><p id="queue-empty" class="empty">隊列空空的<br><span>把想聽的歌加進來吧。</span></p>
+      </section>
+    </div>
+    <footer>每秒更新狀態 · 以 OwnerID 本人權限操作 · 需先加入 Discord 語音頻道</footer>
+  </main>
+</body>
+</html>

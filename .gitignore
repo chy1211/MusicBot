@@ -12,6 +12,7 @@ discord.log
 logs/
 data/
 config/options.ini
+config/web_dashboard.ini
 config/permissions.ini
 config/aliases.json
 config/autoplaylist.txt
