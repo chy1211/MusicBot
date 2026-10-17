@@ -1745,3 +1745,24 @@ and seed_count; management shows the current pool. Existing locks, failover and
 three-failure ten-minute suspension remain. Native playback's observational
 hook now awaits the off-thread atomic state update inside its existing try/except;
 Discord commands, queues, player/playlist/Spotify code are unchanged.
+
+## Round 12: LRCLIB and lyric storage
+Lyrics are fetched only on explicit user opt-in; browser access remains same-origin.
+Backend LRCLIB /api/get and /api/search use an identifying MusicBot-WebDashboard/12
+User-Agent, 8s timeout, 1MiB streamed response limit, failure cooldown and 12
+lookups per person/minute. Direct /get results are validated just like search.
+Confident Spotify lookup metadata takes priority, otherwise clean title/channel.
+Candidates require title similarity >=.90, artist >=.85, duration delta <=60s.
+Unknown artist requires title >=.98 and duration delta <=2s. Ambiguous near-ties
+are rejected. Instrumental records are supported. Manual query is explicit.
+Source documentation: https://lrclib.net/docs
+Results are atomic video-ID JSON files in data/web_dashboard/lyrics/cache/.
+Missing lyrics are cached one day, successful results seven days, errors 30s.
+cache/ plus analysis/ together retain at most 2000 files / 50MiB, oldest first.
+To clear results while the bot is stopped, remove the cache/ and analysis/
+subdirectories only; offsets/ and settings/ preserve calibration and policy.
+Owner GET/POST /api/guilds/{guild_id}/admin/lyrics reads/writes {enabled:boolean},
+default true. Disabled servers reject lyric lookup before contacting providers.
+All routes keep existing session/member/blocklist/header/same-origin guards.
+Offset documents live in lyrics/offsets/<guild_id>/<video_id>.json, with only a
+nullable numeric offset (-30..+60 seconds), never the identity of its editor.

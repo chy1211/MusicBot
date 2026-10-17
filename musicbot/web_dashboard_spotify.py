@@ -69,7 +69,8 @@ class SpotifyLookup:
             length_ok=(not duration or (type(milliseconds) in (int,float) and abs(milliseconds/1000-duration)<=12))
             url=spotify_track_url(track.get("external_urls",{}).get("spotify",""))
             if url and score>=.94 and artist_score>=.90 and length_ok:
-                return {"url":url,"mode":"track","query":fallback["query"]}
+                return {"url":url,"mode":"track","query":fallback["query"],
+                        "title":str(track.get("name",""))[:200],"artist":a[:160],"duration":milliseconds/1000 if type(milliseconds) in (int,float) else None}
             return fallback
 
 class DashboardSpotify:
