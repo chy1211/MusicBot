@@ -412,3 +412,24 @@ html[data-glass=opaque] :is(.song-choices,.library-menu,.account-actions>div,dia
  .song-choices,.library-menu,.account-actions>div,dialog,.notice,.lyrics-panel{background:var(--opaque)}
 }
 @media(prefers-color-scheme:light){input:not([type=range]),select{background:#f2f2f7}}
+
+/* One geometry for every transport control, including active/pressed states. */
+#playback-bar .player-control{
+ box-sizing:border-box;flex:0 0 52px;width:52px;min-width:52px;max-width:52px;
+ height:40px;min-height:40px;max-height:40px;padding:0 3px;border-radius:20px;
+ font-size:11px;line-height:1;display:inline-flex;align-items:center;justify-content:center;
+ transform:none;transition:background 220ms,box-shadow 220ms,color 220ms;
+}
+#playback-bar #favorite.player-control{font-size:22px}
+#playback-bar .player-control:active,#playback-bar .player-control:hover{transform:none}
+.page-tabs,.queue-filters{overflow:hidden}
+.page-tabs::before,.queue-filters::before{opacity:0;transition:none;border-radius:inherit;box-sizing:border-box}
+.page-tabs[data-seg-ready]::before,.queue-filters[data-seg-ready]::before{opacity:1}
+.page-tabs[data-seg-animated]::before,.queue-filters[data-seg-animated]::before{
+ transition:transform 300ms var(--spring),width 300ms var(--spring),height 300ms var(--spring)
+}
+@media(max-width:760px){
+ .playback-bar{grid-template-columns:40px minmax(0,1fr) repeat(3,52px);column-gap:4px}
+ .sidebar .page-tabs{left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right))}
+ .sidebar .page-tabs button{min-width:0}
+}
