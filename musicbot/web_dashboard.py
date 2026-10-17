@@ -96,9 +96,10 @@ class ConfirmedEntryCheck:
 
 
 class APIError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, details=None):
         super().__init__(message)
         self.status = status
+        self.details = details or {}
 
 
 def public_url(value) -> str:
@@ -310,7 +311,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     raise APIError(503, "機器人尚未就緒，請稍後再試。")
             response = await handler(request)
         except APIError as exc:
-            response = web.json_response({"error": str(exc)}, status=exc.status)
+            response = web.json_response({"error": str(exc), **exc.details}, status=exc.status)
         except exceptions.MusicbotException as exc:
             try:
                 guild_id = request.match_info.get("guild_id", "")
@@ -983,15 +984,20 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             self.authenticate(request)
             guild, owner = self.guild_owner(request)
             self.command_permission(owner, self.bot.permissions.for_user(owner), action, query.split()[0])
+        await self.issue_previews(guild, owner, results, query, action)
+        return web.json_response({"results": results, "expires_in": self.PREVIEW_TTL})
+
+    async def issue_previews(self, guild, owner, results, query, action):
         now = time.monotonic()
         self.previews = {key: value for key, value in self.previews.items()
-                         if value["expires"] > now}
+                         if value.get("retain_until", value["expires"]) > now}
         for item in results:
             token = secrets.token_urlsafe(24)
             item["preview_id"] = token
             self.previews[token] = {
                 "guild_id": guild.id, "owner_id": owner.id, "url": item["url"],
                 "allowed": item["allowed"], "expires": now + self.PREVIEW_TTL,
+                "retain_until": now + 3600, "original_query": query, "action": action,
                 "status": "ready", "kind": item["kind"],
                 "count": item.get("count", 1),
                 "entries": [dict(child) for child in item.get("entries", [])],
@@ -1007,14 +1013,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         # Bounded memory even when many queries are made within the TTL.
         while len(self.previews) > 100:
             self.previews.pop(next(iter(self.previews)))
-        return web.json_response({"results": results, "expires_in": self.PREVIEW_TTL})
+        return results
 
     def confirmed_preview(self, data, guild, owner):
         if "preview_id" not in data:
             return None  # First-version API compatibility; the UI always confirms.
         token = data["preview_id"]
         preview = self.previews.get(token) if isinstance(token, str) else None
-        if (not preview or preview["expires"] <= time.monotonic()
+        if (not preview or preview.get("retain_until", preview["expires"]) <= time.monotonic()
                 or preview["guild_id"] != guild.id or preview["owner_id"] != owner.id):
             raise APIError(409, "預覽已過期或不屬於這個伺服器，請重新查詢。")
         if data["query"].strip() != preview["url"] or not preview["allowed"]:
@@ -1029,7 +1035,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     or len(set(selected)) != len(selected)):
                 raise APIError(400, "請選取至少一首歌曲，項目不可重複。")
             available = {item["item_id"]: item for item in preview["entries"]}
-            if any(i not in available or not available[i]["allowed"] for i in selected):
+            if any(i not in available or (not available[i]["allowed"] and preview["status"] != "done") for i in selected):
                 raise APIError(403, "選取的歌曲不在這份預覽內，或已被限制擋下。")
             canonical = [item["item_id"] for item in preview["entries"]
                          if item["item_id"] in selected]
@@ -1043,6 +1049,44 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         if preview["status"] != "ready":
             raise APIError(409, "這個選項已送出；請先查看佇列，需再次點播時請重新查詢。")
         return preview
+
+    async def renew_preview(self, request, data, preview, guild, owner, action):
+        if preview["status"] != "ready" or preview["expires"] > time.monotonic():
+            return
+        query = preview.get("original_query")
+        if not query:
+            raise APIError(409, "預覽已過期，請重新搜尋。")
+        self.user_rate_limit(owner)
+        if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
+            raise APIError(429, "解析仍在進行，請稍後再試。")
+        task = asyncio.create_task(self.resolve_options(guild, owner, query, action))
+        self.resolve_tasks[guild.id] = task
+        task.add_done_callback(lambda done: self.resolve_tasks.pop(guild.id, None))
+        try:
+            results = await asyncio.wait_for(task, self.RESOLVE_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise APIError(504, "重新搜尋逾時，請稍後再試。") from None
+        if self.discord_auth: self.authenticate(request)
+        guild, owner = self.guild_owner(request)
+        await self.issue_previews(guild, owner, results, query, action)
+        from .web_dashboard_media import media_url
+        def same(a, b):
+            return (media_url(a) or public_url(a)) == (media_url(b) or public_url(b))
+        match = next((item for item in results if item["kind"] == preview["kind"]
+                      and same(item["url"], preview["url"])), None)
+        if match is None or (preview["kind"] == "track" and not match["allowed"]):
+            raise APIError(409, "預覽已過期，這首目前搜尋不到，請重新搜尋",
+                           {"results": results, "expires_in": self.PREVIEW_TTL})
+        if preview["kind"] == "playlist":
+            refreshed = []
+            for old in preview["entries"]:
+                new = next((item for item in match["entries"] if same(item["url"], old["url"])), None)
+                refreshed.append(dict(new, item_id=old["item_id"]) if new else
+                                 dict(old, allowed=False, reason="這首已不在來源中。"))
+            preview["entries"] = refreshed
+            preview["count"] = match["count"]
+            preview["fresh_reason"] = match["reason"]
+        preview["expires"] = time.monotonic() + self.PREVIEW_TTL
 
     @staticmethod
     def playlist_restriction(permissions, count):
@@ -1104,6 +1148,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 return perms
             check = ConfirmedEntryCheck(validate)
             try:
+                if not item.get("allowed", True):
+                    raise APIError(403, item.get("reason") or "歌曲目前不允許加入。")
+                if preview.get("fresh_reason"):
+                    raise APIError(403, preview["fresh_reason"])
                 if self.discord_auth:
                     self.authenticate(request)
                 guild, owner = self.guild_owner(request)
@@ -1228,6 +1276,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                        str(data.get("from", "")) if action == "move" else
                        request.match_info.get("position", "") if action == "remove" else "")
             preview = self.confirmed_preview(data, guild, owner) if action in ("play", "playnext") else None
+            if preview:
+                await self.renew_preview(request, data, preview, guild, owner, action)
             if action == "playnext" and (data.get("selected_items") is not None or (preview and preview.get("kind") == "playlist")):
                 raise APIError(400, "下一首播放目前只支援單曲，請選取單曲來源。")
             if preview and preview["status"] == "done" and not self.discord_auth:
@@ -1285,7 +1335,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     if reason:
                         raise APIError(403, reason)
                     return perms
-                check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next)) if action == "playnext" else None
+                check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next)) if action == "playnext" or preview else None
                 try:
                     response = await getattr(self.bot, "cmd_" + action)(
                         message=None, player=player, channel=channel, guild=guild,

@@ -160,7 +160,7 @@ async function api(path, method = "GET", data) {
       else $("auth").open = true;
     }
     const error = new Error(body.error || "連線失敗，請稍後再試。");
-    error.status = response.status; throw error;
+    error.status = response.status; error.body = body; throw error;
   }
   return body;
 }
@@ -475,7 +475,19 @@ async function resolveQuery() {
     const action = $("request-action").value === "playnext" ? "playnext" : "play";
     const result = await api("api/guilds/" + guild + "/resolve", "POST", {query, action});
     if (epoch !== generation || requestId !== resolveGeneration) return;
-    previewResults = result.results;
+    renderPreviewResults(result.results, action);
+    notice("請確認預覽，再選擇加入方式。預覽五分鐘內有效。");
+  } catch (error) {
+    if (epoch === generation && requestId === resolveGeneration) notice(error.message, true);
+  } finally {
+    if (epoch === generation && requestId === resolveGeneration) { resolving = false; buttonBusy($("enqueue"), false); controls(); }
+  }
+}
+
+function renderPreviewResults(results, action = "play") {
+  $("preview-results").replaceChildren();
+  previewDuplicates = [];
+    previewResults = results;
     $("preview-panel").hidden = false;
     for (const song of previewResults) {
       const article = document.createElement("article"); article.className = "preview-item";
@@ -587,12 +599,6 @@ async function resolveQuery() {
       $("preview-results").append(article);
     }
     updateDuplicateNotes();
-    notice("請確認預覽，再選擇加入方式。預覽五分鐘內有效。");
-  } catch (error) {
-    if (epoch === generation && requestId === resolveGeneration) notice(error.message, true);
-  } finally {
-    if (epoch === generation && requestId === resolveGeneration) { resolving = false; buttonBusy($("enqueue"), false); controls(); }
-  }
 }
 
 function render(next, force = false) {
@@ -643,7 +649,10 @@ async function act(action, data = {}, method = "POST") {
     result = await api("api/guilds/" + guild + "/" + action, method, data);
     if (epoch === generation) { render(result.state, true); notice(result.message, result.added === 0 && result.skipped > 0); }
   } catch (error) {
-    if (epoch === generation) notice(error.message, true);
+    if (epoch === generation) {
+      if (error.body?.results) renderPreviewResults(error.body.results);
+      notice(error.message, true);
+    }
   } finally {
     settleDrag(); busy = false; controls();
     // Always reconcile after failure: the bot may already have changed state.
