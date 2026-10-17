@@ -186,6 +186,7 @@ async function setup(options = {}) {
     requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
     matchMedia: (query) => ({matches: query.includes("reduced-motion") ? !!options.reducedMotion : !options.mobile}),
     innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
+  if (options.now) context.Date = class extends Date { static now() { return options.now.value; } };
   if (options.delayedI18n) {
     context.navigator = {languages:["zh-TW"]};
     vm.runInContext(fs.readFileSync(path.join(__dirname, "../musicbot/web/i18n.js"), "utf8"), context);
@@ -1404,7 +1405,8 @@ test("SSE pushes community and history without optional REST polling", async () 
 });
 
 test("SSE reconnect backoff and repeated failure polling fallback", async () => {
-  const app = await setup({events:true});
+  const now = {value:100000};
+  const app = await setup({events:true,now});
   app.streams[0].emit("snapshot",snapshot(app.states[1]));
   const delays = [];
   for (let i=0;i<4;i++) {
@@ -1416,7 +1418,8 @@ test("SSE reconnect backoff and repeated failure polling fallback", async () => 
     assert.equal(app.run("fallbackPolling"),true);
     const count = app.requests.length;
     await app.run("poll()");
-    assert.ok(app.requests.length>count);
+    assert.equal(app.requests.length,count);
+    now.value += retry[1];
     retry[0]();
   }
   assert.deepEqual(delays,[1000,2000,4000,60000]);
@@ -2276,4 +2279,37 @@ test("whole initialized DOM and accessible attributes contain no translation key
     assert.throws(() => assertNoTranslationKeys(app));
     app.document.body.children.pop();
   }
+});
+
+test("429 transport errors back off, survive foreground changes, cap retry and recover", async () => {
+  const now = {value:100000}, app = await setup({events:true,now});
+  const delays = [];
+  for (let i=0;i<7;i++) {
+    const stream = app.streams.at(-1);
+    await stream.onerror({status:429}); // EventSource hides HTTP status in browsers.
+    assert.equal(stream.closed,true);
+    const retry = app.timers.at(-1); delays.push(retry[1]);
+    const count = app.streams.length;
+    app.document.hidden = true; await app.document.listeners.visibilitychange();
+    app.document.hidden = false; await app.document.listeners.visibilitychange();
+    assert.equal(app.streams.length,count);
+    now.value += retry[1]; app.timers.at(-1)[0]();
+    assert.equal(app.streams.length,count+1);
+    assert.equal(app.streams.filter(s=>!s.closed).length,1);
+  }
+  assert.deepEqual(delays,[1000,2000,4000,60000,60000,60000,60000]);
+  app.streams.at(-1).emit("snapshot",snapshot(app.states[1]));
+  assert.equal(app.run("fallbackPolling"),false);
+  assert.equal(app.run("eventFailures"),0);
+  assert.equal(app.run("connected"),true);
+});
+test("SSE fallback state reads are at least five seconds apart", async () => {
+  const now = {value:100000}, app = await setup({events:true,now});
+  await app.streams[0].onerror({status:429});
+  const count = () => app.requests.filter(r=>r.url.endsWith("/state")).length;
+  const baseline = count();
+  for (let ms=100;ms<5000;ms+=100) { now.value=100000+ms; await app.run("poll()"); }
+  assert.equal(count(),baseline);
+  now.value=105000; await app.run("poll()"); assert.equal(count(),baseline+1);
+  await app.run("poll()"); assert.equal(count(),baseline+1);
 });

@@ -13,7 +13,7 @@ from aiohttp import web
 
 
 class DashboardEvents:
-    STREAMS_PER_USER = 3
+    STREAMS_PER_USER = 6
     STREAMS_GLOBAL = 64
     EVENT_INTERVAL = 1
     HEARTBEAT_INTERVAL = 15
@@ -21,6 +21,7 @@ class DashboardEvents:
 
     def init_events(self):
         self.stream_users = {}
+        self.stream_transports = {}
         self.stream_stop = asyncio.Event()
         self.app.on_shutdown.append(self.shutdown_events)
 
@@ -93,12 +94,18 @@ class DashboardEvents:
         if self.stream_stop.is_set():
             raise APIError(503, _web_text('m0497'))
         uid = member.id
-        if (len(self.stream_users) >= self.STREAMS_GLOBAL or
-                sum(value == uid for value in self.stream_users.values()) >= self.STREAMS_PER_USER):
+        # Closed tabs can linger until the next heartbeat/write. Do not count
+        # their transports against a reconnect (nor against unrelated viewers).
+        live_users = [value for task, value in self.stream_users.items()
+                      if not task.done() and self.stream_transports[task] is not None
+                      and not self.stream_transports[task].is_closing()]
+        if (len(live_users) >= self.STREAMS_GLOBAL or
+                live_users.count(uid) >= self.STREAMS_PER_USER):
             raise APIError(429, _web_text('m0498'))
         task = asyncio.current_task()
         # Reserve synchronously before any await, across guilds and sessions.
         self.stream_users[task] = uid
+        self.stream_transports[task] = request.transport
         response = web.StreamResponse(headers={
             "Content-Type": "text/event-stream; charset=utf-8",
             "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
@@ -112,6 +119,8 @@ class DashboardEvents:
             last_key, last_state, last_at = None, None, 0
             heartbeat = time.monotonic()
             while not self.stream_stop.is_set():
+                if request.transport is None or request.transport.is_closing():
+                    break
                 if self.bot.logout_called or not self.bot.is_ready() or not self.bot.init_ok:
                     break
                 # Every inspection (normally 1s): expiry, logout, blocklist and live
@@ -152,6 +161,7 @@ class DashboardEvents:
             log.warning("Dashboard stream failed (%s)", type(exc).__name__)
         finally:
             self.stream_users.pop(task, None)
+            self.stream_transports.pop(task, None)
             try:
                 await asyncio.wait_for(response.write_eof(), self.WRITE_TIMEOUT)
             except (ConnectionError, RuntimeError, asyncio.TimeoutError):

@@ -36,3 +36,24 @@ The language selector intentionally reloads the page, rebuilding all dynamic
 state and localized server responses; this existing lifecycle is preserved.
 Only retained bootstrap nodes need in-place data-i18n updates. No additional
 translation registry or parallel translation mechanism was introduced.
+
+## 2. SSE admission and recovery
+
+Admission is per Discord member (across sessions/guilds), plus a global cap;
+there is no IP or guild rate limiter. Three distinct users do not share the
+per-user quota. The old cap was 3 streams per user, 64 globally. Idle closed
+transports retained reservations until the next write (up to the 15-second
+heartbeat), so quick reload/foreground cycles can reproduce the 429 bursts.
+The summary alone cannot attribute each production 429 to a particular tab.
+
+Admission now counts only live transports and the loop detects disconnection
+on each inspection. Per-user cap 6 allows two tabs plus short reconnect/PWA
+handover; global cap 64 and authentication/membership checks remain.
+The service worker already excludes /events and API routes. Each page closes
+its previous source and invalidates callbacks before constructing a new one.
+Existing bounded backoff 1s/2s/4s/60s (then 60s) is retained, including across
+visibility changes. A snapshot resets it; retries continue automatically.
+EventSource hides the HTTP status, so all transport errors (including 429)
+use this same recovery. Fallback state/probe reads are limited to one per
+5 seconds per page; hidden pages do not poll. Explicit user actions may
+still request immediate state. No production traffic was measured.
