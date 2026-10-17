@@ -1128,3 +1128,239 @@ then confirmation, duplicate position 1, and four batch duplicate tags with all
 document had no horizontal overflow; denied-user pause/skip/seek stayed disabled.
 Real Discord/OAuth, production proxy playback and physical-phone gestures were
 not exercised. URL matching is advisory and does not resolve remote redirects.
+
+## Round 9: feedback, public sources, popularity and Liquid Glass
+
+Development only. This round does not deploy, push, change dev, read operational
+credentials, or modify production configuration/data/services.
+
+### Navigation, seek and recent playback
+
+The complete brand uses one centered flex group with separate icon/text spans.
+On phones it spans the navigation row. Navigation uses fixed-height, nonwrapping
+grid buttons; a loading page retains its label instead of widening it with a
+spinner. The document reserves its vertical scrollbar gutter, so switching
+between the longer playback page and the shorter library does not change width.
+
+Dashboard seek rounds nonnegative seconds half-up before the native command.
+Both Discord feedback and shared activity use `跳轉：83 秒` for 83.456 or 82.5.
+Out-of-range/NaN/infinite values and stale-track requests remain rejected.
+Native Discord seek arguments retain their existing behavior.
+
+Recent-history duplication came from observing every native audio-source play:
+seek reinserts the same entry and emits play again; reconnect can restart or
+reconstruct it. The dashboard observer executes before the native now-playing
+message's reconnect suppression. Each entry now carries a runtime-only observer
+marker, and consecutive same-URL events within 10 seconds are suppressed too.
+Pause/resume emits resume rather than play; it was not the cause. Loaded guild
+history already deduplicates fallback URLs. History stays bounded to 50 entries
+and in memory; neither marker is added to serialized queue data.
+
+GET /api/guilds adds only `recommended_guild_id: string | null`. It considers
+only this viewer's visible guilds: same bot voice channel, then their own most
+recent entry-added request from either Discord or web. Auto entries do not count.
+The browser uses explicit `?guild=ID` (also `guild_id`), then the recommendation,
+then its previous localStorage selection, then the first visible guild.
+Storage reads/writes are guarded for private browsing. An explicit server also
+survives the login redirect through a sessionStorage intent, consumed after the
+first validated selection; the current page retains that entry preference.
+Manual selection remains
+in effect across reconnection in that page. The backend's bounded requester
+preference cache is runtime only and resets on restart; it is never returned.
+
+### Public Spotify / YouTube Music import (phase one)
+
+My Playlists -> From Link -> Preview -> Import creates a new private playlist.
+No account login or new application keys/settings are added. Spotify availability
+comes from the running bot's existing spotify_enabled/provider object. Disabled
+Spotify displays `目前無法讀取 Spotify 歌單` and disables the selector option.
+The backend independently returns 503 if unavailable.
+
+Allowed HTTP(S) input hosts are exactly open.spotify.com, youtube.com,
+www.youtube.com, m.youtube.com, music.youtube.com and youtu.be. Credentials,
+unexpected ports, control/space characters, lookalike domains and unsupported
+paths are rejected. spotify.link is unsupported. Spotify accepts public albums
+and playlists, including intl-prefixed links. YouTube inputs must contain one
+playlist ID. YouTube Music is canonicalized to the equivalent YouTube playlist,
+so an attached video cannot cause a compound-link prompt during import.
+
+Spotify reads through the existing Spotify.get_album/get_playlist and bounded,
+API_BASE-checked pagination. Tracks retain Spotify track URLs, artist-name
+titles and duration seconds. YouTube uses the existing downloader/yt-dlp engine with
+download=False/process=False and flat-in-playlist metadata. Its opt-in public_only
+branch uses a fresh fixed-options client and the existing executor, with no
+cookies, browser cookies, netrc, cache or ordinary authenticated headers. It
+consumes at most 201 lazy entries inside the executor (200 plus overflow), then
+returns directly without the normal authenticated extraction tail. WL, LL and LM
+account-relative aliases are rejected before extraction; nonpublic availability
+metadata is also rejected. Other native downloader calls never enter this branch.
+Import reads metadata, never downloads media or adds queue entries.
+Each source is capped to its first 200 entries; private/deleted/local/unsupported
+entries are skipped. The preview states total count, usable import count, first
+five tracks and an explicit truncation warning. A user's custom-list cap remains
+20, plus favorites; no list exceeds 200 tracks.
+
+Enqueue still uses the existing cmd_play/_cmd_play path and fresh permissions,
+extractor/blocklist/duration/queue limits. A narrow compatibility check accepts
+the existing Spotify downloader's flattened single-video search residue:
+one nonnested child, parent type video and matching extractor; both parent and
+child restrictions are checked. True playlists, multiple or nested children
+remain rejected. No downloader, Spotify or native command mutation is used.
+
+Imported records stay in
+`data/web_dashboard/user_playlists/<server-session-user>.json`.
+Version-1 library JSON remains compatible. Each imported playlist adds
+`source_url` (canonical public URL) and `source_type` (spotify or youtube).
+Tracks retain {title,url,duration,added_at}. Per-user locks, revision checks,
+sibling temp files, fsync and atomic replacement are reused.
+Resync fetches a preview and compares URL multisets, including duplicate tracks;
+confirmation shows added/removed counts before replacing tracks. A source order,
+title or duration update is still applied when the counts are both zero.
+Manual edits to imported playlists are replaced on the next confirmed resync.
+
+All new routes require the existing session, readiness, member/blocklist,
+X-MusicBot-Dashboard: 1 and same-origin guards. Preview requires target-guild
+membership; confirm rechecks source-guild membership after provider awaits and
+inside the user storage lock. Tokens bind user, source, guild, target playlist,
+revision and expiry, and are consumed on success. No client user ID/path is used.
+
+| Method | Path | Request | Response |
+| --- | --- | --- | --- |
+| GET | /api/library/sources | none | {spotify,youtube,spotify_message} |
+| GET | /api/library | existing | existing private library plus sources:{spotify,youtube} |
+| POST | /api/guilds/{guild}/library/import/preview | {url} | preview below |
+| POST | /api/library/import | {preview_id,revision,name} | updated private library, owner capability, message |
+| POST | /api/guilds/{guild}/library/{playlist}/sync/preview | {revision} | preview with diff:{added,removed} |
+| POST | /api/library/{playlist}/sync | {preview_id,revision} | updated private library, owner capability, message |
+
+Preview fields: preview_id, revision, title, source_url, source_type, count,
+import_count, tracks (first five), truncated, warning, diff (null for import),
+expires_in. Confirm imports the validated server-side snapshot, not client tracks.
+Resolve and source previews share the existing per-person 12/minute budget,
+20-second timeout, per-guild active slot and global two-job cap. A timed-out
+underlying extraction retains its slot until completion. Other playback controls
+remain usable. Errors are safe Traditional Chinese: invalid 400, not allowed 403,
+missing source 404, stale 409, busy/limited 429, provider failure 502,
+Spotify unavailable 503, timeout 504.
+
+Future private playlists / liked songs require a Spotify OAuth app, consent
+scopes, secure per-user refresh-token storage and revocation handling. Private
+YouTube data requires a Google OAuth app/consent/scopes and corresponding token
+handling. Neither integration nor any user token storage is part of this round.
+
+### Server popular requests
+
+GET /api/guilds/{guild}/popular?period=7|30|all returns
+{period,tracks:[{url,title,duration,count}]}, ranked by count, at most 20.
+The default is 7; all means the retained 180 days. Live target-guild membership
+is checked before and after the async read. Invalid periods return 400, storage
+failures 503, inaccessible guilds follow existing member errors. Responses
+contain no requester IDs/names, role IDs, filesystem paths or raw exceptions.
+
+The native entry-added hook records each member-request entry once. Discord
+text/slash commands and web requests share that event; every distinct batch entry
+counts, including two intentional requests for the same song. Auto entries,
+authorless entries and bot-authored entries are excluded. Resume, seek, queue
+moves and repeated observer calls do not count. The hook is independently wrapped
+in try/except and does not change queue mutation or normal serialization.
+
+Storage: `data/web_dashboard/stats/<server-generated-guild-id>.json`.
+No supplied filename is accepted. Schema:
+
+~~~json
+{"version":1,"tracks":{"https://www.youtube.com/watch?v=AbCdEfGhI01":{
+  "url":"https://www.youtube.com/watch?v=AbCdEfGhI01",
+  "title":"Example song","duration":180,
+  "days":{"2026-10-17":3}
+}}}
+~~~
+
+YouTube variants normalize by video ID; other public HTTP(S) URLs drop fragments
+and common tracking parameters. Only media metadata and daily counts persist.
+UTC dates retain today plus 179 previous days. Reads/records prune expired dates.
+Each guild has its own asyncio lock/cache. Dirty buffers flush every 30 seconds
+and during app cleanup; filesystem loading and atomic temp/fsync/replace writes
+run in worker threads. Corrupt documents are preserved at
+`.json.corrupt-<unique-time>` before starting a fresh document; existing recovery
+copies are never overwritten. Failed writes retain dirty buffers for retry.
+An abrupt process/host failure can lose counts since the last successful flush.
+
+The Popular tab offers 7/30/all, rank/title/count/duration, Add and Save to
+Playlist. Add reuses the normal resolve/preview/confirm path and permissions.
+Server changes/signout invalidate outstanding popularity results and buttons.
+
+### Discord enqueue notifications
+
+Web single-track and playnext requests retain the native Response; only the
+web-source note and logged-in display author are attached. The native command
+title, translated templates, queue position/ETA, embed/text choice and
+safe_send_message auto-delete behavior are shared with Discord commands.
+Batch selections and saved playlists send one native playlist-format summary
+using the first successful native response's position/ETA; retries do not resend.
+There is no parallel custom enqueue notification.
+
+channel_for keeps request/current-entry text channel priority, then allowed bound
+and system/text channels; voice chat is last. Existing bound-channel, viewer and
+bot send/view permissions are rechecked before sending. A failed notification
+does not undo a successful enqueue or cause a duplicate request.
+
+bot.py extracts only its existing two enqueue templates into a pure
+build_play_response formatter; validation, queue insertion and ETA calculation
+stay native. Runtime queue_position_text metadata is ignored by Discord.
+Its other new block is the guarded entry-added popularity observer.
+playlist.py and spotify.py are unchanged. downloader.py adds only the opt-in
+credential-free public metadata branch; ordinary extraction, Spotify conversion,
+header probing and playback use their existing path without changed options.
+
+### Liquid Glass and accessibility
+
+Large panels, sidebar, playback bar, dialogs and toasts use translucent surfaces,
+blur+saturate with the WebKit prefix, bright top rims, soft shadows and round
+corners. A fixed colorful radial-gradient wallpaper makes transparency visible.
+System light/dark themes share contrast-safe text tokens. Static tests verify
+normal/muted/accent text at AA against conservative wallpaper compositions;
+primary button text also passes AA. No deleted decorative slogan is restored.
+
+Unsupported backdrop-filter and prefers-reduced-transparency use opaque surfaces.
+Existing prefers-reduced-motion disables animation/transitions. Phone cards do
+not each blur; the sidebar/playback bar and temporary dialog/toast are the few
+blurred surfaces. Queue rows never use backdrop blur. Static cache/version
+references advance together; current round-9 assets use r9-7, including popular.js.
+
+### Offline verification and demo
+
+Use a fresh archive/context and only newly named test resources:
+
+~~~sh
+ctx=$(mktemp -d /tmp/musicbot-webtest-r9-demo.XXXXXX)
+git archive feature/dashboard-round9 | tar -x -C "$ctx"
+printf 'FROM musicbot:ytdlp-base\nWORKDIR /webtest\nCOPY . .\n' > "$ctx/Dockerfile.webtest"
+docker build --network none -t musicbot-webtest-r9:demo -f "$ctx/Dockerfile.webtest" "$ctx"
+docker run --rm --network none --name musicbot-webtest-r9-unit --entrypoint python3 musicbot-webtest-r9:demo -W error::DeprecationWarning:aiohttp.web_protocol -m unittest discover -s tests -p 'test_web_dashboard*.py'
+docker run --rm --network none --name musicbot-webtest-r9-links --entrypoint python3 musicbot-webtest-r9:demo -m tools.test_compound_link
+node --test tests/test_web_dashboard*.cjs
+docker run --rm -d --network none --name musicbot-webtest-r9-demo --entrypoint python3 musicbot-webtest-r9:demo -m tools.dashboard_demo --host 0.0.0.0 --port 8080 --public-origin http://127.0.0.1:18090 --fake-login owner
+python3 tools/dashboard_demo_relay.py --container musicbot-webtest-r9-demo --port 18090
+~~~
+
+Use a loopback tunnel `ssh -N -L 18090:127.0.0.1:18090 your-vps`.
+Open http://127.0.0.1:18090/?demo-queue=filled. Compare desktop/phone brand and
+switch Play/My Playlists several times while loading. System light/dark and
+reduced transparency/motion exercise the glass alternatives. Popular contains
+five fake tracks and different dated counts; try periods, Add and Save.
+Spotify/YTM import examples (never contacted by this executable):
+`https://open.spotify.com/playlist/DemoRound9`,
+`https://music.youtube.com/playlist?list=DemoRound9`;
+`DemoLarge` previews 205 source tracks, capped to 200. A second fetch from the
+same fake source changes content to demonstrate +2/-1 resync confirmation.
+Seek 83.456 in a test request demonstrates integer feedback.
+`docker logs musicbot-webtest-r9-demo` includes fake Discord response objects
+and channel names for seek, single, playnext and batch enqueue.
+
+The demo uses TemporaryDirectory for all libraries, statistics, fake permissions,
+autoplaylist and backups. It never initializes a Discord client or reads real
+config/data; art, lyrics, login and both import providers remain fake/local.
+Containers have --network none; the relay reaches only the demo loopback.
+Stop only the named demo/relay/tunnel, remove only new musicbot-webtest-r9 tags,
+and delete only the resolved /tmp/musicbot-webtest-r9-demo.* context afterward.
+Screenshots/evidence can be preserved separately under /tmp/musicbot-webtest-shots/.
