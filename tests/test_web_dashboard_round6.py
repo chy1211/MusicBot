@@ -327,13 +327,13 @@ class Round6Tests(unittest.IsolatedAsyncioTestCase):
 
     async def test_events_per_user_cap_across_sessions(self):
         responses = []
-        for _ in range(3):
+        for _ in range(self.dashboard.STREAMS_PER_USER):
             self.login_as(43)
             r = await self.stream()
             await self.frame(r)
             responses.append(r)
         self.assertEqual((await self.client.get(BASE+"events")).status,429)
-        self.assertEqual(len(self.dashboard.stream_users),3)
+        self.assertEqual(len(self.dashboard.stream_users),self.dashboard.STREAMS_PER_USER)
         for r in responses:
             r.close()
 

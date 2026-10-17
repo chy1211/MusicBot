@@ -6,6 +6,8 @@ let authMode = null, authenticated = false;
 let manualGuild = "", entryGuild = "", viewerKey = "owner";
 const labels = () => ({playing: t("m0040"), paused: t("m0041"), stopped: t("m0042"), disconnected: t("m0043")});
 let toastTimer = null, toastVersion = 0;
+let statePolledAt = 0;
+const FALLBACK_POLL_MS = 5000;
 function notice(message, error = false) {
   const version = ++toastVersion;
   window.clearTimeout(toastTimer);
@@ -716,6 +718,7 @@ async function act(action, data = {}, method = "POST") {
 }
 async function refresh(epoch = generation, force = false) {
   const guild = selected, sequence = ++stateGeneration;
+  statePolledAt = Date.now();
   if (!guild) return;
   try {
     const next = await api("api/guilds/" + guild + "/state");
@@ -806,7 +809,8 @@ async function poll() {
     try { const profile = await api("/auth/session"); if (!profile.authenticated) signedOut(); }
     catch (error) { notice(error.message, true); }
   }
-  if (!document.hidden && fallbackPolling && (authMode === "owner" || authenticated) && !busy && !loading) {
+  if (!document.hidden && fallbackPolling && (authMode === "owner" || authenticated) && !busy && !loading &&
+      Date.now() - statePolledAt >= FALLBACK_POLL_MS) {
     if (selected) await refresh();
     else await connect();
   }
@@ -1327,6 +1331,13 @@ function startEvents(reset = true) {
   if (reset) { eventFailures = 0; nextStreamTry = 0; }
   if (!streamEligible()) { fallbackPolling = true; return; }
   const epoch = eventEpoch, guild = selected, view = generation;
+  if (!reset && Date.now() < nextStreamTry) {
+    fallbackPolling = true;
+    eventTimer = window.setTimeout(() => {
+      if (epoch === eventEpoch && guild === selected && view === generation) startEvents(false);
+    }, nextStreamTry - Date.now());
+    return;
+  }
   const source = eventSource = new EventSource("/api/guilds/" + guild + "/events?lang=" + encodeURIComponent(dashboardLocale()));
   const current = () => epoch === eventEpoch && source === eventSource && guild === selected && view === generation;
   const failed = async () => {
@@ -1335,7 +1346,7 @@ function startEvents(reset = true) {
     ++eventFailures; fallbackPolling = true;
     // A regular authenticated read distinguishes expired login/removed membership
     // from a network/proxy failure (EventSource does not expose HTTP status).
-    await refresh(view);
+    if (Date.now() - statePolledAt >= FALLBACK_POLL_MS) await refresh(view);
     if (epoch !== eventEpoch || guild !== selected || view !== generation) return;
     const delay = eventFailures >= 4 ? 60000 : Math.min(30000, 1000 * 2 ** (eventFailures - 1));
     nextStreamTry = Date.now() + delay;
@@ -1386,7 +1397,10 @@ $("queue-all").addEventListener("click", () => setQueueFilter(false));
 $("queue-mine").addEventListener("click", () => setQueueFilter(true));
 document.addEventListener("visibilitychange", async () => {
   stopEvents();
-  if (!document.hidden && selected) { await refresh(); startEvents(); }
+  if (!document.hidden && selected) {
+    if (Date.now() - statePolledAt >= FALLBACK_POLL_MS) await refresh();
+    startEvents(false);
+  }
 });
 
 initialize().finally(() => { window.setTimeout(poll, 1000); window.setTimeout(localTick, 1000); });
