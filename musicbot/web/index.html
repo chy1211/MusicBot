@@ -12,13 +12,13 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r9-8">
-  <script src="/dashboard.js?v=r9-8" defer></script>
-  <script src="/library.js?v=r9-8" defer></script>
-  <script src="/popular.js?v=r9-8" defer></script>
-  <script src="/admin.js?v=r9-8" defer></script>
-  <script src="/permissions.js?v=r9-8" defer></script>
-  <script src="/pwa.js?v=r9-8" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r10-1">
+  <script src="/dashboard.js?v=r10-1" defer></script>
+  <script src="/library.js?v=r10-1" defer></script>
+  <script src="/popular.js?v=r10-1" defer></script>
+  <script src="/admin.js?v=r10-1" defer></script>
+  <script src="/permissions.js?v=r10-1" defer></script>
+  <script src="/pwa.js?v=r10-1" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -120,7 +120,7 @@
 <p id="popular-status" class="hint" role="status" aria-live="polite">選擇伺服器後查看熱門點播。</p><ol id="popular-list" class="history-list popular-list"></ol>
 </section>
 <section id="library-panel" class="card" hidden aria-labelledby="library-heading">
-<h2 id="library-heading">我的歌單</h2>
+<h2 id="library-heading">我的歌單</h2><div id="library-import-hint"></div>
 <form id="library-create" class="input-row"><label for="library-new-name">新增歌單</label><input id="library-new-name" maxlength="60" required><button id="library-create-button" type="submit">建立</button></form>
 <div class="input-row"><label for="library-select">歌單</label><select id="library-select"></select><button id="library-refresh" type="button">重新整理</button></div>
 <div class="input-row"><label for="library-name">名稱</label><input id="library-name" maxlength="60"><button id="library-rename" type="button">改名</button><button id="library-delete" type="button">刪除歌單</button></div>

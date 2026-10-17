@@ -15,7 +15,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from aiohttp import web
 from discord import ChannelType
@@ -888,8 +888,27 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     raise APIError(403, "尚未啟用這個音樂來源。")
                 if not Spotify.is_url_supported(subject):
                     raise APIError(400, "這個音樂來源網址格式不受支援。")
-            info = await self.bot.downloader.extract_info(
-                subject, download=False, process=True)
+            imported = None
+            from .web_dashboard_imports import source_url
+            try:
+                canonical, kind = source_url(subject)
+            except APIError:
+                canonical = None
+                # Never resolve account-private aliases through bot cookies.
+                if urlsplit(subject).hostname in ("youtube.com", "www.youtube.com", "music.youtube.com", "m.youtube.com") and any(
+                        item in ("WL", "LL", "LM") for item in parse_qs(urlsplit(subject).query).get("list", [])):
+                    raise
+            if canonical:
+                imported = await self.import_source(canonical, kind)
+                extractor = "spotify:musicbot" if kind == "spotify" else "youtube"
+                from .downloader import YtdlpResponseDict
+                info = YtdlpResponseDict({"title": imported["title"], "extractor": extractor,
+                    "playlist_count": imported["count"], "entries": [
+                        dict(item, webpage_url=item["url"], extractor=extractor) for item in imported["tracks"]]})
+                subject = canonical
+            else:
+                info = await self.bot.downloader.extract_info(
+                    subject, download=False, process=True)
             if not info or ("entries" in info and not info.entry_count):
                 raise APIError(404, "沒有找到可用的歌曲。")
             try:
@@ -915,12 +934,15 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     reason = "清單內沒有通過封鎖或歌曲長度檢查的歌曲。"
                 results.append({
                     "kind": "playlist", "title": info.title, "url": subject,
+                    "source_url": imported["source_url"] if imported else "",
+                    "source_type": imported["source_type"] if imported else "",
+                    "count_is_minimum": imported.get("count_is_minimum", False) if imported else False,
                     "thumbnail": public_url(info.thumbnail_url), "duration": 0,
                     "count": count, "checked_count": len(items), "eligible_count": eligible,
                     "entries": items, "allowed": not reason, "reason": reason,
                     "truncated": count > len(items), "limit": self.PREVIEW_LIMIT,
-                    "warning": (f"僅提供前 {self.PREVIEW_LIMIT} 首，超過的歌曲未加入預覽。"
-                                if count > len(items) else "") +
+                    "warning": (f"來源至少 {count} 首、目前只讀得到 {len(items)} 首。" if imported and imported.get("count_is_minimum") else "") +
+                               (f"僅提供前 {self.PREVIEW_LIMIT} 首，超過的歌曲未加入預覽。" if count > len(items) else "") +
                                "確認時會逐首重新檢查；佇列額滿時回報部分成功。",
                 })
             else:
@@ -974,6 +996,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 "count": item.get("count", 1),
                 "entries": [dict(child) for child in item.get("entries", [])],
             }
+            if item.get("source_url"):
+                value = await self.playlist_store.transact(owner.id)
+                item["save_revision"] = value["revision"]
+                self.import_previews[token] = {
+                    "owner_id": owner.id, "guild_id": guild.id, "playlist_id": None,
+                    "revision": value["revision"], "expires": now + self.PREVIEW_TTL,
+                    "tracks": [dict(child) for child in item["entries"]],
+                    "source_url": item["source_url"], "source_type": item["source_type"]}
         # Bounded memory even when many queries are made within the TTL.
         while len(self.previews) > 100:
             self.previews.pop(next(iter(self.previews)))
