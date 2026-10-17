@@ -108,3 +108,10 @@ select option{background:#1c1c22}
 .brand .brand-icon{display:block;line-height:1;color:var(--green);font-size:28px}
 .brand .brand-label{display:block;color:var(--text);font-size:inherit;line-height:1.25}
 @media(max-width:760px){.sidebar .brand{grid-column:1/-1;grid-row:1;min-height:48px}.sidebar .auth,.sidebar .auth[open]{grid-column:1/-1;grid-row:4}}
+
+/* Page switches keep the viewport gutter and navigation geometry stable. */
+html{overflow-y:scroll;scrollbar-gutter:stable}
+.page-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.page-tabs button{position:relative;width:100%;min-width:0;height:44px;padding:9px 8px;white-space:nowrap;font-size:13px}
+.page-tabs button:hover:enabled{transform:none}
+.page-tabs button[aria-busy=true]{opacity:.75}

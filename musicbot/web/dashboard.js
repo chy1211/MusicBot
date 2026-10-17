@@ -21,9 +21,10 @@ function notice(message, error = false) {
 function buttonBusy(button, active, label = "處理中…") {
   if (active && button.dataset.loading !== "1") button.dataset.label = button.textContent;
   button.dataset.loading = active ? "1" : "0";
-  button.classList.toggle("is-loading", active);
+  const navigation = /^nav-/.test(button.id || "");
+  button.classList.toggle("is-loading", active && !navigation);
   button.setAttribute("aria-busy", String(active));
-  button.textContent = active ? label : button.dataset.label || button.textContent;
+  if (!navigation) button.textContent = active ? label : button.dataset.label || button.textContent;
   if (active) button.disabled = true;
 }
 function safeURL(value) {
