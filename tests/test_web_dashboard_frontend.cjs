@@ -17,6 +17,8 @@ class Element {
     this.scrollTop = 0; this.clientTop = 0; this.clientHeight = 150; this.scrollCalls = [];
     this.classList = {toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name)};
   }
+  get textContent() { return this.children.length ? this.children.map(x => x.textContent).join("") : this._text || ""; }
+  set textContent(value) { this.children = []; this._text = String(value); }
   append(...items) {
     this.children.push(...items);
     items.forEach((item) => { item.parent = this; });

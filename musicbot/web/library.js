@@ -2,8 +2,8 @@
 // Shares authenticated api/state helpers with dashboard.js; all text uses textContent.
 let libraryData = null, libraryActive = "favorites", libraryPendingSong = null, libraryBusy = false;
 let libraryPage = "play", libraryDetailOpen = false;
-function libraryButton(text, run) {
-  const b = document.createElement("button"); b.type = "button"; b.textContent = text;
+function libraryButton(key, run) {
+  const b = document.createElement("button"); b.type = "button"; buttonLabel(b, key);
   b.addEventListener("click", () => libraryRun(b, run)); return b;
 }
 async function libraryRun(button, run) {
@@ -86,7 +86,7 @@ function libraryRender() {
     const title = songTitle(document.createElement("p"), song); info.append(title);
     const length = document.createElement("small"); length.className = "song-length";
     length.textContent = song.duration ? duration(song.duration) : t("m0097");
-    const remove = libraryButton(t("m0004"), () => libraryChange(list.id, {action:"remove", index}));
+    const remove = libraryButton("m0004", () => libraryChange(list.id, {action:"remove", index}));
     remove.setAttribute("aria-label", t("m0194") + song.title);
     row.append(check, imageElement(song.thumbnail), info, length, remove); $("library-list").append(row);
   });
@@ -121,7 +121,7 @@ async function librarySave(song, favorite = false) {
   $("library-save-dialog").showModal();
 }
 function librarySaveButton(song) {
-  const button = libraryButton(t("m0198"), () => librarySave(song));
+  const button = libraryButton("m0198", () => librarySave(song));
   button.className = "save-to-library"; return button;
 }
 $("nav-play").addEventListener("click", () => libraryView("play"));
@@ -184,12 +184,12 @@ function libraryImportElement(tag, text, id) {
   return element;
 }
 function libraryInitImports() {
-  const hint = libraryButton(t("m0202"), async () => {
+  const hint = libraryButton("m0202", async () => {
     libraryView("play"); $("query").focus();
   });
   hint.className = "subtle library-import-hint";
   $("library-import-hint").append(hint);
-  const sync = libraryButton(t("m0203"), librarySync); sync.hidden = true;
+  const sync = libraryButton("m0203", librarySync); sync.hidden = true;
   const origin = libraryImportElement("p", "", "library-source"); origin.hidden = true;
   $("library-sync-slot").append(origin, sync);
   libraryImportUI = {sync, origin};
