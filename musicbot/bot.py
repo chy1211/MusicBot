@@ -1665,8 +1665,11 @@ class MusicBot(commands.Bot):
             )
             await self.safe_send_message(entry.channel, res)
 
-        # Take care of auto-playlist related issues.
-        if entry and entry.from_auto_playlist:
+        # Radio entries also have no author/channel, but do not belong to the
+        # configured autoplaylist. A failed radio song must not remove an
+        # unrelated autoplaylist track that happens to use the same URL.
+        from .web_dashboard_radio import is_radio
+        if entry and entry.from_auto_playlist and not is_radio(entry):
             log.info("Auto playlist track could not be played:  %r", entry)
             guild = player.voice_client.guild
             await self.server_data[guild.id].autoplaylist.remove_track(

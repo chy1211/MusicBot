@@ -75,3 +75,31 @@ Tests enumerate every registered method, including automatic HEAD routes,
 verify exact coverage and ensure query strings/cookies/Bearer values do not
 enter the operation log. Unknown API paths are labeled unmatched; no raw path
 or query is logged. Existing safe user/guild identifiers remain unchanged.
+
+## 4. Autoplay disable: upstream behavior; one confirmed radio defect
+
+Both warning strings and global auto_playlist=False assignments already exist
+in local upstream/dev bot.py (Guild warning around line 1378, final warning
+around line 1502). An initially empty configured in-memory list emits both
+warnings in the same finish event. Exhaustion through upstream extraction or
+playback failure/removal emits the final warning. Removal from memory occurs
+even with remove_ap=False; that flag controls writing back to the source file.
+Thus two warnings after a song are reproducible with an empty synthetic list,
+without any dashboard or radio request. No upstream disable behavior is changed.
+
+A separate defect in our radio integration is confirmed and fixed: radio entries
+have author=None/channel=None, so from_auto_playlist is True. Upstream
+on_player_error then removed the failed radio URL from the configured autoplaylist
+if that same URL happened to be present there. The hook now excludes is_radio
+entries, while native autoplay errors still prune their own list. This could
+contribute to exhaustion in an overlapping list, but the supplied summary
+cannot prove it caused the two production warnings. Synthetic regression tests
+cover both the overlap defect and unchanged empty/failed/native success paths.
+
+Normal web requests and playnext retain the requesting member/channel, and
+change only the queue. Radio fill does not clear or mark the configured list;
+radio off suppresses fallback without mutating global auto_playlist. Explicit
+owner autoplaylist deletion is the only dashboard API that removes its tracks.
+No production config/data contents were read, so actual production list length,
+failed URLs and the trigger for each observed warning remain intentionally
+unverified.
