@@ -103,3 +103,21 @@ owner autoplaylist deletion is the only dashboard API that removes its tracks.
 No production config/data contents were read, so actual production list length,
 failed URLs and the trigger for each observed warning remain intentionally
 unverified.
+
+## 5. High-volume warning sources
+
+Missing __input_subject is a valid invariant warning, not globally suppressed.
+The ordinary extractor and credential-free public_only extractor already set
+it. Our homepage playlist resolve adapter rebuilt imported YouTube/Spotify
+metadata without this private field; constructing the root and every child
+then warned. The adapter now stores the canonical source on the parent and
+the canonical track URL on each child. Provenance tests cover both providers;
+intentionally malformed metadata must still emit WARNING. The production
+count cannot be split among this path and any other malformed callers from
+the supplied summary alone.
+
+Different cached extension comes from upstream URLPlaylistEntry._download and
+AudioFileCache.get_if_cached(ignore_ext=True). yt-dlp may change the format;
+a variant cache hit is expected, and size validation/re-download follows
+immediately. Only that individual message moves to DEBUG. Tests exercise both
+same-size reuse and size-mismatch re-download; no WARNING logger is disabled.
