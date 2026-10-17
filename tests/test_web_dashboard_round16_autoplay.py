@@ -1,6 +1,6 @@
 """Synthetic autoplaylists only: upstream disable flow and radio isolation."""
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 import test_web_dashboard_round10_radio as fixtures
 from musicbot.bot import MusicBot
 from musicbot.exceptions import ExtractionError
@@ -29,7 +29,7 @@ class Round16AutoplayTests(unittest.IsolatedAsyncioTestCase):
         self.bot.config.song_blocklist_enabled = False
         self.bot.config.remove_ap = False
         self.bot.downloader.extract_info.side_effect = ExtractionError("synthetic failure")
-        with self.assertLogs("musicbot.bot", level="WARNING") as logs:
+        with patch("musicbot.bot._L", side_effect=lambda text: text), self.assertLogs("musicbot.bot", level="WARNING") as logs:
             await self.finish()
         self.assertIn("No playable songs in the autoplaylist, disabling.", " ".join(logs.output))
         self.assertEqual(self.bot.server_data[1].autoplaylist, [])
@@ -46,6 +46,7 @@ class Round16AutoplayTests(unittest.IsolatedAsyncioTestCase):
         await self.mode()
         await self.finish()
         song = self.player.playlist.entries[0]
+        self.bot.config.remove_ap = False
         self.assertTrue(song.from_auto_playlist)
         apl = MemoryAutoplaylist([song.url])
         apl.remove_track = AsyncMock(wraps=apl.remove_track)
@@ -60,6 +61,7 @@ class Round16AutoplayTests(unittest.IsolatedAsyncioTestCase):
     async def test_native_autoplay_error_still_prunes_native_track(self):
         self.bot.config.song_blocklist_enabled = False
         self.bot.config.remove_ap = False
+        self.bot.downloader.extract_info.return_value["__input_subject"] = self.bot.server_data[1].autoplaylist[0]
         await self.finish()
         song = self.player.playlist.entries[0]
         apl = MemoryAutoplaylist([song.url])
