@@ -71,12 +71,12 @@ test("glass provides both themes, prefixed blur and opaque accessibility fallbac
   assert.match(css, /--bg:#0b0b0f/); assert.match(css, /--bg:#f2f2f7/);
   assert.match(css, /\.song-choices,[^{]*\{background:var\(--panel\)/);
 });
-test("glass foregrounds meet AA on white, black and saturated covers in all preferences", () => {
+test("clear glass foregrounds meet AA on white, black and saturated covers", () => {
  const rgb=hex=>hex.match(/[0-9a-f]{2}/gi).map(n=>parseInt(n,16)/255);
  const mix=(fg,bg,a)=>fg.map((n,i)=>n*a+bg[i]*(1-a));
  const lum=rgb=>rgb.map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4).reduce((n,c,i)=>n+c*[.2126,.7152,.0722][i],0);
  const ratio=(a,b)=>(Math.max(lum(a),lum(b))+.05)/(Math.min(lum(a),lum(b))+.05);
- for(const light of [false,true])for(const pref of ["clear","standard","opaque"])for(const cover of ["ffffff","000000","ff0088","00ffff"]){
+ for(const light of [false,true])for(const pref of ["clear"])for(const cover of ["ffffff","000000","ff0088","00ffff"]){
   // Worst case is the content scrolling under a floating layer: bright/dark/saturated cover thumbnail.
   const dim=light?1:(pref==="clear"?.4:.45), under=rgb(cover).map(n=>n*dim);
   const tint=rgb(light?"ffffff":"1e1e24"), a=pref==="clear"?(light?[.72,.84]:[.30,.44]):(light?[.72,.84]:[.40,.56]);
@@ -86,7 +86,8 @@ test("glass foregrounds meet AA on white, black and saturated covers in all pref
   for(const bg of layers)for(const fg of light?["142137","34445c","06416f"]:["f8fafc","c2ccdd","a5ddff"])
    assert.ok(ratio(rgb(fg),bg)>=4.5,JSON.stringify({light,pref,cover,fg,ratio:ratio(rgb(fg),bg)}));
  }
- assert.match(html,/id="glass-appearance"/); assert.match(css,/prefers-contrast:more/);
+ assert.doesNotMatch(html,/glass-appearance|glass-preference/); assert.doesNotMatch(css,/glass-preference/);
+ assert.match(fs.readFileSync(path.join(__dirname,"../musicbot/web/dashboard.js"),"utf8"),/root\.dataset\.glass = "clear"/); assert.match(css,/prefers-contrast:more/);
 });
 test("explicit server survives the login redirect and is consumed after selection", () => {
   const vm=require("node:vm");

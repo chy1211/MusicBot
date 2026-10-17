@@ -1707,9 +1707,9 @@ from the edge; player is 8px above navigation. Each keeps its own plane.
 The capsule selection moves and resizes, tabs compact on downward scrolling,
 range thumbs become 1.6x translucent lenses while dragging, and desktop
 pointer highlights are disabled for touch/reduced motion.
-Preferences are per browser in localStorage musicbot-glass, standard by default.
+Clear glass is the only appearance (10-17 user decision; the selector was removed).
 Reduced transparency, increased contrast, unsupported backdrop filters and the
-opaque preference use solid backgrounds. Motion reduction uses opacity only.
+opaque fallback use solid backgrounds. Motion reduction uses opacity only.
 Chromium progressively enables a 5px SVG displacement only on an 8px outer rim
 of the player/mobile tabs; the center stays undistorted. Safari/Firefox use blur.
 Reduced transparency/contrast and fewer than four logical CPUs disable it.
