@@ -580,7 +580,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             return {**community, "guild_id": str(guild.id), "status": "disconnected",
                     "current": None, "progress": 0, "volume": None,
                     "repeat": "off", "queue": [], "revision": ""}
-        entries = list(player.playlist.entries)
+        pending = getattr(player, "_pending_seek", None)
+        current = pending["entry"] if pending else player.current_entry
+        entries = [entry for entry in player.playlist.entries
+                   if not pending or entry is not pending["entry"]]
         known = self.queue_arrivals[guild.id]
         live = {id(entry) for entry in entries}
         known[:] = [key for key in known if key in live]
@@ -588,13 +591,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         known.extend(id(entry) for entry in entries if id(entry) not in known_ids)
         return {
             **community, "guild_id": str(guild.id),
-            "status": ("paused" if player.is_paused else "playing"
-                       if player.is_playing else "stopped"),
-            "current": (dict(track(player.current_entry, guild, viewer),
-                             seekable=self.is_seekable(player.current_entry),
-                             track_token=self.track_token(player))
-                        if player.current_entry else None),
-            "progress": max(0, float(player.progress)),
+            "status": (("paused" if pending["paused"] else "playing") if pending else
+                       "paused" if player.is_paused else "playing" if player.is_playing else "stopped"),
+            "current": (dict(track(current, guild, viewer),
+                             seekable=self.is_seekable(current),
+                             track_token=self.track_token(player)) if current else None),
+            "progress": max(0, float(pending["position"] if pending else player.progress)),
             "volume": round(player.volume * 100),
             "repeat": ("song" if player.repeatsong else
                        "all" if player.loopqueue else "off"),

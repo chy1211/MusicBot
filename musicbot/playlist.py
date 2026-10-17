@@ -505,20 +505,23 @@ class Playlist(EventEmitter, Serializable):
 
         :raises: musicbot.exceptions.InvalidDataError  if duration data cannot be calculated.
         """
-        if any(e.duration is None for e in islice(self.entries, position - 1)):
+        pending = getattr(player, "_pending_seek", None)
+        entries = [e for e in self.entries if not pending or e is not pending["entry"]]
+        if any(e.duration is None for e in islice(entries, position - 1)):
             raise InvalidDataError("no duration data")
 
         estimated_time = sum(
-            e.duration_td.total_seconds() for e in islice(self.entries, position - 1)
+            e.duration_td.total_seconds() for e in islice(entries, position - 1)
         )
 
         # When the player plays a song, it eats the first playlist item, so we just have to add the time back
-        if not player.is_stopped and player.current_entry:
-            if player.current_entry.duration is None:
+        current = pending["entry"] if pending else player.current_entry
+        if pending or (not player.is_stopped and current):
+            if current.duration is None:
                 raise InvalidDataError("no duration data in current entry")
 
             estimated_time += (
-                player.current_entry.duration_td.total_seconds() - player.progress
+                max(0, current.duration_td.total_seconds() - player.progress)
             )
 
         return datetime.timedelta(seconds=estimated_time)
