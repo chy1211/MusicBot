@@ -46,6 +46,12 @@ class SourceTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(APIError):
                 source_url(bad)
 
+
+    def test_account_private_aliases_are_rejected_before_extraction(self):
+        for ident in ("WL", "LL", "LM"):
+            with self.subTest(ident=ident), self.assertRaises(APIError):
+                source_url("https://music.youtube.com/playlist?list="+ident)
+
     def test_provider_track_urls_titles_duration_and_invalid_entries(self):
         value = imported_track(spotify(), "spotify")
         self.assertEqual(value, {"title": "Artist - Song 1", "url": "https://open.spotify.com/track/track1", "duration": 123.4})
@@ -79,6 +85,18 @@ class ImportTests(unittest.IsolatedAsyncioTestCase):
         await identity.DiscordTests.asyncTearDown(self)
         self.temp.cleanup()
 
+
+    async def test_private_aliases_never_reach_cookie_bearing_downloader(self):
+        for ident in ("WL", "LL", "LM"):
+            await self.preview("https://www.youtube.com/playlist?list="+ident,status=400)
+        self.bot.downloader.extract_info.assert_not_awaited()
+
+    async def test_nonpublic_provider_availability_never_reaches_preview(self):
+        for availability in ("private", "needs_auth", "premium_only", "subscriber_only"):
+            self.bot.downloader.extract_info.return_value = {"title":"Secret","availability":availability,"entries":[video()]}
+            value = await self.preview(status=403)
+            self.assertNotIn("Secret",str(value))
+
     async def library(self):
         return await self.call("/api/library", method="GET")
 
@@ -105,7 +123,7 @@ class ImportTests(unittest.IsolatedAsyncioTestCase):
         self.bot.downloader.extract_info.assert_awaited_once()
         args, kwargs = self.bot.downloader.extract_info.call_args
         self.assertIn("playlist?list=PLdemo", args[0])
-        self.assertEqual(kwargs, {"download": False, "process": False})
+        self.assertEqual(kwargs, {"download": False, "process": False, "public_only": True})
         value = await self.confirm(preview)
         playlist = value["playlists"][-1]
         self.assertEqual(len(playlist["tracks"]), 200)
@@ -246,3 +264,41 @@ class ImportTests(unittest.IsolatedAsyncioTestCase):
             return {"title": "Demo", "entries": [video()]}
         self.bot.downloader.extract_info.side_effect = leave
         await self.preview(status=403)
+
+class PublicDownloaderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_public_branch_never_uses_normal_credentials_headers_or_spotify(self):
+        from musicbot.downloader import Downloader
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            regular = AsyncMock(side_effect=AssertionError("Ordinary extraction forbidden"))
+            headers = AsyncMock(side_effect=AssertionError("Ordinary headers forbidden"))
+            downloader = NS(thread_pool=pool,_filtered_extract_info=regular,get_url_headers=headers)
+            downloader.extract_public_playlist = lambda url: Downloader.extract_public_playlist(downloader,url)
+            class FakePublic:
+                def __init__(self, options):
+                    self.options = options
+                    captured.update(options)
+                def __enter__(self): return self
+                def __exit__(self,*_args): pass
+                def extract_info(self,url,**kwargs):
+                    self.asserted = kwargs
+                    assert kwargs=={"download":False,"process":False}
+                    return {"title":"Public","playlist_count":999999,"entries":(video(i) for i in range(999999))}
+                def sanitize_info(self,value): return value
+            captured={}
+            with patch("musicbot.downloader.youtube_dl.YoutubeDL",FakePublic):
+                value=await Downloader.extract_info(downloader,YT,download=False,process=False,public_only=True)
+            regular.assert_not_awaited();headers.assert_not_awaited()
+            self.assertIsNone(captured["cookiefile"]);self.assertIsNone(captured["cookiesfrombrowser"])
+            self.assertFalse(captured["usenetrc"]);self.assertFalse(captured["cachedir"])
+            self.assertEqual(len(value.data["entries"]),201)
+            self.assertEqual(captured["playlistend"],201)
+
+    async def test_default_extraction_does_not_enter_public_branch(self):
+        from musicbot.downloader import Downloader
+        called=AsyncMock(side_effect=AssertionError("Default path reached"))
+        public=AsyncMock(side_effect=AssertionError("Public branch must be opt-in"))
+        downloader=NS(bot=NS(config=NS(enable_local_media=False)),_filtered_extract_info=called,extract_public_playlist=public)
+        with self.assertRaisesRegex(AssertionError,"Default path reached"):
+            await Downloader.extract_info(downloader,YT,download=False,process=False)
+        called.assert_awaited_once();public.assert_not_awaited()
