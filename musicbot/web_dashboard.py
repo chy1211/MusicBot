@@ -332,6 +332,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             "skip", "volume", "repeat", "spotify")},
         "/api/guilds/{guild_id}/lyrics/offset": "lyrics_offset",
         "/api/guilds/{guild_id}/admin/lyrics": "admin_lyrics",
+        "/api/guilds/{guild_id}/admin/notification-channel": "admin_notification_channel",
         "/api/guilds/{guild_id}/admin/autoplaylist": "admin_autoplaylist",
         "/api/guilds/{guild_id}/admin/permissions": "admin_permissions",
         "/api/guilds/{guild_id}/admin/maintenance": "admin_maintenance",
@@ -887,6 +888,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         latest = by_id.get(known[-1]) if known else None
         voice = getattr(getattr(owner, "voice", None), "channel", None)
         candidates = ([getattr(current, "channel", None), getattr(latest, "channel", None)]
+                      + [self.notification_channel(guild)]
                       + [guild.get_channel(cid) for cid in sorted(bound)]
                       + [guild.system_channel] + list(guild.text_channels) + [voice])
         # An older web request may itself have stored a voice chat as

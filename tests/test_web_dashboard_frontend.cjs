@@ -147,6 +147,7 @@ async function setup(options = {}) {
     else if (url === "/auth/session") body = clone(session);
     else if (["/auth/logout","/auth/logout-all"].includes(url)) { session.authenticated = false; session.user = null; body = {message: "signed out"}; }
     else if (url.endsWith("/admin/empty-queue")) body = {empty_queue:"autoplaylist",radio_min_seconds:0,radio_max_seconds:0};
+    else if (url.endsWith("/admin/notification-channel")) body = {channel_id:null,channels:[],unavailable:false};
     else if (url.endsWith("/admin/lyrics")) body = {enabled:true};
     else if (url.endsWith("/admin/maintenance")) body = {cookie:{status:"unused"},host_status:{status:"missing"},viewers:1};
     else if (url === "api/guilds") body = {guilds: [{id: "1", name: "First Guild"}, {id: "2", name: "Second Guild"}]};
@@ -2312,4 +2313,100 @@ test("SSE fallback state reads are at least five seconds apart", async () => {
   assert.equal(count(),baseline);
   now.value=105000; await app.run("poll()"); assert.equal(count(),baseline+1);
   await app.run("poll()"); assert.equal(count(),baseline+1);
+});
+
+// Round17 uses the real management script and guild-switch/logout machinery.
+const notifyReply = value => Promise.resolve({ok:true,status:200,json:async()=>value});
+test("notification selector has translated default and safe text channel choices", async () => {
+  const app = await setup({round7:true});
+  app.run('adminOwner=true');
+  app.hook(url => url.endsWith("/admin/notification-channel") ? notifyReply({
+    channel_id:null,channels:[{id:"101",name:"<img onerror=evil>"}],unavailable:false}) : null);
+  await app.run("adminNotifyLoad()");
+  const options = app.element("admin-notify-channel").children;
+  assert.deepEqual(options.map(node=>node.value), ["","101"]);
+  assert.equal(options[0].textContent,t("notify.default"));
+  assert.equal(options[0].dataset.i18n,"notify.default");
+  assert.equal(options[1].textContent,"#<img onerror=evil>");
+  assert.equal(options[1].children.length,0);
+  assert.equal(app.element("admin-notify-channel").value,"");
+  assert.equal(app.element("admin-notify-warning").hidden,true);
+});
+test("notification selector restores setting and warns about inaccessible saved channel", async () => {
+  const app = await setup({round7:true});
+  app.run('adminOwner=true');
+  app.hook(url=>url.endsWith("/admin/notification-channel")?notifyReply({
+    channel_id:"101",channels:[],unavailable:true}):null);
+  await app.run("adminNotifyLoad()");
+  const select = app.element("admin-notify-channel");
+  assert.equal(select.value,"101");
+  assert.equal(select.children[1].disabled,true);
+  assert.equal(select.children[1].textContent,t("notify.unavailable"));
+  assert.equal(select.children[1].dataset.i18n,"notify.unavailable");
+  assert.equal(app.element("admin-notify-warning").hidden,false);
+});
+test("notification save posts selected text channel to selected guild", async () => {
+  const app = await setup({round7:true});
+  app.run('adminOwner=true');
+  app.element("admin-notify-channel").value="101";
+  app.hook(url=>url.endsWith("/admin/notification-channel")?notifyReply({
+    channel_id:"101",channels:[{id:"101",name:"Fixture"}],unavailable:false}):null);
+  await app.element("admin-notify-form").listeners.submit({preventDefault(){}});
+  const request = app.requests.find(r=>r.url.endsWith("/admin/notification-channel")&&r.method==="POST");
+  assert.equal(request.url,"/api/guilds/1/admin/notification-channel");
+  assert.deepEqual(request.data,{channel_id:"101"});
+  assert.equal(app.element("admin-notify-status").textContent,t("notify.saved"));
+});
+test("notification default option clears setting with JSON null", async () => {
+  const app = await setup({round7:true});
+  app.run('adminOwner=true');
+  app.element("admin-notify-channel").value="";
+  await app.element("admin-notify-form").listeners.submit({preventDefault(){}});
+  const request = app.requests.find(r=>r.url.endsWith("/admin/notification-channel")&&r.method==="POST");
+  assert.deepEqual(request.data,{channel_id:null});
+  assert.equal(app.element("admin-notify-warning").hidden,true);
+});
+test("notification load discards reply after guild switch", async () => {
+  const app = await setup({round7:true});
+  app.run('adminOwner=true');
+  let finish;
+  app.hook(url=>url.endsWith("/admin/notification-channel")?new Promise(resolve=>finish=resolve):null);
+  const pending = app.run("adminNotifyLoad()");
+  await flush();
+  app.run('selected="2";generation++');
+  finish(await notifyReply({channel_id:"101",channels:[{id:"101",name:"Old guild"}],unavailable:false}));
+  await pending;
+  assert.equal(app.element("admin-notify-channel").children.length,0);
+});
+test("notification clear removes private selection and discards pending save", async () => {
+  const app = await setup({round7:true});
+  app.run('adminOwner=true;adminNotifyRender({channel_id:"101",channels:[{id:"101",name:"Fixture"}],unavailable:true})');
+  let finish;
+  app.hook(url=>url.endsWith("/admin/notification-channel")?new Promise(resolve=>finish=resolve):null);
+  const pending = app.element("admin-notify-form").listeners.submit({preventDefault(){}});
+  await flush();
+  app.run("adminClear()");
+  finish(await notifyReply({channel_id:"101",channels:[{id:"101",name:"Fixture"}],unavailable:true}));
+  await pending;
+  assert.equal(app.element("admin-notify-channel").children.length,0);
+  assert.equal(app.element("admin-notify-warning").hidden,true);
+  assert.equal(app.element("admin-notify-status").textContent,"");
+});
+test("notification controls do not call API without Owner capability", async () => {
+  const app = await setup({round7:true});
+  app.run("adminOwner=false");
+  const before = app.requests.length;
+  await app.run("adminNotifyLoad()");
+  await app.element("admin-notify-form").listeners.submit({preventDefault(){}});
+  assert.equal(app.requests.length,before);
+});
+test("opening management loads guild notification options with a translated form", async () => {
+  const fixture = libraryFixture(true), app = await setup({round7:true,hook:fixture.hook});
+  await flush();
+  await app.element("nav-admin").listeners.click();
+  assert.ok(app.requests.some(r=>r.url==="/api/guilds/1/admin/notification-channel"));
+  const html = fs.readFileSync(path.join(__dirname,"../musicbot/web/index.html"),"utf8");
+  assert.match(html,/<label for="admin-notify-channel"><span data-i18n="notify.label">/);
+  assert.match(html,/<option value="" data-i18n="notify.default">/);
+  assert.match(html,/id="admin-notify-warning"[^>]+role="status"/);
 });

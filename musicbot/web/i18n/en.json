@@ -588,5 +588,14 @@
   "punct.colon": ": ",
   "punct.list": ", ",
   "activity.volume": "Volume: {p0}%",
-  "message.skip": "Skip request submitted. See Discord for vote progress."
+  "message.skip": "Skip request submitted. See Discord for vote progress.",
+  "notify.label": "Fallback notification channel",
+  "notify.default": "Not specified (use defaults)",
+  "notify.save": "Save notification channel",
+  "notify.help": "Used only when no request channel is available. Binding and speaking permissions still apply.",
+  "notify.warning": "The configured channel is deleted, inaccessible, or excluded by channel bindings. Notifications will use the default fallback order.",
+  "notify.unavailable": "Configured channel (unavailable)",
+  "notify.saved": "Notification channel saved.",
+  "notify.invalid": "Choose a text channel in this server that the bot can view and send messages in, or clear the setting.",
+  "notify.save_failed": "Could not save the notification channel. Try again later."
 }

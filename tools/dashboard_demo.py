@@ -12,6 +12,7 @@ from collections import deque
 from types import SimpleNamespace as NS
 
 from aiohttp import web
+from discord import ChannelType
 
 from musicbot.downloader import YtdlpResponseDict
 from musicbot.bot import MusicBot, build_play_response
@@ -89,7 +90,7 @@ class DemoBot:
                                          (44, "不在語音頻道"), (45, "無指令權限"))}
             self.members[gid] = members
             owner = members[42]
-            channel = NS(id=gid * 10, guild=guild, name="示範語音室", typing=self.noop,
+            channel = NS(id=gid * 10, type=ChannelType.voice, guild=guild, name="示範語音室", typing=self.noop,
                          permissions_for=lambda _: NS(view_channel=True, send_messages=True))
             for uid in (42, 43, 45):
                 members[uid].voice = NS(channel=channel, deaf=False, self_deaf=False)
@@ -105,7 +106,7 @@ class DemoBot:
             guild.me.voice = NS(channel=channel)
             guild.get_member = members.get
             guild.get_channel = lambda cid, ch=channel: ch if cid == ch.id else None
-            text = NS(id=gid * 10 + 1, guild=guild, name="點歌文字頻道", typing=self.noop,
+            text = NS(id=gid * 10 + 1, type=ChannelType.text, guild=guild, name="點歌文字頻道", typing=self.noop,
                       permissions_for=lambda _: NS(view_channel=True, send_messages=True))
             guild.get_channel = lambda cid, vc=channel, tc=text: next(
                 (ch for ch in (vc, tc) if ch.id == cid), None)
@@ -306,6 +307,7 @@ class DemoDashboard(Dashboard):
         self.demo_temp = tempfile.TemporaryDirectory(prefix="musicbot-webtest-demo-")
         self.session_store_root = Path(self.demo_temp.name) / "sessions"
         super().__init__(bot, config)
+        self.notification_store.root = Path(self.demo_temp.name) / "notification_channels"
         # Replace the provider boundary before any request can run.
         self.popularity_store.root = Path(self.demo_temp.name) / "stats"
         import datetime as dt
