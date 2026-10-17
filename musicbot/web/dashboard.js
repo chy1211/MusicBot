@@ -605,7 +605,7 @@ function render(next, force = false) {
   const previousTrack = currentTrackKey();
   state = next; stateAt = Date.now();
   if (seekDrag && seekDrag.track !== currentTrackKey()) cancelSeek();
-  if (previousTrack !== currentTrackKey()) resetLyrics(false);
+  if (previousTrack !== currentTrackKey()) { resetLyrics(false); spotifyPrefetch(); }
   songTitle($("title"), state.current || {title:"選一首喜歡的歌"});
   $("subtitle").textContent = state.current ? "點播：" + requesterName(state.current) : "請先加入 Discord 語音頻道，再點播歌曲";
   const source = songLinkURL(state.current?.url || "");
@@ -1223,3 +1223,30 @@ document.addEventListener("visibilitychange", async () => {
 initialize().finally(() => { window.setTimeout(poll, 1000); window.setTimeout(localTick, 1000); });
 
 window.addEventListener?.("blur", () => { cancelDrag(); cancelSeek(); noSelection("volume", false); });
+
+
+let spotifyRequest = 0;
+async function spotifyPrefetch() {
+  const request = ++spotifyRequest, epoch = generation, key = currentTrackKey(), guild = selected;
+  const link = $("spotify-link"), title = state?.current?.title || "";
+  link.hidden = !key; link.removeAttribute("href");
+  link.setAttribute("aria-disabled","true");
+  link.classList.toggle("is-loading",!!key);
+  if (!key || !connected || !guild) return;
+  try {
+    const value = await api("api/guilds/" + guild + "/spotify");
+    if (request !== spotifyRequest || epoch !== generation || key !== currentTrackKey()) return;
+    const url = safeURL(value.url);
+    if (url && new URL(url).protocol === "https:" && new URL(url).hostname === "open.spotify.com") link.setAttribute("href", url);
+  } catch {
+    if (request !== spotifyRequest || epoch !== generation || key !== currentTrackKey()) return;
+    link.setAttribute("href", "https://open.spotify.com/search/" + encodeURIComponent(title));
+  } finally {
+    if (request === spotifyRequest && epoch === generation && key === currentTrackKey()) {
+      link.classList.toggle("is-loading",false); link.setAttribute("aria-disabled",String(!link.getAttribute("href")));
+    }
+  }
+}
+$("spotify-link").addEventListener("click", event => {
+  if ($("spotify-link").getAttribute("aria-disabled") === "true") event.preventDefault();
+});

@@ -300,7 +300,7 @@ class DemoDashboard(Dashboard):
         self.fake_login = fake_login
         self.demo_source_versions = {}
         bot.config.spotify_enabled = True
-        bot.spotify = NS()
+        bot.spotify = NS(make_api_req=self.fake_spotify_search)
         self.demo_temp = tempfile.TemporaryDirectory(prefix="musicbot-webtest-demo-")
         super().__init__(bot, config)
         # Replace the provider boundary before any request can run.
@@ -371,6 +371,15 @@ class DemoDashboard(Dashboard):
         self.app.cleanup_ctx.append(self.demo_updates)
         self.app.router.add_post("/demo-login/{user}", self.fake_callback)
 
+
+    async def fake_spotify_search(self, path):
+        # Deterministic provider response; no HTTP client and no credentials.
+        from urllib.parse import parse_qs
+        query = parse_qs(path.split("?", 1)[-1]).get("q", [""])[0]
+        title = next((title for title in TITLES if title in query), TITLES[0])
+        return {"tracks": {"items": [{"name": title,
+            "artists": [{"name": "示範樂團"}], "duration_ms": (180 + TITLES.index(title)*17)*1000,
+            "external_urls": {"spotify": "https://open.spotify.com/track/DemoLookup000001"}}]}}
 
     async def import_source(self, url, kind):
         # Both public-provider boundaries are fake; never call Spotify or yt-dlp.

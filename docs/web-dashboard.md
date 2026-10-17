@@ -1365,3 +1365,19 @@ Containers have --network none; the relay reaches only the demo loopback.
 Stop only the named demo/relay/tunnel, remove only new musicbot-webtest-r9 tags,
 and delete only the resolved /tmp/musicbot-webtest-r9-demo.* context afterward.
 Screenshots/evidence can be preserved separately under /tmp/musicbot-webtest-shots/.
+
+## Round 10: Spotify button
+
+GET /api/guilds/{guild_id}/spotify is read-only, with the existing session,
+membership/blocklist, custom-header and origin checks; no voice requirement.
+It returns {url, mode: "track" | "search", query, track_token}. No request body.
+It uses the current entry's Spotify URL when present, otherwise the existing
+Spotify client searches one track. Cleaned artist/title, conservative similarity
+thresholds and a 12-second duration tolerance gate direct links; uncertain,
+unconfigured, timed-out or failed lookups return an encoded Spotify search URL.
+The timeout is eight seconds, cache TTL one hour (256 entries), failure cooldown
+30 seconds and per-member admission 12 requests/minute. Provider errors stay internal.
+The frontend prefetches on track changes and enables the actual link only after
+the result arrives, so normal target=_blank navigation avoids blocked popups.
+Late results for old tracks/guilds are discarded. The demo provider always
+returns a fake Spotify track without making any outbound request.

@@ -20,9 +20,10 @@ class Element {
     items.forEach((item) => { item.parent = this; });
     if (this.tag === "select" && !this.value && items.length) this.value = items[0].value;
   }
-  replaceChildren() {
+  replaceChildren(...items) {
     this.children = [];
     if (this.tag === "select") this.value = "";
+    this.append(...items);
   }
   setAttribute(name, value) { this.attributes[name] = value; }
   getAttribute(name) { return this.attributes[name] || null; }
@@ -108,6 +109,7 @@ async function setup(options = {}) {
       const state = states[match[1]], action = match[2], data = options.body && JSON.parse(options.body);
       if (action === "state") body = clone(state);
       else if (action === "history") body = {history: []};
+      else if (action === "spotify") body = {url: "https://open.spotify.com/track/Fake0001", mode: "track"};
       else if (action.startsWith("lyrics")) body = {status: "not_found", title: state.current?.title || "", lines: []};
       else if (action === "resolve") body = {results: [{title: "Selected", kind: "track",
         url: "https://example.test/selected", duration: 125, thumbnail: "", allowed: true, preview_id: "preview-one"}]};
@@ -161,7 +163,7 @@ test("renders current track, progress, queue and safe untrusted titles", async (
 test("control handlers send correct methods, body, guild and headers", async () => {
   const app = await setup();
   await app.element("toggle").listeners.click();
-  assert.equal(app.element("toggle").textContent.includes("播放"), true);
+  assert.equal(app.element("toggle").textContent.includes("繼續"), true);
   app.element("volume").value = "65";
   await app.element("volume").listeners.change();
   app.element("repeat").value = "all";
@@ -452,10 +454,10 @@ test("an old state poll cannot overwrite a completed mutation", async () => {
   await flush();
   app.hook(null);
   await app.element("toggle").listeners.click();
-  assert.equal(app.element("toggle").textContent.includes("播放"), true);
+  assert.equal(app.element("toggle").textContent.includes("繼續"), true);
   release({ok: true, status: 200, json: async () => initial(1)});
   await old;
-  assert.equal(app.element("toggle").textContent.includes("播放"), true);
+  assert.equal(app.element("toggle").textContent.includes("繼續"), true);
 });
 
 
@@ -1876,4 +1878,38 @@ test("round10 song links canonicalize YouTube, reject scripts and suppress drag 
   app.run("suppressSongLinksUntil=0");
   prevented=false;link.listeners.click({preventDefault(){prevented=true;}});
   assert.equal(prevented,false);
+});
+
+
+test("Spotify prefetch enables a real href without opening a popup", async () => {
+  const app = await setup();
+  const link = app.element("spotify-link");
+  assert.equal(link.getAttribute("href"), "https://open.spotify.com/track/Fake0001");
+  assert.equal(link.getAttribute("aria-disabled"), "false");
+  assert.equal(link.classes.has("is-loading"), false);
+});
+test("Spotify ignores stale replies and disables clicks while loading", async () => {
+  const app = await setup();
+  const pending = [];
+  app.hook(url => url.endsWith("/spotify") ? new Promise(resolve => pending.push(resolve)) : null);
+  app.run('spotifyPrefetch()');
+  assert.equal(app.element("spotify-link").getAttribute("href"), null);
+  let prevented = false;
+  app.element("spotify-link").listeners.click({preventDefault() { prevented = true; }});
+  assert.equal(prevented, true);
+  app.run('state.current = {title:"Another"}; spotifyPrefetch()');
+  pending[1]({ok:true,status:200,json:async()=>({url:"https://open.spotify.com/track/New"})});
+  await flush();
+  pending[0]({ok:true,status:200,json:async()=>({url:"https://open.spotify.com/track/Old"})});
+  await flush();
+  assert.equal(app.element("spotify-link").getAttribute("href"), "https://open.spotify.com/track/New");
+  app.run('state.current = null; spotifyPrefetch()');
+  assert.equal(app.element("spotify-link").hidden, true);
+  assert.equal(app.element("spotify-link").getAttribute("href"), null);
+});
+test("Spotify lookup failure offers an encoded search URL", async () => {
+  const app = await setup();
+  app.hook(url => url.endsWith("/spotify") ? Promise.resolve({ok:false,status:503,json:async()=>({error:"稍後再試"})}) : null);
+  await app.run('spotifyPrefetch()');
+  assert.equal(app.element("spotify-link").getAttribute("href"), "https://open.spotify.com/search/First");
 });

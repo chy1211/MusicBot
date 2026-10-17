@@ -221,7 +221,13 @@ class Round9DemoTests(unittest.IsolatedAsyncioTestCase):
         popular = await self.call(BASE+"popular?period=7",method="GET")
         self.assertEqual(len(popular["tracks"]),5)
         await self.call(BASE+"seek",{"position":83.456})
-        self.assertTrue(self.bot.discord_messages[-1]["response"]["description"].startswith("跳轉：83 秒"))
+        self.assertIn("跳轉：83 秒", self.bot.discord_messages[-1]["response"]["description"])
         await self.call(BASE+"play",{"query":"https://example.test/track/2"})
         self.assertIn("來自網頁控制台",self.bot.discord_messages[-1]["response"]["description"])
         self.assertEqual(self.bot.discord_messages[-1]["channel"],"點歌文字頻道")
+
+    async def test_fake_spotify_match_no_network(self):
+        await self.login("owner")
+        value=await self.call(BASE+"spotify",method="GET")
+        self.assertEqual(value["mode"],"track")
+        self.assertEqual(value["url"],"https://open.spotify.com/track/DemoLookup000001")

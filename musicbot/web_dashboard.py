@@ -179,8 +179,9 @@ def revision(player) -> str:
 
 
 from .web_dashboard_undo import DashboardUndo
+from .web_dashboard_spotify import DashboardSpotify
 
-class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin, DashboardUndo):
+class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin, DashboardUndo, DashboardSpotify):
     def __init__(self, bot, config: DashboardConfig):
         self.bot = bot
         self.config = config
@@ -205,6 +206,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.init_library()
         self.init_admin()
         self.init_undo()
+        self.init_spotify_lookup()
         self.popularity_store = PopularityStore(write_path("data/web_dashboard/stats"))
         async def cleanup_popularity(_app):
             try:
