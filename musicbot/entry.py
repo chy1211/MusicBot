@@ -501,7 +501,7 @@ class URLPlaylistEntry(BasePlaylistEntry):
 
                 # win a cookie if cache worked but extension was different.
                 if file_cache_path and self.expected_filename != file_cache_path:
-                    log.warning("Download cached with different extension...")
+                    log.debug("Download cached with different extension...")
 
                 # check if cache size matches remote, basic validation.
                 if file_cache_path:

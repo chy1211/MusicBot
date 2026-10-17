@@ -1125,8 +1125,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 extractor = "spotify:musicbot" if kind == "spotify" else "youtube"
                 from .downloader import YtdlpResponseDict
                 info = YtdlpResponseDict({"title": imported["title"], "extractor": extractor,
+                    "__input_subject": canonical, "webpage_url": canonical,
                     "playlist_count": imported["count"], "entries": [
-                        dict(item, webpage_url=item["url"], extractor=extractor) for item in imported["tracks"]]})
+                        dict(item, webpage_url=item["url"], extractor=extractor,
+                             __input_subject=item["url"]) for item in imported["tracks"]]})
                 subject = canonical
             else:
                 info = await self.bot.downloader.extract_info(
