@@ -4142,6 +4142,14 @@ class MusicBot(commands.Bot):
             )
 
         entry = player.current_entry
+        # A seek restarts an audio source asynchronously. Keep one transition
+        # record so state/ETA never combines the new entry offset with old frames.
+        previous = getattr(player, "_pending_seek", None)
+        if previous and previous["entry"] is entry:
+            player.playlist.entries = type(player.playlist.entries)(
+                item for item in player.playlist.entries if item is not entry)
+        player._pending_seek = {"entry": entry, "position": f_seek_time,
+                                "paused": previous["paused"] if previous else player.is_paused}
         entry.set_start_time(f_seek_time)
         player.playlist.insert_entry_at_index(0, entry)
 

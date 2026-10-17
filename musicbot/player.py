@@ -144,6 +144,7 @@ class MusicPlayer(EventEmitter, Serializable):
         self._stderr_future: Optional[AsyncFuture] = None
 
         self._source: Optional[SourcePlaybackCounter] = None
+        self._pending_seek = None
 
         self.playlist.on("entry-added", self.on_entry_added)
         self.playlist.on("entry-failed", self.on_entry_failed)
@@ -288,9 +289,10 @@ class MusicPlayer(EventEmitter, Serializable):
             log.debug("Playback finished, but _current_entry is None.")
             return
 
-        if self.repeatsong:
+        seeking = self._pending_seek and self._pending_seek['entry'] is entry
+        if self.repeatsong and not seeking:
             self.playlist.entries.appendleft(entry)
-        elif self.loopqueue:
+        elif self.loopqueue and not seeking:
             self.playlist.entries.append(entry)
 
         # TODO: investigate if this is cruft code or not.
@@ -496,6 +498,11 @@ class MusicPlayer(EventEmitter, Serializable):
                 # I need to add ytdl hooks
                 self.state = MusicPlayerState.PLAYING
                 self._current_entry = entry
+                pending = self._pending_seek
+                self._pending_seek = None
+                if pending and pending["entry"] is entry and pending["paused"]:
+                    # Recreate the source without silently resuming a paused seek.
+                    self.pause()
 
                 self._stderr_future = asyncio.Future()
 
@@ -653,6 +660,8 @@ class MusicPlayer(EventEmitter, Serializable):
         """
         Return a progress value for the media playback.
         """
+        if self._pending_seek:
+            return self._pending_seek['position']
         if self._source:
             return self._source.progress
         return 0
