@@ -632,6 +632,10 @@ msgstr "你沒有連上語音，先加入一個語音頻道吧！"
 msgid "Connected to `%(channel)s`"
 msgstr "已連線到 `%(channel)s`"
 
+#: musicbot/bot.py
+msgid "Web dashboard: %(url)s"
+msgstr "網頁控制台：%(url)s"
+
 #: musicbot/bot.py:5124
 msgid "Makes MusicBot follow a user when they change channels in a server.\n"
 msgstr "讓 MusicBot 跟著某位使用者在伺服器裡換頻道。\n"

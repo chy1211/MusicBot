@@ -105,6 +105,15 @@ class APIError(Exception):
         self.details = details or {}
 
 
+def summon_dashboard_url(bot) -> str:
+    """Public member-login URL to announce on summon, or empty when not shareable."""
+    config = getattr(getattr(bot, "_web_dashboard", None), "config", None)
+    if config is None or getattr(config, "auth_mode", "") != "discord":
+        return ""
+    url = str(getattr(config, "public_url", "") or "").strip().rstrip("/")
+    return url + "/" if url.startswith("https://") else ""
+
+
 def public_url(value) -> str:
     value = str(value or "")
     try:

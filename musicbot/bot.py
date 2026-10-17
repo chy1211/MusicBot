@@ -5215,6 +5215,7 @@ class MusicBot(commands.Bot):
 
             # either move an existing VoiceClient / MusicPlayer pair or make them.
             player = self.get_player_in(guild)
+            newly_joined = False
             if player and player.voice_client and guild == author.voice.channel.guild:
                 # NOTE:  .move_to() does not support setting self-deafen flag,
                 # nor respect flags set in initial connect call.
@@ -5225,6 +5226,7 @@ class MusicBot(commands.Bot):
                     self_deaf=self.config.self_deafen,
                 )
             else:
+                newly_joined = True
                 player = await self.get_player(
                     author.voice.channel,
                     create=True,
@@ -5245,10 +5247,22 @@ class MusicBot(commands.Bot):
             if message is not None:
                 self.server_data[guild.id].last_np_msg = message
 
-            return Response(
-                _D("Connected to `%(channel)s`", ssd_)
-                % {"channel": author.voice.channel},
-            )
+            content = _D("Connected to `%(channel)s`", ssd_) % {
+                "channel": author.voice.channel
+            }
+            # Optional web dashboard link, only when the bot newly joins voice.
+            if newly_joined:
+                try:
+                    from .web_dashboard import summon_dashboard_url
+
+                    url = summon_dashboard_url(self)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    url = ""
+                if url:
+                    content += "\n" + _D("Web dashboard: %(url)s", ssd_) % {
+                        "url": f"<{url}>"
+                    }
+            return Response(content)
 
     @command_helper(
         desc=_Dd(
