@@ -744,7 +744,7 @@ test("playlist defaults to all eligible items and cannot select a blocked row", 
   assert.equal(list.children[0].children[0].children[0].checked, true);
   assert.equal(list.children[1].children[0].children[0].checked, false);
   assert.equal(list.children[1].children[0].children[0].disabled, true);
-  assert.equal(button.textContent, "加入選取的 2 首");
+  assert.equal(button.textContent, "加入佇列（2 首）");
   await button.listeners.click();
   assert.deepEqual(app.requests.find((request) => request.url.endsWith("/play")).data, {
     query: "https://example.test/list", preview_id: "playlist-token", selected_items: ["1", "3"]});
@@ -753,14 +753,14 @@ test("playlist defaults to all eligible items and cannot select a blocked row", 
 test("playlist select none, select all and individual selection update the count and payload", async () => {
   const {app, tools, list, button} = await playlistApp();
   tools.children[1].listeners.click();
-  assert.equal(button.textContent, "加入選取的 0 首");
+  assert.equal(button.textContent, "加入佇列（0 首）");
   assert.equal(button.disabled, true);
   await button.listeners.click();
   assert.equal(app.requests.some((request) => request.url.endsWith("/play")), false);
   tools.children[0].listeners.click();
   const first = list.children[0].children[0].children[0];
   first.checked = false; first.listeners.change();
-  assert.equal(button.textContent, "加入選取的 1 首");
+  assert.equal(button.textContent, "加入佇列（1 首）");
   await button.listeners.click();
   assert.deepEqual(app.requests.find((request) => request.url.endsWith("/play")).data.selected_items, ["3"]);
 });
@@ -981,7 +981,7 @@ test("playlist preview retains ordered selection and offers no batch playnext co
   const {card, button} = await playlistApp();
   assert.equal(card.children.length, 3);
   assert.match(card.children[1].children.at(-3).textContent, /下一首播放目前只提供單曲/);
-  assert.match(button.textContent, /加入選取/);
+  assert.match(button.textContent, /加入佇列/);
 });
 
 function historyReply(count = 1) {
@@ -1335,7 +1335,7 @@ test("SSE connects without headers and supersedes periodic fetches", async () =>
   await app.run("poll()");
   assert.equal(app.requests.length,count);
   assert.equal(app.run("fallbackPolling"),false);
-  assert.equal(app.element("connection").textContent,"即時連線");
+  assert.equal(app.element("connection").textContent,"連線狀態");
 });
 
 test("SSE pushes community and history without optional REST polling", async () => {
@@ -1381,7 +1381,7 @@ test("SSE switch guild closes old stream ignores stale callbacks", async () => {
   old.emit("snapshot",snapshot(app.states[1]));
   assert.equal(app.element("title").textContent,"Second");
   app.streams.at(-1).emit("snapshot",snapshot(app.states[2]));
-  assert.equal(app.element("connection").textContent,"即時連線");
+  assert.equal(app.element("connection").textContent,"連線狀態");
 });
 
 test("SSE hiding tab closes stream and showing resumes", async () => {
@@ -1823,4 +1823,26 @@ test("round8 shortcuts respect busy disconnected and signed out control states",
     for(const key of [" ","n","ArrowLeft","/"]) await shortcutEvent(app,key).result;
     assert.equal(app.requests.length,before);
   }
+});
+
+
+test("round10 mobile volume, selection locks and connection states", async () => {
+  const app = await setup({mobile:true});
+  assert.equal(app.element("toggle").textContent,"暫停");
+  app.run('connectionStatus("即時連線重試中")');
+  assert.equal(app.element("connection").textContent,"連線狀態");
+  assert.equal(app.element("connection").dataset.state,"reconnecting");
+  await app.element("hero-volume").listeners.pointerdown({});
+  assert.ok(app.document.body.classes.has("no-selection"));
+  app.document.listeners.pointercancel({pointerId:99});
+  assert.ok(!app.document.body.classes.has("no-selection"));
+  app.run('noSelection("queue",true); noSelection("seek",true); cancelDrag(); cancelSeek()');
+  assert.ok(!app.document.body.classes.has("no-selection"));
+  const html=fs.readFileSync(path.join(__dirname,"../musicbot/web/index.html"),"utf8");
+  assert.match(html,/class="sr-only seek-hint"/);
+  assert.match(html,/id="drag-help" class="sr-only"/);
+  assert.doesNotMatch(html,/[⏸⏭]/);
+  const css=fs.readFileSync(path.join(__dirname,"../musicbot/web/dashboard.css"),"utf8");
+  assert.match(css,/playback-bar>\.volume-row\{display:none\}/);
+  assert.match(css,/-webkit-touch-callout:none/);
 });
