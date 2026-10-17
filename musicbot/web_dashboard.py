@@ -314,16 +314,49 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             raise APIError(401, _web_text('m0355'))
         request[USER_KEY] = user
 
+    # Canonical route templates only: never log URL/query values or headers.
+    NO_OPERATION_ROUTES = frozenset({
+        "/", "/healthz", "/ui-config", "/i18n/{locale}.json", "/i18n.js",
+        "/dashboard.css", "/dashboard.js", "/library.js", "/admin.js",
+        "/permissions.js", "/popular.js", "/favicon.svg", "/favicon.ico",
+        "/manifest.webmanifest", "/sw.js", "/pwa.js", "/offline.html",
+        "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/auth/session",
+    })
+    OPERATION_ROUTES = {
+        "/auth/login": "login", "/auth/callback": "callback",
+        "/auth/logout": "logout", "/auth/logout-all": "logout_all",
+        "/api/guilds": "guilds",
+        **{"/api/guilds/{guild_id}/" + action: action for action in (
+            "state", "listeners", "activity", "events", "history", "popular",
+            "lyrics", "resolve", "play", "playnext", "seek", "pause", "resume",
+            "skip", "volume", "repeat", "spotify")},
+        "/api/guilds/{guild_id}/lyrics/offset": "lyrics_offset",
+        "/api/guilds/{guild_id}/admin/lyrics": "admin_lyrics",
+        "/api/guilds/{guild_id}/admin/autoplaylist": "admin_autoplaylist",
+        "/api/guilds/{guild_id}/admin/permissions": "admin_permissions",
+        "/api/guilds/{guild_id}/admin/maintenance": "admin_maintenance",
+        "/api/guilds/{guild_id}/admin/empty-queue": "admin_empty_queue",
+        "/api/guilds/{guild_id}/queue/shuffle": "shuffle",
+        "/api/guilds/{guild_id}/queue/move": "move",
+        "/api/guilds/{guild_id}/queue/{position}": "remove",
+        "/api/guilds/{guild_id}/queue/undo": "queue_undo",
+        "/api/library": "library",
+        "/api/library/{playlist_id}": "library_update",
+        "/api/library/{playlist_id}/tracks": "library_tracks",
+        "/api/library/sources": "library_sources",
+        "/api/library/import": "library_import",
+        "/api/library/{playlist_id}/sync": "library_sync",
+        "/api/guilds/{guild_id}/library/{playlist_id}/play": "library_play",
+        "/api/guilds/{guild_id}/library/import/preview": "library_import_preview",
+        "/api/guilds/{guild_id}/library/{playlist_id}/sync/preview": "library_sync_preview",
+    }
+
     def request_action(self, request):
-        if request.path == "/api/guilds":
-            return "guilds"
-        if request.method == "DELETE" and "position" in request.match_info:
-            return "remove"
-        action = request.path.rsplit("/", 1)[-1]
-        return action if action in {
-            "state", "listeners", "activity", "events", "history", "lyrics", "resolve", "play", "playnext", "seek", "pause", "resume", "skip",
-            "volume", "repeat", "move", "shuffle", "logout", "login", "callback",
-        } else "unknown"
+        resource = request.match_info.route.resource
+        path = resource.canonical if resource is not None else ""
+        if path in self.NO_OPERATION_ROUTES:
+            return None
+        return self.OPERATION_ROUTES.get(path, "unmatched")
 
     @web.middleware
     async def guard(self, request, handler):
@@ -399,14 +432,15 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             log.error("Dashboard request failed (%s)", type(exc).__name__)
             response = web.json_response(
                 {"error": _web_text('m0366')}, status=500)
-        if api or logout or request.path in ("/auth/login", "/auth/callback"):
+        action = self.request_action(request)
+        if action is not None and (api or logout or request.path in ("/auth/login", "/auth/callback")):
             uid = (request.get(USER_KEY) or {}).get("id")
             if uid is None and not self.discord_auth:
                 uid = str(self.bot.config.owner_id)
             raw_gid = request.match_info.get("guild_id", "")
             gid = raw_gid if raw_gid.isascii() and raw_gid.isdigit() and len(raw_gid) <= 20 else "-"
             log.info("Dashboard operation user=%s guild=%s action=%s status=%d",
-                     uid or "-", gid, self.request_action(request), response.status)
+                     uid or "-", gid, action, response.status)
         if api and request.method in ("POST", "DELETE") and self.request_action(request) in {
                 "play", "playnext", "seek", "pause", "resume", "skip", "volume", "repeat", "remove", "move", "shuffle"}:
             try:

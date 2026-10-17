@@ -57,3 +57,21 @@ EventSource hides the HTTP status, so all transport errors (including 429)
 use this same recovery. Fallback state/probe reads are limited to one per
 5 seconds per page; hidden pages do not poll. Explicit user actions may
 still request immediate state. No production traffic was measured.
+
+## 3. Operation log coverage
+
+The previous last-path-segment allowlist omitted popular, Spotify, library
+list/create/update/delete/tracks/play/import/sync/sources, both import preview
+routes, queue undo, admin autoplaylist/permissions/maintenance/empty-queue,
+lyrics offset, and logout-all. Admin lyrics was misleadingly called lyrics.
+These registered API routes could log unknown (or misidentify the operation).
+Static files, healthz, ui-config, language catalogs and auth/session were
+already outside the logging condition, so they did not cause those 277 lines.
+The summary does not identify how many came from each omitted route.
+
+Canonical route-template mappings now name every registered API/auth operation;
+an explicit no-operation set excludes static/bootstrap/health/session requests.
+Tests enumerate every registered method, including automatic HEAD routes,
+verify exact coverage and ensure query strings/cookies/Bearer values do not
+enter the operation log. Unknown API paths are labeled unmatched; no raw path
+or query is logged. Existing safe user/guild identifiers remain unchanged.
