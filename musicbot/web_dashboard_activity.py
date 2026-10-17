@@ -43,6 +43,7 @@ class Capture:
     source: str
     before: dict
     success: bool = False
+    target_position: int | None = None
 
     def finish(self, success=None):
         if success is None:
@@ -70,7 +71,8 @@ class Capture:
         elif self.action == "repeat" and success:
             label += "：" + {"off": "關閉", "song": "單曲", "all": "整個佇列"}[after["repeat"]]
         elif self.action == "seek" and success:
-            label += f"：{after['progress']} 秒"
+            position = self.target_position if self.target_position is not None else after["progress"]
+            label += f"：{position} 秒"
         # Names only; no query, URL, command arguments, raw exceptions or user IDs.
         detail = "、".join(titles[:8])
         if len(titles) > 8:

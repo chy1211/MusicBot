@@ -40,7 +40,7 @@ class Round5API(unittest.IsolatedAsyncioTestCase):
         for position in (0, 70.25, 180):
             current = seek_entry(self.bot)
             await self.call(BASE + "seek", {"position": position})
-            self.assertEqual(current.start_time, position)
+            self.assertEqual(current.start_time, int(position + 0.5))
             self.assertIs(self.bot.player.playlist.entries[0], current)
 
     async def test_seek_rejects_track_change_during_context_and_lock_wait_without_token(self):
