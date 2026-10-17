@@ -189,6 +189,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.lyrics_rate_limits = {}
         self.lyrics_client = LyricsClient()
         self.recent_history = defaultdict(lambda: deque(maxlen=50))
+        self.history_marker = secrets.token_urlsafe(16)
+        self.history_last_source = {}
         self.activities = defaultdict(lambda: deque(maxlen=100))
         self.queue_arrivals = defaultdict(list)
         self.init_auth()
@@ -421,7 +423,18 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         """Called by the real playback event, independently of browser polling."""
         if entry is None:
             return
+        # A "play" event represents an audio-source start, not a new request.
+        # Native seek requeues the same object; reconnect may reconstruct it.
+        marker = (self.history_marker, guild.id)
+        if getattr(entry, "_dashboard_history_marker", None) == marker:
+            return
+        setattr(entry, "_dashboard_history_marker", marker)
         item = track(entry, guild)
+        moment = float(played_at if played_at is not None else time.time())
+        last = self.history_last_source.get(guild.id)
+        if last and last[0] == item["url"] and 0 <= moment - last[1] < 10:
+            return
+        self.history_last_source[guild.id] = (item["url"], moment)
         meta = getattr(entry, "meta", None) or {}
         author = (getattr(entry, "author", None) or getattr(entry, "member", None)
                   or meta.get("author") or meta.get("member"))
@@ -429,7 +442,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         item.pop("requester", None)
         item["requester_id"] = getattr(author, "id", None)
         item["requested"] = bool(author or getattr(entry, "channel", None))
-        item["played_at"] = float(played_at if played_at is not None else time.time())
+        item["played_at"] = moment
         self.recent_history[guild.id].appendleft(item)
 
     async def history(self, request):
@@ -1268,6 +1281,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.rate_limits.clear()
         self.lyrics_rate_limits.clear()
         self.recent_history.clear()
+        self.history_last_source.clear()
         self.activities.clear()
         self.queue_arrivals.clear()
 
