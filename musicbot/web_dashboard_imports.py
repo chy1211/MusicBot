@@ -118,6 +118,7 @@ class DashboardImports:
     async def import_source(self, url, kind):
         """Resolve public content only; no login, download or alternative credentials."""
         tracks = []
+        count_is_minimum = False
         if kind == "spotify":
             if not self.spotify_import_enabled():
                 fail(503, "目前無法讀取 Spotify 歌單")
@@ -145,6 +146,9 @@ class DashboardImports:
                 if track:
                     tracks.append(track)
             count = max(len(rows), total if type(total) is int else 0)
+            if type(container.get("total")) is not int and next_url:
+                count = max(count, len(rows) + 1)
+                count_is_minimum = True
         else:
             info = await self.bot.downloader.extract_info(url, download=False, process=False, public_only=True)
             value = getattr(info, "data", info)
@@ -154,8 +158,9 @@ class DashboardImports:
                 fail(403, "只支援不需登入的公開歌單。")
             rows = list(value.get("entries") or [])
             title = value.get("title") or "YouTube 歌單"
-            total = value.get("playlist_count") or value.get("n_entries") or len(rows)
+            total = value.get("playlist_count") or value.get("n_entries")
             count = max(len(rows), total if type(total) is int else 0)
+            count_is_minimum = type(total) is not int and len(rows) > 200
             for item in rows[:200]:
                 track = imported_track(getattr(item, "data", item), kind)
                 if track:
@@ -163,7 +168,8 @@ class DashboardImports:
         if not tracks:
             fail(404, "歌單內沒有可匯入的公開歌曲。")
         return {"title": str(title)[:300], "tracks": tracks, "count": count,
-                "truncated": count > 200, "source_url": url, "source_type": kind}
+                "truncated": count > 200, "count_is_minimum": count_is_minimum,
+                "source_url": url, "source_type": kind}
 
     async def library_import_preview(self, request):
         uid = self.library_identity(request)
@@ -230,6 +236,7 @@ class DashboardImports:
         return web.json_response({"preview_id": token, "revision": value["revision"], "title": preview["title"],
             "source_url": url, "source_type": kind, "count": preview["count"],
             "import_count": len(preview["tracks"]), "tracks": preview["tracks"][:5],
+            "count_is_minimum": preview.get("count_is_minimum", False),
             "truncated": preview["truncated"],
             "warning": "超過 200 首，只會匯入來源前 200 首中的可用歌曲。" if preview["truncated"] else "",
             "diff": pending.get("diff"), "expires_in": self.PREVIEW_TTL})

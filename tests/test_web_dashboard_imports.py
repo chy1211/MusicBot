@@ -97,6 +97,26 @@ class ImportTests(unittest.IsolatedAsyncioTestCase):
             value = await self.preview(status=403)
             self.assertNotIn("Secret",str(value))
 
+
+    async def test_unknown_youtube_total_is_marked_as_lower_bound(self):
+        self.bot.downloader.extract_info.return_value = {"title":"Public","entries":[video(i) for i in range(201)]}
+        value=await self.preview()
+        self.assertEqual(value["count"],201)
+        self.assertEqual(value["import_count"],200)
+        self.assertTrue(value["count_is_minimum"])
+        self.assertTrue(value["truncated"])
+
+    async def test_unknown_spotify_total_with_more_pages_still_warns_truncation(self):
+        self.spotify_provider([spotify(i) for i in range(200)])
+        tracks=self.bot.spotify.get_playlist.return_value["tracks"]
+        tracks.pop("total")
+        tracks["next"]="https://api.spotify.com/v1/playlists/ABC123/tracks?offset=200"
+        value=await self.preview(SPOTIFY)
+        self.assertEqual(value["count"],201)
+        self.assertTrue(value["count_is_minimum"])
+        self.assertTrue(value["truncated"])
+        self.bot.spotify.make_api_req.assert_not_awaited()
+
     async def library(self):
         return await self.call("/api/library", method="GET")
 

@@ -1197,7 +1197,8 @@ metadata is also rejected. Other native downloader calls never enter this branch
 Import reads metadata, never downloads media or adds queue entries.
 Each source is capped to its first 200 entries; private/deleted/local/unsupported
 entries are skipped. The preview states total count, usable import count, first
-five tracks and an explicit truncation warning. A user's custom-list cap remains
+five tracks and an explicit truncation warning. If a bounded source omits its total,
+count_is_minimum labels the count as at least that many, rather than an exact total. A user's custom-list cap remains
 20, plus favorites; no list exceeds 200 tracks.
 
 Enqueue still uses the existing cmd_play/_cmd_play path and fresh permissions,
@@ -1234,7 +1235,7 @@ revision and expiry, and are consumed on success. No client user ID/path is used
 | POST | /api/library/{playlist}/sync | {preview_id,revision} | updated private library, owner capability, message |
 
 Preview fields: preview_id, revision, title, source_url, source_type, count,
-import_count, tracks (first five), truncated, warning, diff (null for import),
+import_count, tracks (first five), count_is_minimum, truncated, warning, diff (null for import),
 expires_in. Confirm imports the validated server-side snapshot, not client tracks.
 Resolve and source previews share the existing per-person 12/minute budget,
 20-second timeout, per-guild active slot and global two-job cap. A timed-out
@@ -1325,7 +1326,7 @@ Unsupported backdrop-filter and prefers-reduced-transparency use opaque surfaces
 Existing prefers-reduced-motion disables animation/transitions. Phone cards do
 not each blur; the sidebar/playback bar and temporary dialog/toast are the few
 blurred surfaces. Queue rows never use backdrop blur. Static cache/version
-references advance together; current round-9 assets use r9-7, including popular.js.
+references advance together; current round-9 assets use r9-8, including popular.js.
 
 ### Offline verification and demo
 

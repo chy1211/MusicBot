@@ -200,7 +200,7 @@ function libraryInitImports() {
       if (epoch !== generation || guild !== selected) return;
       libraryImportPending = {...value, generation: epoch, guild};
       source.value = value.source_type; title.textContent = value.title;
-      summary.textContent = "來源共 " + value.count + " 首，將匯入 " + value.import_count + " 首。" + value.warning;
+      summary.textContent = (value.count_is_minimum ? "來源至少 " : "來源共 ") + value.count + " 首，將匯入 " + value.import_count + " 首。" + value.warning;
       tracks.replaceChildren();
       for (const track of value.tracks) tracks.append(libraryImportElement("li", track.title + " · " + (track.duration ? duration(track.duration) : "長度未知")));
       name.value = Array.from(value.title).slice(0, 60).join(""); preview.hidden = false;
