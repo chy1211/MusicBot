@@ -27,6 +27,7 @@ class SpotifySelectionTests(unittest.IsolatedAsyncioTestCase):
         raw = {"_type":"playlist","extractor":"youtube:search","playlist_count":1,"entries":[self.child]}
         downloader = NS(bot=self.bot, thread_pool=None, _supported_search=["ytsearch"],
             unsafe_ytdl=NS(extract_info=lambda *a, **k: raw), ytdl=NS(sanitize_info=lambda d:d))
+        downloader._run_ytdl = lambda safe, method, *a, **kw: getattr(downloader.unsafe_ytdl, method)(*a, **kw)
         async def extract(subject, **kwargs):
             with patch("musicbot.downloader.log.noise",create=True):
                 return YtdlpResponseDict(await Downloader._filtered_extract_info(downloader,subject,**kwargs))
