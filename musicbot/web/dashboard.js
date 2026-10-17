@@ -3,7 +3,7 @@ const $ = (id) => document.getElementById(id);
 let secret = "", selected = "", state = null, busy = false, connected = false;
 let queueRevision = null, generation = 0, loading = false, stateGeneration = 0;
 let authMode = null, authenticated = false;
-let manualGuild = "";
+let manualGuild = "", entryGuild = "";
 const labels = {playing: "播放中", paused: "已暫停", stopped: "已停止", disconnected: "尚未加入語音"};
 let toastTimer = null, toastVersion = 0;
 function notice(message, error = false) {
@@ -87,6 +87,7 @@ function signedOut(message = "登入後即可查看你的伺服器並點歌。")
   notice("");
 }
 async function initialize() {
+  captureEntryGuild();
   try {
     const response = await fetch("/auth/session", {cache: "no-store", credentials: "same-origin"});
     if (!response.ok) throw new Error("無法確認登入狀態，請重新整理頁面。");
@@ -629,6 +630,19 @@ function resetView() {
 
 function rememberGuild(value) {
   try { window.localStorage?.setItem("musicbot-dashboard-guild", value); } catch { /* Storage may be disabled. */ }
+  try { window.sessionStorage?.removeItem("musicbot-dashboard-entry-guild"); } catch { /* Storage may be disabled. */ }
+}
+
+function captureEntryGuild() {
+  try {
+    const url = new URL(window.location.href);
+    entryGuild = url.searchParams.get("guild") || url.searchParams.get("guild_id") || "";
+  } catch { entryGuild = ""; }
+  if (entryGuild && !/^[0-9]{1,20}$/.test(entryGuild)) entryGuild = "";
+  try {
+    if (entryGuild) window.sessionStorage?.setItem("musicbot-dashboard-entry-guild", entryGuild);
+    else entryGuild = window.sessionStorage?.getItem("musicbot-dashboard-entry-guild") || "";
+  } catch { /* A direct URL still works if browser storage is disabled. */ }
 }
 function initialGuild(data) {
   const valid = value => typeof value === "string" && data.guilds.some(guild => guild.id === value);
@@ -638,6 +652,7 @@ function initialGuild(data) {
     const url = new URL(window.location.href);
     explicit = url.searchParams.get("guild") || url.searchParams.get("guild_id") || "";
   } catch { /* A URL without a server uses the normal preference order. */ }
+  if (!explicit && typeof entryGuild === "string") explicit = entryGuild;
   try { remembered = window.localStorage?.getItem("musicbot-dashboard-guild") || ""; } catch { /* Private browsing. */ }
   return [explicit, data.recommended_guild_id, remembered, data.guilds[0]?.id].find(valid) || "";
 }
