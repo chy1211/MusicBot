@@ -3,7 +3,7 @@ let adminOwner = false, adminApl = null, adminPage = 1, adminQuery = "", adminEp
 function adminClear() {
   ++adminEpoch; adminOwner = false; adminApl = null;
   $("nav-admin").hidden = true; $("admin-panel").hidden = true;
-  $("autoplaylist-current").hidden = true; $("admin-apl-list").replaceChildren();
+  $("admin-apl-list").replaceChildren();
   $("admin-permissions")?.replaceChildren();
   $("empty-queue-status").textContent = "";
   $("empty-queue-mode").value = "autoplaylist";
@@ -17,7 +17,7 @@ async function adminCapability() {
     const value = await api("/api/library");
     if (epoch !== generation || token !== adminEpoch) return;
     adminOwner = value.owner === true;
-    $("nav-admin").hidden = !adminOwner; $("autoplaylist-current").hidden = !adminOwner;
+    $("nav-admin").hidden = !adminOwner;
   } catch { adminClear(); }
 }
 async function adminAplLoad() {
@@ -62,14 +62,6 @@ $("admin-apl-search").addEventListener("submit", event => {
 for (const [id, delta] of [["admin-apl-prev", -1], ["admin-apl-next", 1]]) $(id).addEventListener("click", () => libraryRun($(id), async () => {
   adminPage += delta; await adminAplLoad();
 }));
-$("admin-apl-add").addEventListener("submit", event => {
-  event.preventDefault();
-  return libraryRun($("admin-apl-add-button"), async () => {
-    await adminAplChange({url: $("admin-apl-url").value}); $("admin-apl-url").value = "";
-  });
-});
-$("autoplaylist-current").addEventListener("click", () => libraryRun($("autoplaylist-current"), () => adminAplChange({current: true})));
-
 if (connected) adminCapability();
 
 function maintenanceDate(value) {

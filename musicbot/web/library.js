@@ -153,7 +153,8 @@ function favoriteRender() {
   const saved = !!key && !!libraryData?.playlists[0]?.tracks.some(t => songIdentity(t.url) === key);
   button.setAttribute("aria-pressed", String(saved));
   button.title = saved ? "取消收藏" : "收藏這首歌";
-  button.textContent = saved ? "♥ 已收藏" : "♡ 收藏";
+  button.textContent = saved ? "♥" : "♡";
+  button.setAttribute("aria-label", button.title);
   button.classList.toggle("is-favorite", saved);
   if (button.dataset.loading === "1") button.disabled = true;
 }
