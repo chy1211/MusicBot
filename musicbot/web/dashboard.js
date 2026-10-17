@@ -542,7 +542,7 @@ function renderPreviewResults(results, action = "play") {
         for (const item of song.entries) {
           const li = document.createElement("li"), label = document.createElement("label");
           const checkbox = document.createElement("input"); checkbox.type = "checkbox";
-          checkbox.checked = !!item.allowed && !!song.allowed;
+          checkbox.checked = !!item.allowed && !!song.allowed && item.default_selected !== false;
           checkbox.dataset.boundary = item.allowed && song.allowed ? "0" : "1";
           checkbox.disabled = checkbox.dataset.boundary === "1";
           checkbox.setAttribute("aria-label", "選取：" + item.title);
@@ -555,13 +555,13 @@ function renderPreviewResults(results, action = "play") {
           });
           checkboxes.push([checkbox, item]);
           const text = document.createElement("span");
-          text.textContent = item.title + " · " + (item.duration ? duration(item.duration) : "長度未知") +
+          text.textContent = (item.is_requested ? "網址指定歌曲 · " : "") + item.title + " · " + (item.duration ? duration(item.duration) : "長度未知") +
             (item.reason ? " · 無法加入：" + item.reason : " · 可加入");
           label.append(checkbox, imageElement(item.thumbnail), text); duplicateNote(label, item.url, true);
           li.append(label); list.append(li);
         }
         info.append(tools, list);
-        if (song.source_url && typeof librarySavePreview === "function") {
+        if ((song.source_url || song.saveable) && typeof librarySavePreview === "function") {
           const nameLabel = document.createElement("label"); nameLabel.textContent = "新歌單名稱";
           const name = document.createElement("input"); name.maxLength = 60; name.value = Array.from(song.title).slice(0, 60).join("");
           nameLabel.append(name);

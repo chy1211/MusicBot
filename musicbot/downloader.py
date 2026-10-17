@@ -369,7 +369,7 @@ class Downloader:
             log.noise("Sanitized YTDL Extraction Info (not JSON):  %s", data)  # type: ignore[attr-defined]
 
 
-    async def extract_public_playlist(self, song_subject: str) -> "YtdlpResponseDict":
+    async def extract_public_playlist(self, song_subject: str, limit: int = 201) -> "YtdlpResponseDict":
         """Credential-free flat metadata for dashboard public YouTube imports only."""
         from itertools import islice
         def extract():
@@ -377,7 +377,7 @@ class Downloader:
             options = {"extract_flat": "in_playlist", "skip_download": True,
                        "noplaylist": False, "quiet": True, "no_warnings": True,
                        "cookiefile": None, "cookiesfrombrowser": None,
-                       "usenetrc": False, "cachedir": False, "playlistend": 201,
+                       "usenetrc": False, "cachedir": False, "playlistend": limit,
                        "socket_timeout": 15, "retries": 1}
             with youtube_dl.YoutubeDL(options) as public:
                 data = public.extract_info(song_subject, download=False, process=False)
@@ -386,7 +386,7 @@ class Downloader:
                 # Lazy entries can perform I/O when iterated: keep it in the
                 # executor and retain only 200 plus one overflow indicator.
                 if "entries" in data:
-                    data["entries"] = list(islice(data.get("entries") or [], 201))
+                    data["entries"] = list(islice(data.get("entries") or [], limit))
                 data = public.sanitize_info(data)
                 data["__input_subject"] = song_subject
                 return YtdlpResponseDict(data)
@@ -425,9 +425,12 @@ class Downloader:
             as a base exception for any networking errors raised by yt_dlp.
         """
         if kwargs.pop("public_only", False):
+            limit = kwargs.pop("public_limit", 201)
+            if limit not in (25, 201):
+                raise ExtractionError("Invalid public preview limit.")
             if args or kwargs != {"download": False, "process": False}:
                 raise ExtractionError("Public imports only support flat metadata.")
-            return await self.extract_public_playlist(song_subject)
+            return await self.extract_public_playlist(song_subject, limit)
 
         # handle local media playback without ever touching ytdl and friends.
         # We do this here so auto playlist features can take advantage of this as well.

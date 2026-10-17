@@ -43,7 +43,12 @@ def source_url(value):
             fail(400, "YouTube／YouTube Music 請提供包含歌單的連結。")
         if ids[0] in ("WL", "LL", "LM"):
             fail(400, "私人收藏、稍後觀看與喜歡的歌不支援公開匯入。")
-        # Canonical YouTube playlist prevents redirects/compound video expansion.
+        # Dynamic mixes require their seed watch URL; /playlist?list=RD... is
+        # rejected by YouTube as an unviewable playlist.
+        videos = parse_qs(parsed.query).get("v", [])
+        if ids[0].startswith("RD") and len(videos) == 1 and re.fullmatch(r"[A-Za-z0-9_-]{11}", videos[0]):
+            return "https://www.youtube.com/watch?v=" + videos[0] + "&list=" + ids[0], "youtube"
+        # Canonical URL for stable public playlists.
         return "https://www.youtube.com/playlist?list=" + ids[0], "youtube"
     fail(400, "只支援 Spotify、YouTube 與 YouTube Music 公開歌單。")
 
@@ -236,8 +241,65 @@ class DashboardImports:
         return web.json_response({"spotify": self.spotify_import_enabled(), "youtube": True,
                                   "spotify_message": "" if self.spotify_import_enabled() else "目前無法讀取 Spotify 歌單"})
 
+
+    async def import_mix(self, url):
+        """Bounded, credential-free mix with an independently playable seed."""
+        from .web_dashboard import APIError
+        parsed = urlsplit(url)
+        query = parse_qs(parsed.query)
+        ident = query["list"][0]
+        video = query.get("v", [""])[0]
+        single = "https://www.youtube.com/watch?v=" + video if video else ""
+        seed = None
+        if single:
+            try:
+                info = await asyncio.wait_for(self.bot.downloader.extract_info(single, download=False, process=True), 5)
+                value = getattr(info, "data", info)
+                seed = imported_track(value, "youtube")
+            except Exception:
+                pass
+            if seed is None:
+                seed = {"title": video, "url": single, "duration": None,
+                        "thumbnail": "https://i.ytimg.com/vi/" + video + "/hqdefault.jpg"}
+        rows, fixed = [], False
+        try:
+            # RDCLAK can be a stable YouTube Music playlist. Try that shape first.
+            target = "https://www.youtube.com/playlist?list=" + ident if ident.startswith("RDCLAK") else url
+            info = await asyncio.wait_for(self.bot.downloader.extract_info(
+                target, download=False, process=False, public_only=True, public_limit=25), 8)
+            value = getattr(info, "data", info)
+            if not isinstance(value, dict) or not isinstance(value.get("entries"), list):
+                raise ValueError("No mix entries")
+            if value.get("availability") in ("private","needs_auth","premium_only","subscriber_only"):
+                fail(403, "只支援不需登入的公開歌單。")
+            rows = [track for row in value["entries"][:25]
+                    if (track := imported_track(getattr(row, "data", row), "youtube"))]
+            fixed = ident.startswith("RDCLAK") and bool(rows)
+        except APIError:
+            raise
+        except Exception:
+            pass
+        if fixed:
+            return {"title": str(value.get("title") or "YouTube Music 歌單")[:300],
+                    "tracks": rows, "count": len(rows), "truncated": len(rows) == 25,
+                    "source_url": "https://www.youtube.com/playlist?list=" + ident, "source_type": "youtube",
+                    "saveable": True, "is_mix": False}
+        if not seed and rows: seed = rows[0]
+        if not seed:
+            fail(400, "合輯無法讀取，請使用包含影片的合輯連結。")
+        tracks, seen = [], set()
+        for track in [seed, *rows]:
+            if track["url"] in seen: continue
+            seen.add(track["url"]); tracks.append(track)
+            if len(tracks) == 25: break
+        return {"title": "YouTube 合輯", "tracks": tracks, "count": len(tracks),
+                "truncated": len(tracks) == 25, "source_url": "", "source_type": "",
+                "saveable": True, "is_mix": True}
+
     async def import_source(self, url, kind):
         """Resolve public content only; no login, download or alternative credentials."""
+        if kind == "youtube" and parse_qs(urlsplit(url).query).get("list", [""])[0].startswith("RD"):
+            return await self.import_mix(url)
         tracks = []
         count_is_minimum = False
         if kind == "spotify":
@@ -417,8 +479,11 @@ class DashboardImports:
                     target = next((p for p in value["playlists"] if p["id"] == pid), None)
                     if target is None:
                         fail(404, "找不到你的歌單。")
-                target.update(tracks=[song(t) for t in tracks],
-                              source_url=pending["source_url"], source_type=pending["source_type"])
+                target.update(tracks=[song(t) for t in tracks])
+                if pending["source_url"]:
+                    target.update(source_url=pending["source_url"], source_type=pending["source_type"])
+                else:
+                    target.pop("source_url", None); target.pop("source_type", None)
             result = await self.playlist_store.transact(uid, change, pending["revision"],
                 authorize=authorize)
             self.import_previews.pop(token, None)

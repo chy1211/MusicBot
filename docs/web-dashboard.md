@@ -1587,3 +1587,20 @@ Only HTTPS i.scdn.co and mosaic.scdn.co Spotify image hosts are accepted.
 CSP also lists the existing YouTube/Discord image hosts explicitly. Missing or
 failed images use the existing placeholder; no provider image is fetched by the
 demo (same-origin fabricated SVGs).
+
+
+## Round 11: watch links and mixes
+A video+playlist link now opens one playlist preview, marks the URL's video,
+and defaults to selecting every allowed track for stable PL/OLAK/YouTube Music
+playlists. Dynamic RD/RDMM/RDAMVM mixes preserve the watch URL: converting it
+to /playlist caused yt-dlp's "This playlist type is unviewable" exception.
+The credential-free public extractor is bounded to 25 items and 8 seconds;
+the independently resolved seed (5 seconds, then canonical metadata fallback)
+is first, deduplicated, and is the sole default selection. Extraction failures
+leave a usable single-item preview. RDCLAK is treated as a stable source when
+its normal playlist extraction succeeds; failure degrades to the seed.
+Saving a dynamic mix saves selected tracks without source metadata, so sync
+is unavailable. Successful RDCLAK sources remain syncable.
+Resolve entries add is_requested/default_selected; results add is_mix/saveable.
+No new endpoint or permission bypass. Downloader's new public_limit is used
+only by the existing credential-free dashboard path; Discord extraction is unchanged.
