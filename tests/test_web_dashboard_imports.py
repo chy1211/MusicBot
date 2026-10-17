@@ -224,6 +224,7 @@ class ImportTests(unittest.IsolatedAsyncioTestCase):
         self.bot.blocked_users.add(43)
         await self.confirm(pending, 403)
         self.bot.blocked_users.clear()
+        self.login_as(43)
         self.bot.members.pop(43)
         await self.confirm(pending, 403)
         self.client.session.cookie_jar.clear()
@@ -293,7 +294,7 @@ class PublicDownloaderTests(unittest.IsolatedAsyncioTestCase):
             regular = AsyncMock(side_effect=AssertionError("Ordinary extraction forbidden"))
             headers = AsyncMock(side_effect=AssertionError("Ordinary headers forbidden"))
             downloader = NS(thread_pool=pool,_filtered_extract_info=regular,get_url_headers=headers)
-            downloader.extract_public_playlist = lambda url: Downloader.extract_public_playlist(downloader,url)
+            downloader.extract_public_playlist = lambda url, limit=201: Downloader.extract_public_playlist(downloader,url,limit)
             class FakePublic:
                 def __init__(self, options):
                     self.options = options
@@ -313,6 +314,12 @@ class PublicDownloaderTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(captured["usenetrc"]);self.assertFalse(captured["cachedir"])
             self.assertEqual(len(value.data["entries"]),201)
             self.assertEqual(captured["playlistend"],201)
+            with patch("musicbot.downloader.youtube_dl.YoutubeDL",FakePublic):
+                mix=await Downloader.extract_info(downloader,YT,download=False,process=False,public_only=True,public_limit=25)
+            self.assertEqual(len(mix.data["entries"]),25)
+            self.assertEqual(captured["playlistend"],25)
+            self.assertIsNone(captured["cookiefile"])
+
 
     async def test_default_extraction_does_not_enter_public_branch(self):
         from musicbot.downloader import Downloader

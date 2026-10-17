@@ -430,7 +430,7 @@ class Downloader:
                 raise ExtractionError("Invalid public preview limit.")
             if args or kwargs != {"download": False, "process": False}:
                 raise ExtractionError("Public imports only support flat metadata.")
-            return await self.extract_public_playlist(song_subject, limit)
+            return await self.extract_public_playlist(song_subject) if limit == 201 else await self.extract_public_playlist(song_subject, limit)
 
         # handle local media playback without ever touching ytdl and friends.
         # We do this here so auto playlist features can take advantage of this as well.
