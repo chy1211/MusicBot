@@ -2,16 +2,16 @@
 import asyncio
 import unittest
 from test_web_dashboard import BASE
-from test_web_dashboard_round6 import Round6Tests as Fixtures
+import test_web_dashboard_round6 as fixtures
 
 class Round16EventsTests(unittest.IsolatedAsyncioTestCase):
-    asyncSetUp = Fixtures.asyncSetUp
-    asyncTearDown = Fixtures.asyncTearDown
-    login_as = Fixtures.login_as
-    provider_token = Fixtures.provider_token
-    provider_me = Fixtures.provider_me
-    stream = Fixtures.stream
-    frame = Fixtures.frame
+    asyncSetUp = fixtures.Round6Tests.asyncSetUp
+    asyncTearDown = fixtures.Round6Tests.asyncTearDown
+    login_as = fixtures.Round6Tests.login_as
+    provider_token = fixtures.Round6Tests.provider_token
+    provider_me = fixtures.Round6Tests.provider_me
+    stream = fixtures.Round6Tests.stream
+    frame = fixtures.Round6Tests.frame
 
     async def test_two_tabs_and_three_users_same_guild_same_ip(self):
         responses = []

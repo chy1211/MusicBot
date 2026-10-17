@@ -2,14 +2,14 @@
 import unittest
 from types import SimpleNamespace as NS
 from unittest.mock import patch
-from test_web_dashboard_discord import DiscordTests as Fixtures
+import test_web_dashboard_discord as fixtures
 
 class Round16LogTests(unittest.IsolatedAsyncioTestCase):
-    asyncSetUp = Fixtures.asyncSetUp
-    asyncTearDown = Fixtures.asyncTearDown
-    login_as = Fixtures.login_as
-    provider_token = Fixtures.provider_token
-    provider_me = Fixtures.provider_me
+    asyncSetUp = fixtures.DiscordTests.asyncSetUp
+    asyncTearDown = fixtures.DiscordTests.asyncTearDown
+    login_as = fixtures.DiscordTests.login_as
+    provider_token = fixtures.DiscordTests.provider_token
+    provider_me = fixtures.DiscordTests.provider_me
 
     async def test_every_registered_route_is_named_or_explicitly_excluded(self):
         dashboard = self.dashboard
