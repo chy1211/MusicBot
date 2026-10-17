@@ -1,7 +1,7 @@
 "use strict";
 // Shares authenticated api/state helpers with dashboard.js; all text uses textContent.
 let libraryData = null, libraryActive = "favorites", libraryPendingSong = null, libraryBusy = false;
-let libraryPage = "play";
+let libraryPage = "play", libraryDetailOpen = false;
 function libraryButton(text, run) {
   const b = document.createElement("button"); b.type = "button"; b.textContent = text;
   b.addEventListener("click", () => libraryRun(b, run)); return b;
@@ -13,7 +13,7 @@ async function libraryRun(button, run) {
   finally { libraryBusy = false; buttonBusy(button, false); button.disabled = false; favoriteRender(); controls(); }
 }
 function libraryClear() {
-  libraryData = null; libraryPendingSong = null; libraryActive = "favorites";
+  libraryData = null; libraryPendingSong = null; libraryActive = "favorites"; libraryDetailOpen = false;
   libraryImportPending = null;
   favoriteRender();
   if (libraryImportUI) {
@@ -38,21 +38,38 @@ async function libraryLoad() {
   libraryData = value; libraryRender(); favoriteRender(); return true;
 }
 function libraryRender() {
-  const select = $("library-select"); select.replaceChildren();
+  $("library-playlists").replaceChildren();
   if (!libraryData) return;
-  for (const item of libraryData.playlists) {
-    const option = document.createElement("option"); option.value = item.id;
-    option.textContent = item.name + "（" + item.tracks.length + " 首）"; select.append(option);
-  }
   if (!libraryData.playlists.some(p => p.id === libraryActive)) libraryActive = "favorites";
-  select.value = libraryActive;
+  for (const item of libraryData.playlists) {
+    const row = document.createElement("li"), button = document.createElement("button");
+    button.type = "button"; button.className = "library-choice";
+    const title = document.createElement("span"); title.textContent = item.name;
+    const meta = document.createElement("small");
+    meta.textContent = item.tracks.length + " 首 · " + (item.source_type === "spotify" ? "Spotify" : item.source_url ? "YouTube" : item.id === "favorites" ? "收藏" : "自建");
+    button.append(title, meta); button.setAttribute("aria-current", String(item.id === libraryActive));
+    button.addEventListener("click", () => {
+      libraryActive = item.id; libraryDetailOpen = true; libraryRender();
+      $("library-detail-heading").focus();
+    });
+    row.append(button); $("library-playlists").append(row);
+  }
   const list = libraryData.playlists.find(p => p.id === libraryActive);
+  $("library-panel").classList.toggle("detail-open", libraryDetailOpen);
+  $("library-detail-heading").textContent = list.name;
+  $("library-meta").textContent = list.tracks.length + " 首" + (list.source_url ? " · " + (list.source_type === "spotify" ? "Spotify" : "YouTube") : "");
+  $("library-rename-form").hidden = list.id === "favorites";
+  $("library-delete").hidden = list.id === "favorites";
+  $("library-actions").open = false;
   libraryImportRender(list);
   $("library-name").value = list.name; $("library-name").disabled = list.id === "favorites";
   $("library-rename").disabled = $("library-delete").disabled = list.id === "favorites";
   $("library-list").replaceChildren();
   const selectedTracks = new Set();
   function play(all) { return libraryPlay(list, all ? undefined : [...selectedTracks]); }
+  $("library-enqueue-all").onclick = () => libraryRun($("library-enqueue-all"), () => play(true));
+  $("library-play-all").disabled = !list.tracks.length;
+  $("library-enqueue-all").disabled = !list.tracks.length;
   $("library-play-all").onclick = () => libraryRun($("library-play-all"), () => play(true));
   $("library-play-selected").disabled = true;
   $("library-play-selected").onclick = () => libraryRun($("library-play-selected"), () => play(false));
@@ -64,16 +81,13 @@ function libraryRender() {
       if (check.checked) selectedTracks.add(String(index)); else selectedTracks.delete(String(index));
       $("library-play-selected").disabled = selectedTracks.size === 0;
     });
-    const label = songTitle(document.createElement("span"), song);
-    const length = document.createElement("small"); length.textContent = " · " + (song.duration ? duration(song.duration) : "長度未知");
-    label.append(length);
-    const actions = document.createElement("div"); actions.className = "actions";
-    for (const [text, to] of [["↑", index - 1], ["↓", index + 1], ["刪除", null]]) {
-      const b = libraryButton(text, () => libraryChange(list.id, {action: to === null ? "remove" : "move", index, to}));
-      b.disabled = to !== null && (to < 0 || to >= list.tracks.length);
-      b.setAttribute("aria-label", text + "：" + song.title); actions.append(b);
-    }
-    row.append(check, label, actions); $("library-list").append(row);
+    const info = document.createElement("div"); info.className = "song";
+    const title = songTitle(document.createElement("p"), song); info.append(title);
+    const length = document.createElement("small"); length.className = "song-length";
+    length.textContent = song.duration ? duration(song.duration) : "長度未知";
+    const remove = libraryButton("刪除", () => libraryChange(list.id, {action:"remove", index}));
+    remove.setAttribute("aria-label", "刪除：" + song.title);
+    row.append(check, imageElement(song.thumbnail), info, length, remove); $("library-list").append(row);
   });
   $("library-empty").hidden = list.tracks.length !== 0;
 }
@@ -113,7 +127,11 @@ $("nav-play").addEventListener("click", () => libraryView("play"));
 $("nav-library").addEventListener("click", () => libraryRun($("nav-library"), async () => {
   libraryView("library"); await libraryLoad();
 }));
-$("library-select").addEventListener("change", () => { libraryActive = $("library-select").value; libraryRender(); });
+$("library-back").addEventListener("click", () => {
+  libraryDetailOpen = false; libraryRender();
+  const active = $("library-playlists").querySelector('[aria-current="true"]');
+  active?.focus();
+});
 $("library-refresh").addEventListener("click", () => libraryRun($("library-refresh"), libraryLoad));
 $("library-create").addEventListener("submit", event => {
   event.preventDefault();
@@ -121,7 +139,7 @@ $("library-create").addEventListener("submit", event => {
     const epoch = generation;
     const result = await api("/api/library", "POST", {name: $("library-new-name").value});
     if (epoch !== generation) return;
-    libraryData = result; libraryActive = result.playlists.at(-1).id;
+    libraryData = result; libraryActive = result.playlists.at(-1).id; libraryDetailOpen = true;
     $("library-new-name").value = ""; libraryRender();
   });
 });
@@ -171,13 +189,13 @@ function libraryInitImports() {
   $("library-import-hint").append(hint);
   const sync = libraryButton("從來源重新同步", librarySync); sync.hidden = true;
   const origin = libraryImportElement("p", "", "library-source"); origin.hidden = true;
-  $("library-panel").append(origin, sync);
+  $("library-sync-slot").append(origin, sync);
   libraryImportUI = {sync, origin};
 }
 function libraryImportRender(list) {
   if (!libraryImportUI) return;
   libraryImportUI.sync.hidden = libraryImportUI.origin.hidden = !list?.source_url;
-  libraryImportUI.origin.textContent = list?.source_url ? "來源：" + list.source_url : "";
+  libraryImportUI.origin.textContent = list?.source_url ? "可從來源重新同步" : "";
 }
 async function librarySavePreview(song, selectedItems, name, button) {
   return libraryRun(button, async () => {
@@ -186,7 +204,7 @@ async function librarySavePreview(song, selectedItems, name, button) {
       preview_id: song.preview_id, revision: song.save_revision,
       name, selected_items: [...selectedItems]});
     if (epoch !== generation) return;
-    libraryData = result; libraryActive = result.playlists.at(-1).id;
+    libraryData = result; libraryActive = result.playlists.at(-1).id; libraryDetailOpen = true;
     clearPreview(); libraryView("library"); libraryRender(); notice(result.message);
   });
 }

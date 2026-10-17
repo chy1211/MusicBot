@@ -325,6 +325,15 @@ class DemoDashboard(Dashboard):
         for uid in (42, 43, 44, 45):
             value = self.playlist_store.fresh()
             value["playlists"].append({"id": "a"*24, "name": "示範歌單", "tracks": [song({"title": TITLES[0], "url": "https://example.test/track/0", "duration": 180})]})
+            value["playlists"][-1]["tracks"].extend([
+                song({"title": "很長的歌名用來檢查手機省略號與列寬 " * 7, "url": "https://www.youtube.com/watch?v=demo0000001",
+                      "duration": 195, "thumbnail": f"{bot.origin}/demo-cover/1.svg"}),
+                song({"title": TITLES[2], "url": "https://www.youtube.com/watch?v=demo0000002",
+                      "duration": None, "thumbnail": f"{bot.origin}/demo-cover/2.svg"})])
+            value["playlists"].append({"id": "b"*24, "name": "Spotify 來源歌單",
+                "source_url": "https://open.spotify.com/playlist/Demo123", "source_type": "spotify",
+                "tracks": [song({"title": TITLES[3], "url": "https://open.spotify.com/track/Demo000003",
+                                "duration": 201, "thumbnail": f"{bot.origin}/demo-cover/3.svg"})]})
             self.playlist_store.path(uid).parent.mkdir(parents=True, exist_ok=True)
             import json
             self.playlist_store.path(uid).write_text(json.dumps(value), encoding="utf-8")
@@ -391,6 +400,18 @@ class DemoDashboard(Dashboard):
             "external_urls": {"spotify": "https://open.spotify.com/track/DemoLookup000001"}}]}}
 
     async def import_source(self, url, kind):
+        from urllib.parse import urlsplit, parse_qs
+        params = parse_qs(urlsplit(url).query)
+        ident = params.get("list", [""])[0]
+        if kind == "youtube" and ident.startswith("RD"):
+            seed = params.get("v", ["demo0000000"])[0]
+            tracks = [{"title": "示範合輯歌曲 " + str(i + 1),
+                       "url": "https://www.youtube.com/watch?v=" + (seed if i == 0 else f"demo{i:07d}"),
+                       "duration": 180 + i, "thumbnail": f"{self.bot.origin}/demo-cover/{i % 5}.svg"} for i in range(25)]
+            fixed = ident.startswith("RDCLAK")
+            return {"title": "YouTube 示範合輯", "tracks": tracks, "count": 25, "truncated": True,
+                    "source_url": "https://www.youtube.com/playlist?list=" + ident if fixed else "",
+                    "source_type": "youtube" if fixed else "", "saveable": True, "is_mix": not fixed}
         # Both public-provider boundaries are fake; never call Spotify or yt-dlp.
         self.demo_source_versions[url] = version = self.demo_source_versions.get(url, 0) + 1
         large = "DemoLarge" in url
