@@ -339,7 +339,7 @@ class DashboardImports:
         data = await self.payload(request)
         pid = request.match_info.get("playlist_id")
         allowed = {"preview_id", "revision"} if pid is not None else {"preview_id", "revision", "name"}
-        if set(data) != allowed:
+        if set(data) not in (allowed, allowed | {"selected_items"}) or (pid is not None and "selected_items" in data):
             fail(400, "匯入確認欄位不正確，請重新預覽。")
         token = data.get("preview_id")
         if not isinstance(token, str):
@@ -363,6 +363,15 @@ class DashboardImports:
                     fail(403, "你目前不是來源伺服器的成員。")
                 self.check_blocked(person)
             from .web_dashboard_library import name, song
+            tracks = pending["tracks"]
+            if "selected_items" in data:
+                selected = data["selected_items"]
+                available = {t.get("item_id", str(i + 1)): t for i, t in enumerate(tracks)}
+                if (not isinstance(selected, list) or not selected or len(selected) > 200
+                        or any(type(i) is not str or i not in available or not available[i].get("allowed", True) for i in selected)
+                        or len(set(selected)) != len(selected)):
+                    fail(400, "請勾選有效且允許的歌曲。")
+                tracks = [t for i, t in available.items() if i in selected]
             def change(value):
                 if pid is None:
                     if len(value["playlists"]) >= 21:
@@ -373,7 +382,7 @@ class DashboardImports:
                     target = next((p for p in value["playlists"] if p["id"] == pid), None)
                     if target is None:
                         fail(404, "找不到你的歌單。")
-                target.update(tracks=[song(t) for t in pending["tracks"]],
+                target.update(tracks=[song(t) for t in tracks],
                               source_url=pending["source_url"], source_type=pending["source_type"])
             result = await self.playlist_store.transact(uid, change, pending["revision"],
                 authorize=authorize)

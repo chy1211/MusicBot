@@ -464,8 +464,11 @@ async function resolveQuery() {
       const button = document.createElement("button"); button.className = "primary";
       const selectedItems = new Set();
       const checkboxes = [];
+      let saveButton = null, selectionCount = null;
       const updateSelection = () => {
-        button.textContent = song.kind === "playlist" ? "加入選取的 " + selectedItems.size + " 首" : song.allowed ? "加入佇列" : "無法加入";
+        if (selectionCount) selectionCount.textContent = "已選 " + selectedItems.size + " 首";
+        if (saveButton) saveButton.disabled = !selectedItems.size || libraryBusy;
+        button.textContent = song.kind === "playlist" ? "加入佇列（" + selectedItems.size + " 首）" : song.allowed ? "加入佇列" : "無法加入";
         button.dataset.boundary = song.allowed && (song.kind !== "playlist" || selectedItems.size) ? "0" : "1";
         controls();
       };
@@ -488,6 +491,7 @@ async function resolveQuery() {
           });
           tools.append(select);
         }
+        selectionCount = document.createElement("span"); tools.append(selectionCount);
         const list = document.createElement("ol"); list.className = "playlist-selection";
         for (const item of song.entries) {
           const li = document.createElement("li"), label = document.createElement("label");
@@ -507,10 +511,19 @@ async function resolveQuery() {
           const text = document.createElement("span");
           text.textContent = item.title + " · " + (item.duration ? duration(item.duration) : "長度未知") +
             (item.reason ? " · 無法加入：" + item.reason : " · 可加入");
-          label.append(checkbox, text); duplicateNote(label, item.url, true);
+          label.append(checkbox, imageElement(item.thumbnail), text); duplicateNote(label, item.url, true);
           li.append(label); list.append(li);
         }
         info.append(tools, list);
+        if (song.source_url && typeof librarySavePreview === "function") {
+          const nameLabel = document.createElement("label"); nameLabel.textContent = "新歌單名稱";
+          const name = document.createElement("input"); name.maxLength = 60; name.value = Array.from(song.title).slice(0, 60).join("");
+          nameLabel.append(name);
+          saveButton = document.createElement("button"); saveButton.type = "button";
+          saveButton.textContent = "存成我的歌單";
+          saveButton.addEventListener("click", () => librarySavePreview(song, selectedItems, name.value, saveButton));
+          info.append(nameLabel, saveButton);
+        }
       }
       updateSelection();
       const confirmSong = async (target, clicked = button) => {

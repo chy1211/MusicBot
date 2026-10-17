@@ -16,11 +16,8 @@ function libraryClear() {
   libraryData = null; libraryPendingSong = null; libraryActive = "favorites";
   libraryImportPending = null;
   if (libraryImportUI) {
-    const ui = libraryImportUI;
-    ui.preview.hidden = ui.form.hidden = ui.sync.hidden = ui.origin.hidden = true;
-    ui.url.value = ui.name.value = ui.title.textContent = ui.summary.textContent = ui.origin.textContent = "";
-    ui.tracks.replaceChildren(); ui.spotify.disabled = true;
-    ui.spotify.textContent = "Spotify"; ui.status.hidden = true;
+    libraryImportUI.sync.hidden = libraryImportUI.origin.hidden = true;
+    libraryImportUI.origin.textContent = "";
   }
   $("library-list").replaceChildren(); $("playlist-picker").replaceChildren();
   libraryView("play");
@@ -147,77 +144,31 @@ function libraryImportElement(tag, text, id) {
   return element;
 }
 function libraryInitImports() {
-  const wrap = libraryImportElement("section", "", "library-import-panel");
-  wrap.className = "library-import";
-  const toggle = libraryButton("從連結匯入", async () => {
-    form.hidden = !form.hidden;
-    toggle.setAttribute("aria-expanded", String(!form.hidden));
+  const hint = libraryButton("要匯入歌單？在上方點歌框貼上歌單網址", async () => {
+    libraryView("play"); $("query").focus();
   });
-  toggle.setAttribute("aria-expanded", "false");
-  toggle.setAttribute("aria-controls", "library-import-form");
-  const form = libraryImportElement("form", "", "library-import-form"); form.hidden = true;
-  form.className = "input-row";
-  const sourceLabel = libraryImportElement("label", "來源", "library-import-source-label");
-  sourceLabel.setAttribute("for", "library-import-source");
-  const source = libraryImportElement("select", "", "library-import-source");
-  const youtube = libraryImportElement("option", "YouTube／YouTube Music"); youtube.value = "youtube";
-  const spotify = libraryImportElement("option", "Spotify（目前無法讀取）"); spotify.value = "spotify"; spotify.disabled = true;
-  source.append(youtube, spotify); source.value = "youtube";
-  const label = libraryImportElement("label", "公開歌單連結"); label.setAttribute("for", "library-import-url");
-  const url = libraryImportElement("input", "", "library-import-url");
-  url.type = "url"; url.required = true; url.maxLength = 2000;
-  url.placeholder = "https://www.youtube.com/playlist?list=…";
-  const previewButton = libraryImportElement("button", "預覽"); previewButton.type = "submit";
-  const status = libraryImportElement("p", "目前無法讀取 Spotify 歌單", "library-import-status");
-  status.setAttribute("role", "status");
-  const preview = libraryImportElement("section", "", "library-import-preview"); preview.hidden = true;
-  const title = libraryImportElement("h3"), summary = libraryImportElement("p"), tracks = libraryImportElement("ol");
-  const nameLabel = libraryImportElement("label", "新歌單名稱"); nameLabel.setAttribute("for", "library-import-name");
-  const name = libraryImportElement("input", "", "library-import-name"); name.maxLength = 60; name.required = true;
-  const confirm = libraryButton("匯入成新歌單", async () => {
-    const pending = libraryImportPending;
-    if (!pending || pending.generation !== generation || pending.guild !== selected) throw new Error("預覽已失效，請重新預覽。");
-    const result = await api("/api/library/import", "POST", {preview_id: pending.preview_id, revision: pending.revision, name: name.value});
-    if (pending.generation !== generation) return;
-    libraryData = result; libraryActive = result.playlists.at(-1).id;
-    libraryImportPending = null; preview.hidden = true; libraryRender(); notice(result.message);
-  });
-  preview.append(title, summary, tracks, nameLabel, name, confirm);
-  form.append(sourceLabel, source, label, url, previewButton);
-  const sync = libraryButton("從來源重新同步", librarySync);
-  sync.hidden = true;
+  hint.className = "subtle library-import-hint";
+  $("library-import-hint").append(hint);
+  const sync = libraryButton("從來源重新同步", librarySync); sync.hidden = true;
   const origin = libraryImportElement("p", "", "library-source"); origin.hidden = true;
-  origin.className = "library-source";
-  wrap.append(toggle, form, status, preview, origin, sync); $("library-panel").append(wrap);
-  libraryImportUI = {form, source, spotify, url, status, preview, title, summary, tracks, name, sync, origin};
-  form.addEventListener("submit", event => {
-    event.preventDefault();
-    return libraryRun(previewButton, async () => {
-      if (!selected) throw new Error("請先選擇伺服器。");
-      if (url.value.includes("open.spotify.com") && spotify.disabled) throw new Error("目前無法讀取 Spotify 歌單");
-      const guild = selected, epoch = generation;
-      const value = await api("/api/guilds/" + guild + "/library/import/preview", "POST", {url: url.value.trim()});
-      if (epoch !== generation || guild !== selected) return;
-      libraryImportPending = {...value, generation: epoch, guild};
-      source.value = value.source_type; title.textContent = value.title;
-      summary.textContent = (value.count_is_minimum ? "來源至少 " : "來源共 ") + value.count + " 首，將匯入 " + value.import_count + " 首。" + value.warning;
-      tracks.replaceChildren();
-      for (const track of value.tracks) tracks.append(libraryImportElement("li", track.title + " · " + (track.duration ? duration(track.duration) : "長度未知")));
-      name.value = Array.from(value.title).slice(0, 60).join(""); preview.hidden = false;
-    });
-  });
+  $("library-panel").append(origin, sync);
+  libraryImportUI = {sync, origin};
 }
 function libraryImportRender(list) {
-  const ui = libraryImportUI;
-  if (!ui) return;
-  if (libraryData?.sources) {
-    ui.spotify.disabled = !libraryData.sources.spotify;
-    ui.spotify.textContent = libraryData.sources.spotify ? "Spotify" : "Spotify（目前無法讀取）";
-    ui.status.hidden = !!libraryData.sources.spotify;
-    ui.status.textContent = libraryData.sources.spotify ? "" : "目前無法讀取 Spotify 歌單";
-  }
-  ui.sync.hidden = ui.origin.hidden = !list?.source_url;
-  ui.origin.textContent = list?.source_url ? "來源：" + list.source_url : "";
+  if (!libraryImportUI) return;
+  libraryImportUI.sync.hidden = libraryImportUI.origin.hidden = !list?.source_url;
+  libraryImportUI.origin.textContent = list?.source_url ? "來源：" + list.source_url : "";
+}
+async function librarySavePreview(song, selectedItems, name, button) {
+  return libraryRun(button, async () => {
+    const epoch = generation;
+    const result = await api("/api/library/import", "POST", {
+      preview_id: song.preview_id, revision: song.save_revision,
+      name, selected_items: [...selectedItems]});
+    if (epoch !== generation) return;
+    libraryData = result; libraryActive = result.playlists.at(-1).id;
+    clearPreview(); libraryView("library"); libraryRender(); notice(result.message);
+  });
 }
 async function librarySync() {
   if (!selected) throw new Error("請先選擇伺服器。");
