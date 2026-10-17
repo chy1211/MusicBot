@@ -1568,3 +1568,13 @@ resource names. In the fake Owner session pause then seek to 100 and back to
 toggle the heart twice and observe its count in favorites, and inspect the
 fake Spotify track href. Owner management shows the fake cookie warning and
 radio controls. All demo storage is inside TemporaryDirectory.
+
+
+## Round 11: Spotify selected tracks
+The dashboard's confirmed-selection boundary accepts the existing downloader's
+flattened single-result YouTube search shape (including flat `_type=url`).
+It requires exactly one non-nested child with the same YouTube extractor, video
+identity and source URL. Genuine playlists remain rejected. Native Discord
+commands, Spotify lookup/search and queue permissions are unchanged.
+Offline regression uses the real Downloader flattening method and cmd_play,
+including expired preview renewal, save, resync and saved-playlist playback.
