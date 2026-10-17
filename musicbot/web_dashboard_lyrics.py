@@ -9,7 +9,7 @@ import time
 from collections import OrderedDict
 import aiohttp
 
-USER_AGENT = "MusicBot-WebDashboard/5 (+https://github.com/Just-Some-Bots/MusicBot)"
+USER_AGENT = "MusicBot-WebDashboard/12 (+https://github.com/Just-Some-Bots/MusicBot)"
 LRCLIB_ROOT = "https://lrclib.net/api"
 _NOISE = re.compile(r"(?:official|music\s*video|\bmv\b|\bm/v\b|lyrics?|audio|\bhd\b|\bhq\b|\b4k\b|完整版|官方|字幕)", re.I)
 
@@ -58,7 +58,8 @@ def result(title, artist, item=None, status="not_found"):
     item = item or {}
     lines = parse_lrc(item.get("syncedLyrics", ""))
     plain = str(item.get("plainLyrics") or "")[:60000]
-    return {"status": "synced" if lines else "plain" if plain.strip() else status,
+    return {"status": "instrumental" if item.get("instrumental") is True else "synced" if lines else "plain" if plain.strip() else status,
+            "duration": item.get("duration") if type(item.get("duration")) in (int, float) else None,
             "title": str(item.get("trackName") or title)[:200],
             "artist": str(item.get("artistName") or artist)[:160],
             "plain_lyrics": plain, "lines": lines}
@@ -68,7 +69,7 @@ class LyricsClient:
     TIMEOUT = 8
     CACHE_TTL = 3600
     CACHE_LIMIT = 200
-    MAX_BODY = 512 * 1024
+    MAX_BODY = 1024 * 1024
     MIN_INTERVAL = .2
 
     def __init__(self):
@@ -124,11 +125,14 @@ class LyricsClient:
                     item = await self._request(session, "/get", params)
                     if item is not None and not isinstance(item, dict):
                         raise ValueError("invalid lyric item")
-                if not item or not (item.get("syncedLyrics") or item.get("plainLyrics")):
+                if item:
+                    item = self._choose([item], title, artist, duration, False)
+                if not item or not (item.get("syncedLyrics") or item.get("plainLyrics") or item.get("instrumental") is True):
                     candidates = await self._request(session, "/search", {"q": query or " ".join((artist, title)).strip()})
                     if candidates is not None and not isinstance(candidates, list):
                         raise ValueError("invalid lyric search")
-                    item = self._choose(candidates or [], title, artist, duration, bool(query))
+                    query_title, query_artist = clean_metadata(query) if query else (title, artist)
+                    item = self._choose(candidates or [], query_title, query_artist, duration, bool(query))
                 value = result(title, artist, item)
             self.cache[key] = (time.monotonic() + self.CACHE_TTL, value)
             self.cache.move_to_end(key)
@@ -166,36 +170,41 @@ class LyricsClient:
             return json.loads(b"".join(chunks))
 
     @staticmethod
-    def _choose(candidates, title, artist, duration, manual):
+    def _choose(candidates, title, artist, duration, manual=False):
         def norm(value):
-            return re.sub(r"[\W_]", "", str(value).casefold())
+            import unicodedata
+            return "".join(c for c in unicodedata.normalize("NFKC", str(value or "")).casefold() if c.isalnum())
         choices = []
         for item in candidates[:30]:
-            if not isinstance(item, dict) or not (item.get("syncedLyrics") or item.get("plainLyrics")):
+            if not isinstance(item, dict) or not (item.get("syncedLyrics") or item.get("plainLyrics") or item.get("instrumental") is True):
                 continue
-            similarity = difflib.SequenceMatcher(None, norm(title), norm(item.get("trackName"))).ratio()
-            if not manual and similarity < .65:
+            expected, found = norm(title), norm(item.get("trackName"))
+            if not expected or not found:
                 continue
+            similarity = difflib.SequenceMatcher(None, expected, found).ratio()
             expected_artist, found_artist = norm(artist), norm(item.get("artistName"))
-            artist_match = (expected_artist == found_artist or
-                            (min(len(expected_artist), len(found_artist)) >= 3
-                             and (expected_artist in found_artist or found_artist in expected_artist)) or
-                            difflib.SequenceMatcher(None, expected_artist, found_artist).ratio() >= .7)
-            if not manual and expected_artist and not artist_match:
+            artist_score = difflib.SequenceMatcher(None, expected_artist, found_artist).ratio() if expected_artist else 0
+            if similarity < (.90 if expected_artist else .98) or expected_artist and artist_score < .85:
                 continue
-            score = similarity * 4 + (2 if expected_artist and artist_match else 0)
             try:
                 candidate_duration = float(item.get("duration") or 0)
-                if not math.isfinite(candidate_duration):
+                if not math.isfinite(candidate_duration) or candidate_duration <= 0:
                     continue
                 delta = abs(candidate_duration - duration)
-                if not manual and duration > 0 and delta > max(4, min(12, duration * .04)):
+                # MV intros can differ by up to 60s, but an unknown artist is
+                # accepted only with an almost-exact title and a 2s duration.
+                if duration > 0 and delta > (60 if expected_artist else 2):
                     continue
-                if duration > 0:
-                    score += max(-2, 2 - delta / 5)
+                if not expected_artist and duration <= 0:
+                    continue
             except (TypeError, ValueError):
                 continue
-            if item.get("syncedLyrics"):
-                score += .1
+            score = similarity * .60 + artist_score * .30 + max(0, 1-delta/60) * .10
             choices.append((score, item))
-        return max(choices, key=lambda pair: pair[0])[1] if choices else None
+        choices.sort(key=lambda pair: pair[0], reverse=True)
+        if len(choices) > 1 and choices[0][0]-choices[1][0] < .025:
+            first, second = choices[0][1], choices[1][1]
+            if (norm(first.get("trackName")), norm(first.get("artistName")), round(float(first["duration"]))) != (
+                    norm(second.get("trackName")), norm(second.get("artistName")), round(float(second["duration"]))):
+                return None
+        return choices[0][1] if choices else None

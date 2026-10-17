@@ -8,6 +8,7 @@ import hmac
 import json
 import logging
 import math
+import re
 import secrets
 import time
 from collections import defaultdict, deque
@@ -24,6 +25,7 @@ from . import exceptions, write_path
 from .constructs import ErrorResponse, Response
 from .entry import LocalFilePlaylistEntry, URLPlaylistEntry
 from .web_dashboard_lyrics import LyricsClient, clean_metadata
+from .web_dashboard_lyrics_store import LyricsStore, video_id
 from .i18n import _D
 from .spotify import Spotify
 from .utils import get_compound_link_ids
@@ -197,6 +199,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.rate_limits = {}
         self.lyrics_rate_limits = {}
         self.lyrics_client = LyricsClient()
+        self.lyrics_store = LyricsStore(write_path("data/web_dashboard/lyrics"))
+        self.lyrics_lookup_lock = asyncio.Lock()
         self.recent_history = defaultdict(lambda: deque(maxlen=50))
         self.history_marker = secrets.token_urlsafe(16)
         self.history_last_source = {}
@@ -214,6 +218,13 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.init_spotify_lookup()
         self.init_maintenance()
         self.init_radio()
+        async def lyric_lifecycle(_app):
+            for guild in self.bot.guilds:
+                await self.lyrics_store.enabled(guild)
+            yield
+        self.app.cleanup_ctx.append(lyric_lifecycle)
+        self.app.router.add_get("/api/guilds/{guild_id}/admin/lyrics", self.admin_lyrics)
+        self.app.router.add_post("/api/guilds/{guild_id}/admin/lyrics", self.admin_lyrics)
         self.popularity_store = PopularityStore(write_path("data/web_dashboard/stats"))
         async def cleanup_popularity(_app):
             try:
@@ -548,8 +559,24 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             self.lyrics_rate_limits.pop(next(iter(self.lyrics_rate_limits)))
         stamps.append(now)
 
+    async def admin_lyrics(self, request):
+        guild, _ = self.require_owner(request)
+        if request.method == "POST":
+            data = await self.payload(request)
+            if not isinstance(data, dict) or set(data) != {"enabled"} or type(data["enabled"]) is not bool:
+                raise APIError(400, "歌詞設定不正確。")
+            async with self.admin_lock:
+                if self.discord_auth: self.authenticate(request)
+                guild, _ = self.require_owner(request)
+                await self.lyrics_store.set_enabled(guild, data["enabled"])
+        if self.discord_auth: self.authenticate(request)
+        self.require_owner(request)
+        return web.json_response({"enabled": await self.lyrics_store.enabled(guild)})
+
     async def lyrics(self, request):
         guild, member = self.guild_owner(request)
+        if not await self.lyrics_store.enabled(guild):
+            raise APIError(403, "這個伺服器已停用歌詞。")
         query = request.query.get("query", "").strip()
         if len(query) > 160 or any(ord(char) < 32 for char in query):
             raise APIError(400, "歌詞搜尋最多 160 字，且不可包含控制字元。")
@@ -560,12 +587,27 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             raise APIError(409, "目前沒有播放中的歌曲。")
         info = getattr(entry, "info", {}) or {}
         title, artist = clean_metadata(entry.title, info.get("artist") or info.get("creator") or "")
+        matched = await self.spotify_lookup.lookup(self.bot, entry)
+        if matched.get("mode") == "track" and matched.get("title") and matched.get("artist"):
+            title, artist = matched["title"], matched["artist"]
+        elif not artist:
+            artist = str(info.get("channel") or info.get("uploader") or "")
+            artist = re.sub(r"\s*(?:-\s*Topic|VEVO|Official(?: Channel)?)\s*$", "", artist, flags=re.I).strip()[:160]
         track_key = hashlib.sha256(str((entry.url, entry.title, entry.duration)).encode()).hexdigest()
-        value = await self.lyrics_client.lookup(title, artist, entry.duration, query=query)
+        key = video_id(entry.url)
+        async with self.lyrics_lookup_lock:
+            value = await self.lyrics_store.get(key) if key and not query else None
+            if value is None:
+                value = await self.lyrics_client.lookup(title, artist, entry.duration, query=query)
+                if key and not query:
+                    ttl = 86400 if value["status"] == "not_found" else 30 if value["status"] == "unavailable" else 7*86400
+                    await self.lyrics_store.put(key, value, ttl)
         # An expired session/removed member must not receive data after a slow lookup.
         if self.discord_auth:
             self.authenticate(request)
         self.guild_owner(request)
+        if not await self.lyrics_store.enabled(guild):
+            raise APIError(403, "這個伺服器已停用歌詞。")
         return web.json_response(dict(value, track_key=track_key))
 
     @staticmethod
@@ -599,7 +641,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                      "activity": self.activity_snapshot(guild)}
         player = self.bot.get_player_in(guild)
         if player is None:
-            return {**community, "guild_id": str(guild.id), "status": "disconnected",
+            return {**community, "guild_id": str(guild.id),
+            "lyrics_available": self.lyrics_store.allowed.get(guild.id, True), "status": "disconnected",
                     "current": None, "progress": 0, "volume": None,
                     "repeat": "off", "queue": [], "revision": ""}
         pending = getattr(player, "_pending_seek", None)

@@ -318,6 +318,7 @@ class DemoDashboard(Dashboard):
             self.popularity_store.cache[guild.id] = {"version": 1, "tracks": tracks}
 
         self.lyrics_client = FakeLyricsClient()
+        self.lyrics_store.root = Path(self.demo_temp.name) / "lyrics"
         from musicbot.web_dashboard_library import PlaylistStore, song
         self.playlist_store = PlaylistStore(Path(self.demo_temp.name) / "user_playlists")
         async def cleanup_demo(_app):
