@@ -1165,16 +1165,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 self.authenticate(request)
                 guild, owner = self.guild_owner(request)
             channel = self.channel_for(guild, owner)
-            ssd = self.bot.server_data[guild.id]
-            if not response.title:
-                response.title = _D("**Command:** %(name)s", ssd) % {"name": command}
-            response.content += "\n\n\u4f86\u81ea\u7db2\u9801\u63a7\u5236\u53f0"
-            if not getattr(self.bot.config, "embeds", True):
-                response.content = f"<@{owner.id}>\n" + response.content
-            response.description = response.overload_description
-            response.set_author(name=getattr(owner, "display_name", None) or owner.name)
-            # Do not bypass safe_send_message's embed/text/delete settings.
-            await asyncio.wait_for(self.bot.safe_send_message(channel, response), 10)
+            import discord
+            name = str(getattr(owner, "display_name", None) or owner.name).replace("\n", " ").replace("\r", " ")[:128]
+            name = discord.utils.escape_mentions(discord.utils.escape_markdown(name))
+            operation = "點歌" if command in ("play", "playnext") else "操作"
+            plain = Response(f"-# {name} 透過網頁控制台{operation}\n" + response.content,
+                             force_text=True, delete_after=response.delete_after)
+            plain.dashboard_no_mentions = True
+            await asyncio.wait_for(self.bot.safe_send_message(channel, plain), 10)
         except Exception as exc:
             log.warning("Dashboard Discord response failed (%s)", type(exc).__name__)
 
