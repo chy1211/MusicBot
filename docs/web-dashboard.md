@@ -1578,3 +1578,12 @@ identity and source URL. Genuine playlists remain rejected. Native Discord
 commands, Spotify lookup/search and queue permissions are unchanged.
 Offline regression uses the real Downloader flattening method and cmd_play,
 including expired preview renewal, save, resync and saved-playlist playback.
+
+
+Spotify images: public embed track coverArt/image falls back to entity
+coverArt.sources or visualIdentity.image. API tracks use album.images then
+playlist/album images. Persist the optional thumbnail with personal playlists.
+Only HTTPS i.scdn.co and mosaic.scdn.co Spotify image hosts are accepted.
+CSP also lists the existing YouTube/Discord image hosts explicitly. Missing or
+failed images use the existing placeholder; no provider image is fetched by the
+demo (same-origin fabricated SVGs).

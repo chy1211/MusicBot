@@ -48,6 +48,33 @@ def source_url(value):
     fail(400, "只支援 Spotify、YouTube 與 YouTube Music 公開歌單。")
 
 
+# Observed public embed/API image hosts; never allow arbitrary Spotify subdomains.
+SPOTIFY_IMAGE_HOSTS = ("i.scdn.co", "mosaic.scdn.co")
+
+def spotify_image(value):
+    if isinstance(value, dict):
+        for key in ("url", "sources", "images", "coverArt", "image"):
+            found = spotify_image(value.get(key))
+            if found: return found
+    elif isinstance(value, list):
+        for item in value:
+            found = spotify_image(item)
+            if found: return found
+    elif isinstance(value, str):
+        if re.fullmatch(r"spotify:image:[A-Za-z0-9]+", value):
+            value = "https://i.scdn.co/image/" + value.rsplit(":", 1)[-1]
+        elif value.startswith("//"): value = "https:" + value
+        elif re.fullmatch(r"/image/[A-Za-z0-9]+", value):
+            value = "https://i.scdn.co" + value
+        try:
+            p = urlsplit(value)
+            if (p.scheme == "https" and p.hostname in SPOTIFY_IMAGE_HOSTS
+                    and not p.username and not p.password and p.port in (None,443)
+                    and not any(c.isspace() or ord(c)<32 for c in value)):
+                return value
+        except ValueError: pass
+    return ""
+
 def imported_track(row, kind):
     """Discard provider-only metadata; store only canonical playable sources."""
     if not isinstance(row, dict):
@@ -83,7 +110,10 @@ def imported_track(row, kind):
         duration = row.get("duration")
     if type(duration) not in (int, float) or not math.isfinite(duration) or not 0 <= duration <= 31536000:
         duration = None
-    return {"title": title.strip()[:300] or "未命名歌曲", "url": url, "duration": duration}
+    track = {"title": title.strip()[:300] or "未命名歌曲", "url": url, "duration": duration}
+    cover = spotify_image(row.get("album", {}).get("images")) or spotify_image(row.get("images")) if kind == "spotify" else ""
+    if cover: track["thumbnail"] = cover
+    return track
 
 
 def source_diff(old, new):
@@ -116,6 +146,7 @@ def parse_spotify_embed(content, ident):
     rows = entity.get("trackList")
     if not isinstance(rows, list):
         raise ValueError(SPOTIFY_UNREADABLE)
+    cover = spotify_image(entity.get("coverArt")) or spotify_image(entity.get("visualIdentity", {}).get("image"))
     tracks, seen = [], set()
     for row in rows[:200]:
         if not isinstance(row, dict): continue
@@ -135,6 +166,7 @@ def parse_spotify_embed(content, ident):
         tracks.append({"track": {"id": tid, "type": "track", "name": title[:300],
                        "artists": [{"name": subtitle[:300]}] if isinstance(subtitle, str) else [],
                        "duration_ms": duration,
+                       "album": {"images": [{"url": spotify_image(row.get("coverArt")) or spotify_image(row.get("image")) or cover}]},
                        "external_urls": {"spotify": "https://open.spotify.com/track/" + tid}}})
     if not tracks:
         raise ValueError(SPOTIFY_UNREADABLE)
@@ -144,7 +176,7 @@ def parse_spotify_embed(content, ident):
     return {"id": ident, "type": "playlist", "name": str(entity.get("name") or entity.get("title") or "Spotify 歌單")[:300],
             "external_urls": {"spotify": "https://open.spotify.com/playlist/" + ident},
             "tracks": {"items": tracks, "next": None, "total": total},
-            "_embed_partial": True}
+            "images": [{"url": cover}] if cover else [], "_embed_partial": True}
 
 async def fetch_spotify_embed(session, ident):
     import aiohttp
@@ -237,6 +269,9 @@ class DashboardImports:
             for item in rows[:200]:
                 track = imported_track(item.get("track") if category == "playlist" and isinstance(item, dict) else item, kind)
                 if track:
+                    if kind == "spotify" and not track.get("thumbnail"):
+                        cover = spotify_image(value.get("images"))
+                        if cover: track["thumbnail"] = cover
                     tracks.append(track)
             count = max(len(rows), total if type(total) is int else 0)
             if type(container.get("total")) is not int and next_url:
