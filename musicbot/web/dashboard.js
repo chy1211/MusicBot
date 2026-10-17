@@ -1385,13 +1385,10 @@ $("song-spotify").addEventListener("click", event => {
 /* Progressive visual helpers are optional; no dependency on layout in VM tests. */
 function initGlass() {
   if (!document.documentElement) return;
-  const root = document.documentElement, input = $("glass-appearance"), nav = document.querySelector(".page-tabs");
-  const apply = value => {
-    root.dataset.glass = ["clear","standard","opaque"].includes(value) ? value : "standard";
-    input.value = root.dataset.glass;
-  };
-  try { apply(window.localStorage.getItem("musicbot-glass") || "standard"); } catch { apply("standard"); }
-  input.addEventListener("change", () => { apply(input.value); try { window.localStorage.setItem("musicbot-glass",input.value); } catch {} });
+  const root = document.documentElement, nav = document.querySelector(".page-tabs");
+  // Clear glass is the only appearance; reduced transparency still falls back via CSS.
+  root.dataset.glass = "clear";
+  try { window.localStorage.removeItem("musicbot-glass"); } catch {}
   // Chromium URL filters are progressive. Safari/Firefox keep portable blur.
   const transparency = window.matchMedia("(prefers-reduced-transparency: reduce)");
   const contrast = window.matchMedia("(prefers-contrast: more)");
