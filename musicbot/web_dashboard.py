@@ -886,8 +886,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         # Split combined links into explicit choices, eliminating reaction prompts.
         playlist_id, video_id = get_compound_link_ids(query)
         if playlist_id:
-            subjects = [("https://www.youtube.com/watch?v=" + video_id, False),
-                        ("https://www.youtube.com/playlist?list=" + playlist_id, False)]
+            subjects = [(query if action == "play" else "https://www.youtube.com/watch?v=" + video_id, False)]
         elif valid_url:
             subjects = [(valid_url, False)]
         else:
@@ -945,7 +944,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 children = info.get_entries_objects()[:self.PREVIEW_LIMIT]
                 items = [dict(self.preview_track(item, permissions, playlist=True,
                                                 extractor=info.extractor),
-                              item_id=str(i))
+                              item_id=str(i),
+                              is_requested=bool(video_id and item.webpage_url == "https://www.youtube.com/watch?v=" + video_id),
+                              default_selected=(not imported or not imported.get("is_mix") or i == 1))
                          for i, item in enumerate(children, 1)]
                 eligible = sum(item["allowed"] for item in items)
                 if not eligible and not reason:
@@ -954,6 +955,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     "kind": "playlist", "title": info.title, "url": subject,
                     "source_url": imported["source_url"] if imported else "",
                     "source_type": imported["source_type"] if imported else "",
+                    "saveable": bool(imported), "is_mix": imported.get("is_mix", False) if imported else False,
                     "count_is_minimum": imported.get("count_is_minimum", False) if imported else False,
                     "thumbnail": public_url(info.thumbnail_url), "duration": 0,
                     "count": count, "checked_count": len(items), "eligible_count": eligible,
@@ -1019,7 +1021,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 "count": item.get("count", 1),
                 "entries": [dict(child) for child in item.get("entries", [])],
             }
-            if item.get("source_url"):
+            if item.get("source_url") or item.get("saveable"):
                 value = await self.playlist_store.transact(owner.id)
                 item["save_revision"] = value["revision"]
                 self.import_previews[token] = {

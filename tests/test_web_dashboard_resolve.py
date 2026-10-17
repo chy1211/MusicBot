@@ -177,13 +177,13 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
             await self.call(BASE + "resolve", {"query": query}, status=400)
         self.assertFalse(self.bot.extractions)
 
-    async def test_compound_link_gives_explicit_video_and_playlist_choices(self):
+    async def test_compound_link_gives_one_marked_playlist(self):
         self.dashboard.import_source = AsyncMock(return_value={
             "title":"Playlist", "tracks":[{"title":"Added","url":"https://www.youtube.com/watch?v=abc12345678","duration":120}],
             "count":1,"truncated":False,"source_url":"https://www.youtube.com/playlist?list=PLexample","source_type":"youtube"})
         songs = await self.preview("https://www.youtube.com/watch?v=abc12345678&list=PLexample")
-        self.assertEqual(len(songs), 2)
-        self.assertEqual(self.bot.extractions[0][0], "https://www.youtube.com/watch?v=abc12345678")
+        self.assertEqual(len(songs), 1)
+        self.assertTrue(songs[0]["entries"][0]["is_requested"])
         self.dashboard.import_source.assert_awaited_once_with("https://www.youtube.com/playlist?list=PLexample", "youtube")
         self.assertNotIn("&list=", songs[0]["url"])
         self.bot._cmd_play_compound_link.assert_not_awaited()
