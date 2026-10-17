@@ -191,6 +191,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.recent_history = defaultdict(lambda: deque(maxlen=50))
         self.history_marker = secrets.token_urlsafe(16)
         self.history_last_source = {}
+        self.last_requested_guild = {}
         self.activities = defaultdict(lambda: deque(maxlen=100))
         self.queue_arrivals = defaultdict(list)
         self.init_auth()
@@ -410,7 +411,25 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             if not getattr(guild, "unavailable", False) and member is not None:
                 self.check_blocked(member)
                 result.append({"id": str(guild.id), "name": guild.name})
-        return web.json_response({"guilds": result})
+        # Return only this viewer's recommendation, without other requesters.
+        visible = {row["id"] for row in result}
+        recommended = None
+        for guild in self.bot.guilds:
+            if str(guild.id) not in visible:
+                continue
+            member = guild.get_member(uid)
+            voice = getattr(getattr(member, "voice", None), "channel", None)
+            player = self.bot.get_player_in(guild)
+            bot_voice = (getattr(getattr(player, "voice_client", None), "channel", None)
+                         or getattr(getattr(getattr(guild, "me", None), "voice", None), "channel", None))
+            if voice is not None and bot_voice is not None and voice.id == bot_voice.id:
+                recommended = str(guild.id)
+                break
+        if recommended is None:
+            recent = self.last_requested_guild.get(uid)
+            if recent is not None and str(recent) in visible:
+                recommended = str(recent)
+        return web.json_response({"guilds": result, "recommended_guild_id": recommended})
 
     @staticmethod
     def is_seekable(entry):
@@ -578,7 +597,17 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         return web.json_response(self.snapshot(guild, member))
 
     def note_queue_entry(self, guild, entry):
-        """Observe insertion order only; never mutate the actual playlist."""
+        """Observe member requests/insertion order; never mutate the playlist."""
+        author = getattr(entry, "author", None)
+        if (author is not None and getattr(author, "id", None) is not None
+                and not getattr(author, "bot", False)
+                and not getattr(entry, "from_auto_playlist", False)):
+            # Runtime-only identity is never returned to another viewer.
+            # Bound the cache and preserve recency of active members.
+            self.last_requested_guild.pop(author.id, None)
+            self.last_requested_guild[author.id] = guild.id
+            while len(self.last_requested_guild) > 5000:
+                self.last_requested_guild.pop(next(iter(self.last_requested_guild)))
         player = self.bot.get_player_in(guild)
         entries = list(player.playlist.entries) if player else []
         live = {id(item) for item in entries}
@@ -1282,6 +1311,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.lyrics_rate_limits.clear()
         self.recent_history.clear()
         self.history_last_source.clear()
+        self.last_requested_guild.clear()
         self.activities.clear()
         self.queue_arrivals.clear()
 

@@ -34,3 +34,25 @@ test("loading a navigation page preserves its label without inserting a spinner"
   vm.runInContext("buttonBusy(button, false)", context);
   assert.equal(button.textContent, "我的歌單");
 });
+
+test("initial server respects URL, recommendation, browser and first choice", () => {
+  const vm = require("node:vm");
+  const source = fs.readFileSync(path.join(__dirname, "../musicbot/web/dashboard.js"), "utf8");
+  const snippet = source.slice(source.indexOf("function rememberGuild"), source.indexOf("async function connect"));
+  const data = {guilds:[{id:"1"},{id:"2"}], recommended_guild_id:"2"};
+  const window = {location:{href:"https://music.example.com/?guild=1"},localStorage:{getItem:()=>"1",setItem(){}}};
+  const c = vm.createContext({window,URL,manualGuild:"",data}); vm.runInContext(snippet,c);
+  assert.equal(vm.runInContext("initialGuild(data)",c),"1");
+  window.location.href="https://music.example.com/";
+  assert.equal(vm.runInContext("initialGuild(data)",c),"2");
+  data.recommended_guild_id=null;
+  assert.equal(vm.runInContext("initialGuild(data)",c),"1");
+  window.localStorage.getItem=()=>{throw new Error("blocked")};
+  assert.equal(vm.runInContext("initialGuild(data)",c),"1");
+  window.localStorage.setItem=()=>{throw new Error("blocked")};
+  assert.doesNotThrow(()=>vm.runInContext('rememberGuild("2")',c));
+  c.manualGuild="2"; window.location.href="https://music.example.com/?guild=1";
+  assert.equal(vm.runInContext("initialGuild(data)",c),"2");
+  c.manualGuild="99"; window.location.href="https://music.example.com/?guild=99";
+  assert.equal(vm.runInContext("initialGuild(data)",c),"1");
+});
