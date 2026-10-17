@@ -1687,3 +1687,8 @@ dynamic mixes are snapshots. If even seed metadata cannot be read, its canonical
 video ID/thumbnail are shown and native playback revalidates it on enqueue.
 As with the existing extractor, cancelling an await cannot forcibly stop work
 already running in yt-dlp's executor; the UI falls back without awaiting that work.
+
+The final browser check found native range margins plus the new Expand target
+could grow the phone bar. Compact padding/range margins now keep its measured
+height at 152px (plus any device safe-area requirement), retaining 44px controls.
+The full panel also resets the old mobile hero-progress negative left offset.
