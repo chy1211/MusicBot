@@ -5,6 +5,8 @@ function adminClear() {
   $("nav-admin").hidden = true; $("admin-panel").hidden = true;
   $("autoplaylist-current").hidden = true; $("admin-apl-list").replaceChildren();
   $("admin-permissions")?.replaceChildren();
+  $("empty-queue-status").textContent = "";
+  $("empty-queue-mode").value = "autoplaylist";
   $("maintenance-details").replaceChildren(); $("maintenance-status").textContent = "";
   if (typeof pendingPermission !== "undefined") pendingPermission = null;
   $("permission-confirm-dialog").close?.();
@@ -50,7 +52,7 @@ async function adminAplChange(data, method = "POST") {
 }
 $("nav-admin").addEventListener("click", () => libraryRun($("nav-admin"), async () => {
   if (!adminOwner) return;
-  libraryView("admin"); await adminMaintenanceLoad(); await adminAplLoad();
+  libraryView("admin"); await adminMaintenanceLoad(); await adminEmptyQueueLoad(); await adminAplLoad();
   if (typeof adminPermissionsLoad === "function") await adminPermissionsLoad();
 }));
 $("admin-apl-search").addEventListener("submit", event => {
@@ -108,3 +110,32 @@ async function adminMaintenanceLoad() {
 }
 $("maintenance-refresh").addEventListener("click", () =>
   libraryRun($("maintenance-refresh"), adminMaintenanceLoad));
+
+function adminEmptyQueueRender(value) {
+  $("empty-queue-mode").value = value.empty_queue;
+  $("radio-min-seconds").value = value.radio_min_seconds;
+  $("radio-max-seconds").value = value.radio_max_seconds;
+  $("empty-queue-status").textContent = value.radio_suspended_seconds > 0 ?
+    "電台連續失敗，暫停 " + value.radio_suspended_seconds + " 秒；期間使用自動播放清單。" : "";
+}
+async function adminEmptyQueueLoad() {
+  if (!adminOwner || !selected) return;
+  const guild = selected, epoch = generation;
+  const value = await api("/api/guilds/" + guild + "/admin/empty-queue");
+  if (epoch !== generation || guild !== selected || !adminOwner) return;
+  adminEmptyQueueRender(value);
+}
+$("empty-queue-form").addEventListener("submit", event => {
+  event.preventDefault();
+  return libraryRun($("empty-queue-save"), async () => {
+    if (!adminOwner || !selected) return;
+    const guild = selected, epoch = generation;
+    const data = {empty_queue:$("empty-queue-mode").value,
+      radio_min_seconds:Number($("radio-min-seconds").value), radio_max_seconds:Number($("radio-max-seconds").value)};
+    if (![data.radio_min_seconds,data.radio_max_seconds].every(value=>Number.isInteger(value)&&value>=0) ||
+        (data.radio_max_seconds>0&&data.radio_min_seconds>data.radio_max_seconds)) throw new Error("電台秒數範圍不正確。");
+    const value = await api("/api/guilds/" + guild + "/admin/empty-queue", "POST", data);
+    if (epoch !== generation || guild !== selected || !adminOwner) return;
+    adminEmptyQueueRender(value); notice("已儲存佇列空時設定。");
+  });
+});
