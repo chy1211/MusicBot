@@ -79,3 +79,51 @@ class HistoryDedupTests(unittest.IsolatedAsyncioTestCase):
         self.bot.playlist_mgr = NS(_playlists={"history-1": Loaded(["https://example.test/Same"] * 3)})
         self.dashboard.record_play(self.bot.guild, entry("Same"))
         self.assertEqual(len(self.dashboard.history_snapshot(self.bot.guild)["history"]), 1)
+
+
+class RecommendedGuildTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = base.DashboardTests.asyncSetUp
+    asyncTearDown = base.DashboardTests.asyncTearDown
+    call = base.DashboardTests.call
+
+    def add_second_guild(self):
+        second = NS(id=2, name="Second", unavailable=False, me=NS(voice=None),
+                    get_member=lambda uid: self.bot.owner if uid == 42 else None)
+        voice = NS(id=20, guild=second)
+        player = NS(voice_client=NS(channel=voice),
+                    playlist=NS(entries=[]), current_entry=None)
+        self.bot.guilds.append(second)
+        self.bot.get_guild = {1: self.bot.guild, 2: second}.get
+        self.bot.get_player_in = lambda guild: self.bot.player if guild.id == 1 else player
+        return second, voice
+
+    async def test_shared_voice_precedes_last_request(self):
+        second, voice = self.add_second_guild()
+        self.dashboard.note_queue_entry(second, entry("Queued", author=self.bot.owner))
+        result = await self.call("/api/guilds", method="GET")
+        self.assertEqual(result["recommended_guild_id"], "1")
+        self.bot.owner.voice.channel = voice
+        self.assertEqual((await self.call("/api/guilds", method="GET"))["recommended_guild_id"], "2")
+
+    async def test_last_member_request_precedes_browser_fallback_and_auto_is_ignored(self):
+        second, voice = self.add_second_guild()
+        self.bot.owner.voice = None
+        self.assertIsNone((await self.call("/api/guilds", method="GET"))["recommended_guild_id"])
+        self.dashboard.note_queue_entry(second, entry("Queued", author=self.bot.owner))
+        auto = entry("Automatic", author=self.bot.owner)
+        auto.from_auto_playlist = True
+        self.dashboard.note_queue_entry(self.bot.guild, auto)
+        self.assertEqual((await self.call("/api/guilds", method="GET"))["recommended_guild_id"], "2")
+        self.dashboard.note_queue_entry(self.bot.guild, entry("Discord request", author=self.bot.owner))
+        self.assertEqual((await self.call("/api/guilds", method="GET"))["recommended_guild_id"], "1")
+
+    async def test_other_user_and_inaccessible_guild_never_exposed(self):
+        second, voice = self.add_second_guild()
+        self.bot.owner.voice = None
+        self.dashboard.note_queue_entry(second, entry("Other request", author=NS(id=99)))
+        self.assertIsNone((await self.call("/api/guilds", method="GET"))["recommended_guild_id"])
+        self.dashboard.note_queue_entry(second, entry("Mine", author=self.bot.owner))
+        second.get_member = lambda uid: None
+        result = await self.call("/api/guilds", method="GET")
+        self.assertIsNone(result["recommended_guild_id"])
+        self.assertEqual(set(result), {"guilds", "recommended_guild_id"})

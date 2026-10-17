@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 let secret = "", selected = "", state = null, busy = false, connected = false;
 let queueRevision = null, generation = 0, loading = false, stateGeneration = 0;
 let authMode = null, authenticated = false;
+let manualGuild = "";
 const labels = {playing: "播放中", paused: "已暫停", stopped: "已停止", disconnected: "尚未加入語音"};
 let toastTimer = null, toastVersion = 0;
 function notice(message, error = false) {
@@ -76,7 +77,7 @@ function signedOut(message = "登入後即可查看你的伺服器並點歌。")
   if (typeof libraryClear === "function") libraryClear();
   if (typeof adminClear === "function") adminClear();
   ++generation; ++stateGeneration;
-  authenticated = false; connected = false; loading = false; selected = "";
+  authenticated = false; connected = false; loading = false; selected = ""; manualGuild = "";
   secret = ""; $("secret").value = ""; $("query").value = "";
   $("guild").replaceChildren(); $("user-name").textContent = "";
   $("user-avatar").removeAttribute("src"); $("user-avatar").hidden = true;
@@ -624,6 +625,22 @@ function resetView() {
   render({status: "disconnected", current: null, progress: 0, volume: null,
     repeat: "off", queue: [], revision: ""});
 }
+
+function rememberGuild(value) {
+  try { window.localStorage?.setItem("musicbot-dashboard-guild", value); } catch { /* Storage may be disabled. */ }
+}
+function initialGuild(data) {
+  const valid = value => typeof value === "string" && data.guilds.some(guild => guild.id === value);
+  if (valid(manualGuild)) return manualGuild;
+  let explicit = "", remembered = "";
+  try {
+    const url = new URL(window.location.href);
+    explicit = url.searchParams.get("guild") || url.searchParams.get("guild_id") || "";
+  } catch { /* A URL without a server uses the normal preference order. */ }
+  try { remembered = window.localStorage?.getItem("musicbot-dashboard-guild") || ""; } catch { /* Private browsing. */ }
+  return [explicit, data.recommended_guild_id, remembered, data.guilds[0]?.id].find(valid) || "";
+}
+
 async function connect() {
   if (authMode !== "owner" && !authenticated) return;
   stopEvents(); fallbackPolling = true;
@@ -638,7 +655,9 @@ async function connect() {
       const option = document.createElement("option");
       option.value = guild.id; option.textContent = guild.name; $("guild").append(option);
     }
-    selected = $("guild").value;
+    selected = initialGuild(data);
+    $("guild").value = selected;
+    if (selected) rememberGuild(selected);
     if (!selected) { notice(authMode === "owner" ? "目前沒有 OwnerID 本人所在的可用伺服器。" : "目前沒有你與機器人共同所在的伺服器。"); return; }
     await refresh(epoch);
     if (connected && typeof adminCapability === "function") adminCapability();
@@ -663,6 +682,7 @@ $("cover").addEventListener("error", () => { $("cover").hidden = true; });
 $("guild").addEventListener("change", async () => {
   stopEvents(); fallbackPolling = true;
   ++generation; selected = $("guild").value; state = null;
+  manualGuild = selected; rememberGuild(selected);
   if (typeof adminClear === "function") adminClear();
   connected = false; resetView(); controls(); await refresh(); startEvents();
   if (typeof adminCapability === "function") await adminCapability();
