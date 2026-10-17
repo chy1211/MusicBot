@@ -1,0 +1,64 @@
+name: Docker images
+on:
+  push:
+    branches: [dev]
+    tags: ['v*']
+  schedule:
+    # Weekly fresh dependencies, Sunday 04:15 UTC.
+    - cron: '15 4 * * 0'
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  DOCKER_METADATA_SHORT_SHA_LENGTH: 7
+jobs:
+  publish:
+    if: github.event_name == 'schedule' || github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}
+          persist-credentials: false
+      - name: Set lowercase image owner
+        id: image
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: echo "name=ghcr.io/${REPOSITORY_OWNER,,}/musicbot" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tags and OCI metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/dev' || github.event_name == 'schedule' }}
+            type=ref,event=tag
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+      - name: Build amd64 and arm64, then publish
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
