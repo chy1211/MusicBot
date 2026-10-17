@@ -115,3 +115,9 @@ html{overflow-y:scroll;scrollbar-gutter:stable}
 .page-tabs button{position:relative;width:100%;min-width:0;height:44px;padding:9px 8px;white-space:nowrap;font-size:13px}
 .page-tabs button:hover:enabled{transform:none}
 .page-tabs button[aria-busy=true]{opacity:.75}
+
+.popular-rank{font-weight:750;font-variant-numeric:tabular-nums;text-align:center;color:var(--text)}
+.library-source{overflow-wrap:anywhere}
+.library-import form{display:flex;gap:8px;flex-wrap:wrap}
+.library-import input{flex:1;min-width:0}
+@media(max-width:760px){.library-import input{flex-basis:100%}}

@@ -1,8 +1,8 @@
 "use strict";
 // Change VERSION on every static release; never intercept authentication/data.
-const VERSION = "musicbot-dashboard-r9-3";
+const VERSION = "musicbot-dashboard-r9-4";
 const STATIC = ["/", "/offline.html", "/dashboard.css", "/dashboard.js", "/library.js",
-  "/admin.js", "/permissions.js", "/pwa.js", "/favicon.svg", "/manifest.webmanifest",
+  "/popular.js", "/admin.js", "/permissions.js", "/pwa.js", "/favicon.svg", "/manifest.webmanifest",
   "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 const ASSETS = new Set(STATIC);
 self.addEventListener("install", event => {

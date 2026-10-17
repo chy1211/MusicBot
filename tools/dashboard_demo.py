@@ -14,7 +14,7 @@ from types import SimpleNamespace as NS
 from aiohttp import web
 
 from musicbot.downloader import YtdlpResponseDict
-from musicbot.bot import MusicBot
+from musicbot.bot import MusicBot, build_play_response
 from musicbot.constructs import SkipState
 from musicbot.entry import URLPlaylistEntry
 from musicbot.web_dashboard import Dashboard, DashboardConfig, CONFIRMED_ENTRY_CHECK
@@ -75,6 +75,7 @@ class DemoBot:
         self.permissions = NS(for_user=lambda member: self.perms if member.id == 42 else
                               self.denied_perms if member.id == 45 else self.member_perms)
         self.filecache = NS(remove_autoplay_cachemap_entry_by_url=lambda *_: None)
+        self.discord_messages = []
         self.dashboard = None
         self.members = {}
         self.guilds, self.players, self.server_data = [], {}, {}
@@ -231,8 +232,21 @@ class DemoBot:
                 player.playlist.entries.append(song)
             if self.dashboard:
                 self.dashboard.note_queue_entry(channel.guild, song)
+                await self.dashboard.popularity_store.record(channel.guild, song)
             if validator is not None:
                 validator.enqueued = True
+        return build_play_response(self.server_data[channel.guild.id], number=1,
+            track=song.title, position=str(len(player.playlist.entries)) + " - estimated time until playing: `00:30`")
+
+
+    async def safe_send_message(self, channel, response, **_kwargs):
+        # The demo never connects Discord; expose exactly what would be sent.
+        import json
+        value = {"channel": channel.name, "response": response.to_dict(),
+                 "delete_after": response.delete_after}
+        self.discord_messages.append(value)
+        print("DEMO Discord notification " + json.dumps(value, ensure_ascii=False), flush=True)
+        return None
 
     async def cmd_pause(self, _ssd, player):
         player.is_playing, player.is_paused = False, True
@@ -287,6 +301,18 @@ class DemoDashboard(Dashboard):
         self.demo_temp = tempfile.TemporaryDirectory(prefix="musicbot-webtest-demo-")
         super().__init__(bot, config)
         # Replace the provider boundary before any request can run.
+        self.popularity_store.root = Path(self.demo_temp.name) / "stats"
+        import datetime as dt
+        for guild in bot.guilds:
+            tracks = {}
+            for index in range(5):
+                url = f"https://example.test/track/{index}"
+                today = dt.datetime.now(dt.timezone.utc).date()
+                tracks[url] = {"url": url, "title": TITLES[index], "duration": 180 + index * 17,
+                    "days": {(today - dt.timedelta(days=index*8)).isoformat(): 15-index,
+                             today.isoformat(): 5-index}}
+            self.popularity_store.cache[guild.id] = {"version": 1, "tracks": tracks}
+
         self.lyrics_client = FakeLyricsClient()
         from musicbot.web_dashboard_library import PlaylistStore, song
         self.playlist_store = PlaylistStore(Path(self.demo_temp.name) / "user_playlists")

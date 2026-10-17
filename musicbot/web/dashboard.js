@@ -617,6 +617,7 @@ async function refresh(epoch = generation, force = false) {
   }
 }
 function resetView() {
+  if (typeof popularClear === "function") popularClear();
   $("shortcuts-dialog").close();
   cancelDrag(); cancelSeek(); clearPreview(); resetHistory(); resetLyrics(true);
   queueSearch = ""; $("queue-search").value = "";
