@@ -620,6 +620,7 @@ function render(next, force = false) {
   $("bar-status").textContent = state.current ? (labels[state.status] || "準備中") + " · 點播：" + requesterName(state.current) : "選一首喜歡的歌";
   $("playback-bar").classList.toggle("is-empty", !state.current);
   const cover = safeURL(state.current?.thumbnail || "");
+  if (typeof updateWallpaper === "function") updateWallpaper(cover);
   if (cover) { $("bar-cover").src = cover; $("bar-cover").hidden = false; }
   else { $("bar-cover").hidden = true; $("bar-cover").removeAttribute("src"); }
   const total = state.current ? state.current.duration : 0;
@@ -1275,3 +1276,58 @@ async function spotifyPrefetch() {
 $("song-spotify").addEventListener("click", event => {
   if ($("song-spotify").getAttribute("aria-disabled") === "true") event.preventDefault();
 });
+
+
+/* Progressive visual helpers are optional; no dependency on layout in VM tests. */
+let wallpaperURL = "", wallpaperSide = false;
+function updateWallpaper(url) {
+  if (!document.documentElement || url === wallpaperURL) return;
+  wallpaperURL = url;
+  const next = $(wallpaperSide ? "wallpaper-a" : "wallpaper-b"), old = $(wallpaperSide ? "wallpaper-b" : "wallpaper-a");
+  if (!url) { next.classList.remove("active"); old.classList.remove("active"); return; }
+  try {
+    const u = new URL(url, window.location.href);
+    const hosts = ["i.ytimg.com","img.youtube.com","i.scdn.co","mosaic.scdn.co","cdn.discordapp.com","media.discordapp.net"];
+    if (u.origin !== window.location.origin && (u.protocol !== "https:" || !hosts.includes(u.hostname))) return;
+  } catch { return; }
+  next.onload = () => { if (wallpaperURL === url) { next.classList.add("active"); old.classList.remove("active"); wallpaperSide = !wallpaperSide; } };
+  next.src = url;
+}
+function initGlass() {
+  if (!document.documentElement) return;
+  const root = document.documentElement, input = $("glass-appearance"), nav = document.querySelector(".page-tabs");
+  const apply = value => {
+    root.dataset.glass = ["clear","standard","opaque"].includes(value) ? value : "standard";
+    input.value = root.dataset.glass;
+  };
+  try { apply(window.localStorage.getItem("musicbot-glass") || "standard"); } catch { apply("standard"); }
+  input.addEventListener("change", () => { apply(input.value); try { window.localStorage.setItem("musicbot-glass",input.value); } catch {} });
+  const groups = [...document.querySelectorAll(".page-tabs,.queue-filters")];
+  const align = () => {
+    nav.classList.toggle("mobile-glass", window.innerWidth <= 760);
+    for (const group of groups) {
+      const active = group.querySelector('button[aria-pressed="true"]:not([hidden])');
+      if (!active) continue;
+      for (const [name,value] of Object.entries({"x":active.offsetLeft,"y":active.offsetTop,"w":active.offsetWidth,"h":active.offsetHeight}))
+        group.style.setProperty("--seg-"+name,value+"px");
+    }
+  };
+  new MutationObserver(align).observe($("dashboard"),{subtree:true,attributes:true,attributeFilter:["aria-pressed","hidden"]});
+  new ResizeObserver(align).observe(nav);
+  window.addEventListener("resize",align);align();
+  let lastY = window.scrollY, ticking = false;
+  window.addEventListener("scroll", () => {
+    if (ticking) return; ticking = true;
+    requestAnimationFrame(() => {
+      const y = window.scrollY;
+      if (Math.abs(y-lastY)>6) nav.classList.toggle("nav-compact",y>lastY && y>80);
+      lastY=y;ticking=false;
+    });
+  },{passive:true});
+  if (window.matchMedia("(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference)").matches)
+    for (const panel of document.querySelectorAll(".sidebar,.playback-bar")) panel.addEventListener("pointermove",event=>{
+      const rect=panel.getBoundingClientRect();
+      panel.style.setProperty("--pointer-x",event.clientX-rect.left+"px");panel.style.setProperty("--pointer-y",event.clientY-rect.top+"px");
+    },{passive:true});
+}
+initGlass();
