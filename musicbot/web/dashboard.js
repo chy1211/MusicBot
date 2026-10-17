@@ -4,7 +4,7 @@ let secret = "", selected = "", state = null, busy = false, connected = false;
 let queueRevision = null, generation = 0, loading = false, stateGeneration = 0;
 let authMode = null, authenticated = false;
 let manualGuild = "", entryGuild = "", viewerKey = "owner";
-const labels = {playing: "播放中", paused: "已暫停", stopped: "已停止", disconnected: "尚未加入語音"};
+const labels = () => ({playing: t("m0040"), paused: t("m0041"), stopped: t("m0042"), disconnected: t("m0043")});
 let toastTimer = null, toastVersion = 0;
 function notice(message, error = false) {
   const version = ++toastVersion;
@@ -19,7 +19,7 @@ function notice(message, error = false) {
     }
   }, error ? 10000 : 4500);
 }
-function buttonBusy(button, active, label = "處理中…") {
+function buttonBusy(button, active, label = t("m0044")) {
   if (active && button.dataset.loading !== "1") button.dataset.label = button.textContent;
   button.dataset.loading = active ? "1" : "0";
   const navigation = /^nav-/.test(button.id || "");
@@ -72,7 +72,7 @@ function songIdentity(value) {
   url.searchParams.sort();
   return url.href;
 }
-function requesterName(song) { return song?.requester?.name || "自動播放"; }
+function requesterName(song) { return song?.requester?.name || t("m0045"); }
 const reduceMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 function duration(seconds) {
   seconds = Math.floor(Math.max(0, seconds || 0));
@@ -88,10 +88,10 @@ function authDisplay() {
   $("auth").hidden = authMode !== "owner";
   $("user-profile").hidden = authMode !== "discord" || !authenticated;
   $("identity-note").textContent = authMode === "discord"
-    ? "即時更新 · 以你的 Discord 身分與權限操作 · 操作前請加入機器人所在的語音頻道"
-    : "即時更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道";
+    ? t("m0046")
+    : t("m0047");
 }
-function signedOut(message = "登入後即可查看你的伺服器並點歌。") {
+function signedOut(message = t("m0048")) {
   closeSongChoices(false);
   stopEvents();
   if (typeof libraryClear === "function") libraryClear();
@@ -104,18 +104,18 @@ function signedOut(message = "登入後即可查看你的伺服器並點歌。")
   $("user-avatar").removeAttribute("src"); $("user-avatar").hidden = true;
   resetView(); state = null; controls(); authDisplay();
   $("login-status").textContent = message;
-  connectionStatus("尚未登入");
+  connectionStatus(t("m0049"));
   notice("");
 }
 async function initialize() {
   captureEntryGuild();
   try {
     const response = await fetch("/auth/session", {cache: "no-store", credentials: "same-origin"});
-    if (!response.ok) throw new Error("無法確認登入狀態，請重新整理頁面。");
+    if (!response.ok) throw new Error(t("m0050"));
     const session = await response.json();
     if (!["owner", "discord"].includes(session.auth_mode) || typeof session.authenticated !== "boolean" ||
         (session.auth_mode === "owner" && !session.authenticated))
-      throw new Error("登入狀態無效，請重新整理頁面。");
+      throw new Error(t("m0051"));
     authMode = session.auth_mode;
     authenticated = session.authenticated;
     if (authMode === "discord") {
@@ -137,12 +137,12 @@ async function initialize() {
 async function logout(allDevices = false) {
   if (authMode !== "discord" || !authenticated || busy) return;
   busy = true; controls();
-  try { await api(allDevices ? "/auth/logout-all" : "/auth/logout", "POST", {}); signedOut(allDevices ? "已登出所有裝置。" : "已登出。"); }
+  try { await api(allDevices ? "/auth/logout-all" : "/auth/logout", "POST", {}); signedOut(allDevices ? t("m0052") : t("m0053")); }
   catch (error) { if (authenticated) notice(error.message, true); }
   finally { busy = false; controls(); }
 }
 async function api(path, method = "GET", data) {
-  const headers = {"X-MusicBot-Dashboard": "1"};
+  const headers = {"X-MusicBot-Dashboard": "1", "X-Dashboard-Language": dashboardLocale()};
   if (authMode === "owner" && secret) headers.Authorization = "Bearer " + secret;
   if (data !== undefined) headers["Content-Type"] = "application/json";
   const controller = new AbortController();
@@ -154,16 +154,16 @@ async function api(path, method = "GET", data) {
       signal: controller.signal, body: data === undefined ? undefined : JSON.stringify(data)});
     body = await response.json().catch(() => ({}));
   } catch (error) {
-    if (error.name === "AbortError") throw new Error("操作逾時，請先查看佇列，再重新查詢或重試。");
+    if (error.name === "AbortError") throw new Error(t("m0054"));
     throw error;
   } finally { window.clearTimeout(timer); }
 
   if (!response.ok) {
     if (response.status === 401) {
-      if (authMode === "discord") signedOut(body.error || "登入已過期，請重新登入。");
+      if (authMode === "discord") signedOut(body.error || t("m0055"));
       else $("auth").open = true;
     }
-    const error = new Error(body.error || "連線失敗，請稍後再試。");
+    const error = new Error(body.error || t("m0056"));
     error.status = response.status; error.body = body; throw error;
   }
   return body;
@@ -217,15 +217,15 @@ function renderQueue() {
   const before = new Map(Array.from($("queue").children, (row) =>
     [row.dataset.key, row.getBoundingClientRect().top]));
 
-  if (drag) cancelDrag("佇列已更新，已取消拖曳，請再試一次。");
+  if (drag) cancelDrag(t("m0057"));
   queueRevision = signature;
   $("queue").replaceChildren();
   $("queue-count").textContent = String(state.queue.length);
   const visible = state.queue.filter((song) => (!queueMine || song.mine === true) &&
     (!queueSearch || [song.title, requesterName(song)].some((text) => String(text || "").toLowerCase().includes(queueSearch))));
-  $("queue-match-count").textContent = queueFiltered() ? "顯示 " + visible.length + "／" + state.queue.length + " 首" : "";
+  $("queue-match-count").textContent = queueFiltered() ? t("m0058") + visible.length + "／" + state.queue.length + t("m0033") : "";
   $("queue-empty").hidden = visible.length !== 0;
-  $("queue-empty").textContent = queueSearch ? "沒有符合搜尋的歌曲。" : queueMine ? "目前沒有你點播的歌曲。" : "目前佇列是空的。";
+  $("queue-empty").textContent = queueSearch ? t("m0059") : queueMine ? t("m0060") : t("m0061");
   const occurrences = new Map();
   for (const song of visible) {
     const li = document.createElement("li");
@@ -238,22 +238,22 @@ function renderQueue() {
     const img = imageElement(song.thumbnail);
     const info = document.createElement("div"); info.className = "song";
     const title = songTitle(document.createElement("p"), song);
-    const source = document.createElement("small"); source.textContent = "點播：" + requesterName(song);
+    const source = document.createElement("small"); source.textContent = t("m0062") + requesterName(song);
     const estimate = document.createElement("small"); estimate.className = "queue-estimate";
     info.append(title, source, estimate);
     const time = document.createElement("span"); time.className = "song-length";
-    time.textContent = song.duration ? duration(song.duration) : "未知";
+    time.textContent = song.duration ? duration(song.duration) : t("m0063");
     const actions = document.createElement("div"); actions.className = "actions";
     const rev = state.revision;
     const handle = document.createElement("button");
     handle.textContent = "⋮⋮"; handle.className = "drag-handle";
-    handle.setAttribute("aria-label", "拖曳排序：" + song.title + "；鍵盤請用旁邊的上移或下移按鈕");
+    handle.setAttribute("aria-label", t("m0064") + song.title + t("m0065"));
     handle.setAttribute("aria-describedby", "drag-help");
-    handle.title = queueFiltered() ? "篩選中停用拖曳，請用上下移按鈕" : "拖曳排序（手機長按）";
+    handle.title = queueFiltered() ? t("m0066") : t("m0067");
     handle.dataset.boundary = queueFiltered() ? "1" : "0";
     installDrag(handle, li, song.position, rev);
     actions.append(handle);
-    for (const [text, label, target] of [["↑", "上移", song.position - 1], ["↓", "下移", song.position + 1], ["×", "刪除", null]]) {
+    for (const [text, label, target] of [["↑", t("m0068"), song.position - 1], ["↓", t("m0069"), song.position + 1], ["×", t("m0004"), null]]) {
       const button = document.createElement("button"); button.textContent = text;
       button.setAttribute("aria-label", label + "：" + song.title);
       button.title = label;
@@ -280,10 +280,10 @@ function noSelection(kind, active) {
 }
 function connectionStatus(value) {
   const badge = $("connection");
-  badge.textContent = "連線狀態"; badge.title = value;
-  badge.dataset.state = /重試|連線中/.test(value) && !/中斷/.test(value) ? "reconnecting"
-    : /已連線|即時連線/.test(value) ? "online" : "offline";
-  badge.setAttribute("aria-label", "連線狀態：" + value);
+  badge.textContent = t("m0070"); badge.title = value;
+  badge.dataset.state = [t("m0125"),t("m0186"),t("m0187")].some(label=>value.includes(label)) ? "reconnecting"
+    : [t("m0123"),t("m0188")].some(label=>value.includes(label)) ? "online" : "offline";
+  badge.setAttribute("aria-label", t("m0071") + value);
 }
 let drag = null, dragVisual = null;
 function settleDrag() {
@@ -367,7 +367,7 @@ function activateDrag() {
   drag.active = true;
   drag.row.classList.toggle("dragging", true);
   document.body.classList.toggle("queue-dragging", true);
-  notice("拖曳中，放開以儲存順序；按 Esc 可取消。");
+  notice(t("m0072"));
   dragTarget(); drag.frame = window.requestAnimationFrame(dragScroll);
 }
 function installDrag(handle, row, from, rev) {
@@ -412,7 +412,7 @@ function shortcutsHelp() {
 function keyboardShortcut(event) {
   if (event.key === "Escape") {
     if ($("shortcuts-dialog").open) { event.preventDefault(); $("shortcuts-dialog").close(); }
-    closeSongChoices(); cancelDrag("已取消拖曳。"); cancelSeek(); noSelection("volume", false);
+    closeSongChoices(); cancelDrag(t("m0073")); cancelSeek(); noSelection("volume", false);
     return;
   }
   if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey ||
@@ -462,8 +462,8 @@ function updateDuplicateNotes() {
     const position = key ? queued.get(key) : undefined;
     const playing = !!key && key === current;
     note.textContent = position !== undefined
-      ? batch ? "已在佇列" : "這首已經在佇列第 " + position + " 首" + (playing ? "，且目前正在播放" : "")
-      : playing ? batch ? "正在播放" : "這首目前正在播放" : "";
+      ? batch ? t("m0074") : t("m0075") + position + t("m0033") + (playing ? t("m0076") : "")
+      : playing ? batch ? t("m0077") : t("m0078") : "";
     note.hidden = !note.textContent;
   }
 }
@@ -477,13 +477,13 @@ async function resolveQuery() {
   if (!query || resolving || busy || !connected || !selected) return;
   clearPreview();
   const epoch = generation, requestId = ++resolveGeneration, guild = selected;
-  resolving = true; buttonBusy($("enqueue"), true); controls(); notice("正在查詢，只解析歌曲資訊…");
+  resolving = true; buttonBusy($("enqueue"), true); controls(); notice(t("m0079"));
   try {
     const action = $("request-action").value === "playnext" ? "playnext" : "play";
     const result = await api("api/guilds/" + guild + "/resolve", "POST", {query, action});
     if (epoch !== generation || requestId !== resolveGeneration) return;
     renderPreviewResults(result.results, action);
-    notice("請確認預覽，再選擇加入方式。預覽五分鐘內有效。");
+    notice(t("m0080"));
   } catch (error) {
     if (epoch === generation && requestId === resolveGeneration) notice(error.message, true);
   } finally {
@@ -505,9 +505,9 @@ function renderPreviewResults(results, action = "play") {
       const title = document.createElement("h3"); title.textContent = song.title;
       const length = document.createElement("small");
       length.textContent = song.kind === "playlist"
-        ? "播放清單 · 共 " + song.count + " 首 · 已檢查 " + song.checked_count + " 首，" + song.eligible_count + " 首可加入"
-        : song.duration ? duration(song.duration) : "直播／長度未知";
-      const link = document.createElement("a"); link.textContent = song.url || "來源網址無法使用";
+        ? t("m0081") + song.count + t("m0082") + song.checked_count + t("m0083") + song.eligible_count + t("m0084")
+        : song.duration ? duration(song.duration) : t("m0085");
+      const link = document.createElement("a"); link.textContent = song.url || t("m0086");
       if (safeURL(song.url)) { link.href = song.url; link.target = "_blank"; link.rel = "noopener noreferrer"; }
       info.append(title, length, link);
       if (song.reason || song.warning) {
@@ -519,18 +519,18 @@ function renderPreviewResults(results, action = "play") {
       const checkboxes = [];
       let saveButton = null, selectionCount = null;
       const updateSelection = () => {
-        if (selectionCount) selectionCount.textContent = "已選 " + selectedItems.size + " 首";
+        if (selectionCount) selectionCount.textContent = t("m0087") + selectedItems.size + t("m0033");
         if (saveButton) saveButton.disabled = !selectedItems.size || libraryBusy;
-        button.textContent = song.kind === "playlist" ? "加入佇列（" + selectedItems.size + " 首）" : song.allowed ? "加入佇列" : "無法加入";
+        button.textContent = song.kind === "playlist" ? t("m0088") + selectedItems.size + t("m0089") : song.allowed ? t("m0090") : t("m0091");
         button.dataset.boundary = song.allowed && (song.kind !== "playlist" || selectedItems.size) ? "0" : "1";
         controls();
       };
       if (song.entries) {
         const hint = document.createElement("p"); hint.className = "hint playlist-next-hint";
-        hint.textContent = "播放清單依原順序加入佇列；下一首播放目前只提供單曲。";
+        hint.textContent = t("m0092");
         info.append(hint);
         const tools = document.createElement("div"); tools.className = "selection-tools";
-        for (const [label, checked] of [["全選", true], ["全不選", false]]) {
+        for (const [label, checked] of [[t("m0093"), true], [t("m0094"), false]]) {
           const select = document.createElement("button"); select.type = "button"; select.textContent = label;
           select.dataset.boundary = song.allowed ? "0" : "1";
           select.addEventListener("click", () => {
@@ -552,7 +552,7 @@ function renderPreviewResults(results, action = "play") {
           checkbox.checked = !!item.allowed && !!song.allowed && item.default_selected !== false;
           checkbox.dataset.boundary = item.allowed && song.allowed ? "0" : "1";
           checkbox.disabled = checkbox.dataset.boundary === "1";
-          checkbox.setAttribute("aria-label", "選取：" + item.title);
+          checkbox.setAttribute("aria-label", t("m0095") + item.title);
           if (checkbox.checked) selectedItems.add(item.item_id);
           checkbox.addEventListener("change", () => {
             if (checkbox.disabled) return;
@@ -562,18 +562,18 @@ function renderPreviewResults(results, action = "play") {
           });
           checkboxes.push([checkbox, item]);
           const text = document.createElement("span");
-          text.textContent = (item.is_requested ? "網址指定歌曲 · " : "") + item.title + " · " + (item.duration ? duration(item.duration) : "長度未知") +
-            (item.reason ? " · 無法加入：" + item.reason : " · 可加入");
+          text.textContent = (item.is_requested ? t("m0096") : "") + item.title + " · " + (item.duration ? duration(item.duration) : t("m0097")) +
+            (item.reason ? t("m0098") + item.reason : t("m0099"));
           label.append(checkbox, imageElement(item.thumbnail), text); duplicateNote(label, item.url, true);
           li.append(label); list.append(li);
         }
         info.append(tools, list);
         if ((song.source_url || song.saveable) && typeof librarySavePreview === "function") {
-          const nameLabel = document.createElement("label"); nameLabel.textContent = "新歌單名稱";
+          const nameLabel = document.createElement("label"); nameLabel.textContent = t("m0100");
           const name = document.createElement("input"); name.maxLength = 60; name.value = Array.from(song.title).slice(0, 60).join("");
           nameLabel.append(name);
           saveButton = document.createElement("button"); saveButton.type = "button";
-          saveButton.textContent = "存成我的歌單";
+          saveButton.textContent = t("m0101");
           saveButton.addEventListener("click", () => librarySavePreview(song, selectedItems, name.value, saveButton));
           info.append(nameLabel, saveButton);
         }
@@ -584,7 +584,7 @@ function renderPreviewResults(results, action = "play") {
         const payload = {query: song.url, preview_id: song.preview_id};
         if (song.kind === "playlist") payload.selected_items = song.entries
           .filter((item) => selectedItems.has(item.item_id)).map((item) => item.item_id);
-        buttonBusy(clicked, true, song.kind === "playlist" ? "處理中（" + selectedItems.size + " 首）…" : "處理中…");
+        buttonBusy(clicked, true, song.kind === "playlist" ? t("m0102") + selectedItems.size + t("m0103") : t("m0044"));
         try {
           if (await act(target, payload)) {
             clearPreview(); $("query").value = ""; controls();
@@ -592,13 +592,13 @@ function renderPreviewResults(results, action = "play") {
         } finally { buttonBusy(clicked, false); controls(); }
       };
       button.addEventListener("click", () => confirmSong(action));
-      if (action === "playnext") button.textContent = song.allowed ? "下一首播放" : "無法插播";
+      if (action === "playnext") button.textContent = song.allowed ? t("m0104") : t("m0105");
       article.append(art, info, button);
       if (song.kind !== "playlist") {
         const alternate = document.createElement("button");
         alternate.type = "button"; alternate.className = "subtle preview-alternate";
         alternate.dataset.boundary = song.allowed ? "0" : "1";
-        alternate.textContent = action === "play" ? "下一首播放" : "加入佇列";
+        alternate.textContent = action === "play" ? t("m0104") : t("m0090");
         alternate.addEventListener("click", () => confirmSong(action === "play" ? "playnext" : "play", alternate));
         article.append(alternate);
         duplicateNote(article, song.url);
@@ -617,13 +617,13 @@ function render(next, force = false) {
   $("source-link").hidden = !source;
   if (source) {
     $("source-link").href = source;
-    $("source-link").textContent = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(source) ? "在 YouTube 開啟" : "開啟原始網址";
+    $("source-link").textContent = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(source) ? t("m0106") : t("m0107");
   } else $("source-link").removeAttribute("href");
   if (typeof favoriteRender === "function") favoriteRender();
-  $("toggle").textContent = state.status === "playing" ? "暫停" : "繼續";
-  $("bar-title").textContent = state.current?.title || "目前沒有播放";
+  $("toggle").textContent = state.status === "playing" ? t("m0108") : t("m0109");
+  $("bar-title").textContent = state.current?.title || t("m0110");
   $("bar-title").disabled = !state.current;
-  $("bar-status").textContent = state.current ? (labels[state.status] || "準備中") + " · 點播：" + requesterName(state.current) : "選一首喜歡的歌";
+  $("bar-status").textContent = state.current ? (labels()[state.status] || t("m0111")) + t("m0112") + requesterName(state.current) : t("m0113");
   $("playback-bar").classList.toggle("is-empty", !state.current);
   const cover = safeURL(state.current?.thumbnail || "");
   if (cover) { $("bar-cover").src = cover; $("bar-cover").hidden = false; }
@@ -640,8 +640,8 @@ function render(next, force = false) {
     $(id).value = state.volume; $(id + "-label").value = state.volume + "%";
   }
   $("repeat").value = state.repeat;
-  $("repeat").textContent = {off:"重複",song:"單曲",all:"佇列"}[state.repeat] || "重複";
-  $("repeat").setAttribute("aria-label","重複：" + ({off:"關閉",song:"單曲",all:"整個佇列"}[state.repeat] || "關閉"));
+  $("repeat").textContent = {off:t("m0114"),song:t("m0115"),all:t("m0116")}[state.repeat] || t("m0114");
+  $("repeat").setAttribute("aria-label",t("m0117") + ({off:t("m0118"),song:t("m0115"),all:t("m0119")}[state.repeat] || t("m0118")));
   $("repeat").setAttribute("aria-pressed", String(state.repeat !== "off"));
   renderQueue(); renderRecommendations(); updateDuplicateNotes(); controls(); updateQueueTimes(); renderCommunity(state);
 }
@@ -650,7 +650,7 @@ async function act(action, data = {}, method = "POST") {
   const guild = selected, epoch = generation;
   if (drag) cancelDrag();
   ++stateGeneration;
-  busy = true; controls(); notice(["play", "playnext"].includes(action) ? "正在搜尋與加入歌曲，請稍候…" : "正在處理…");
+  busy = true; controls(); notice(["play", "playnext"].includes(action) ? t("m0120") : t("m0121"));
   let result;
   try {
     result = await api("api/guilds/" + guild + "/" + action, method, data);
@@ -659,7 +659,7 @@ async function act(action, data = {}, method = "POST") {
       if (result.undo_token) {
         const version = toastVersion;
         window.clearTimeout(toastTimer);
-        const undo = document.createElement("button"); undo.type = "button"; undo.textContent = "復原";
+        const undo = document.createElement("button"); undo.type = "button"; undo.textContent = t("m0122");
         undo.addEventListener("click", async () => {
           if (busy || undo.disabled || epoch !== generation) return;
           undo.disabled = true; buttonBusy(undo, true);
@@ -687,11 +687,11 @@ async function refresh(epoch = generation, force = false) {
   try {
     const next = await api("api/guilds/" + guild + "/state");
     if (epoch !== generation || guild !== selected || sequence !== stateGeneration) return;
-    connected = true; connectionStatus("已連線"); render(next, force);
+    connected = true; connectionStatus(t("m0123")); render(next, force);
     if (fallbackPolling && !historyLoading && Date.now() - historyUpdated >= 15000) refreshHistory();
   } catch (error) {
     if (epoch !== generation || guild !== selected || sequence !== stateGeneration) return;
-    connected = false; connectionStatus("連線中斷");
+    connected = false; connectionStatus(t("m0124"));
     notice(error.message, true); controls();
   }
 }
@@ -740,7 +740,7 @@ async function connect() {
   stopEvents(); fallbackPolling = true;
   const epoch = ++generation;
   loading = true; connected = false; selected = ""; state = null;
-  resetView(); controls(); connectionStatus("連線中");
+  resetView(); controls(); connectionStatus(t("m0125"));
   try {
     const data = await api("api/guilds");
     if (epoch !== generation) return;
@@ -752,14 +752,14 @@ async function connect() {
     selected = initialGuild(data);
     $("guild").value = selected;
     if (selected) rememberGuild(selected);
-    if (!selected) { notice(authMode === "owner" ? "目前沒有 OwnerID 本人所在的可用伺服器。" : "目前沒有你與機器人共同所在的伺服器。"); return; }
+    if (!selected) { notice(authMode === "owner" ? t("m0126") : t("m0127")); return; }
     await refresh(epoch);
     if (connected && typeof adminCapability === "function") adminCapability();
     if (connected && typeof libraryLoad === "function") libraryLoad().catch(() => {});
-    if (connected) { notice("已連線，可以開始點歌。"); startEvents(); }
+    if (connected) { notice(t("m0128")); startEvents(); }
   } catch (error) {
     if (epoch === generation) {
-      notice(error.message, true); connectionStatus("連線失敗");
+      notice(error.message, true); connectionStatus(t("m0129"));
     }
   } finally {
     if (epoch === generation) loading = false;
@@ -850,10 +850,10 @@ function drawProgress(position, total = state?.current?.duration || 0) {
   const value = total ? Math.max(0, Math.min(Number(position) || 0, total)) : 0;
   for (const id of ["progress"]) {
     $(id).max = total || 1; $(id).value = value;
-    $(id).setAttribute("aria-valuetext", duration(value) + "，共 " + (total ? duration(total) : "長度未知"));
+    $(id).setAttribute("aria-valuetext", duration(value) + t("m0130") + (total ? duration(total) : t("m0097")));
   }
   for (const id of ["elapsed"]) $(id).textContent = duration(value);
-  for (const id of ["duration"]) $(id).textContent = total ? duration(total) : "直播／長度未知";
+  for (const id of ["duration"]) $(id).textContent = total ? duration(total) : t("m0085");
 }
 function cancelSeek() {
   noSelection("seek", false);
@@ -945,10 +945,10 @@ function renderRecommendations() {
     info.className = "history-info";
     const title = songTitle(document.createElement("p"), song);
     const meta = document.createElement("small");
-    meta.textContent = (song.duration ? duration(song.duration) : "長度未知") + " · 點播：" + requesterName(song);
+    meta.textContent = (song.duration ? duration(song.duration) : t("m0097")) + t("m0112") + requesterName(song);
     info.append(title, meta);
-    const add = document.createElement("button"); add.type = "button"; add.textContent = "加入";
-    add.setAttribute("aria-label", "加入：" + song.title);
+    const add = document.createElement("button"); add.type = "button"; add.textContent = t("m0131");
+    add.setAttribute("aria-label", t("m0132") + song.title);
     add.addEventListener("click", () => { if (!add.disabled) return previewHistorySong(song, guild, epoch); });
     row.append(imageElement(song.thumbnail), info, add); $("recommendation-list").append(row);
   }
@@ -956,16 +956,16 @@ function renderRecommendations() {
 function resetHistory() {
   ++historyRequest; historyLoading = false; historyUpdated = 0; recentHistory = [];
   recommendationRevision = null; renderRecommendations();
-  $("history-list").replaceChildren(); $("history-status").textContent = "尚無播放紀錄。";
+  $("history-list").replaceChildren(); $("history-status").textContent = t("m0133");
 }
 function playedTime(timestamp) {
   if (timestamp === null || timestamp === undefined || !Number.isFinite(Number(timestamp)) || Number(timestamp) <= 0)
-    return "播放時間未知";
+    return t("m0134");
   const date = new Date(Number(timestamp) * 1000), difference = Math.max(0, Date.now() - date.getTime());
-  if (!Number.isFinite(date.getTime())) return "播放時間未知";
-  if (difference < 60000) return "剛剛";
-  if (difference < 3600000) return Math.floor(difference / 60000) + " 分鐘前";
-  return date.toLocaleString("zh-TW", {timeZone: "Asia/Taipei", month: "numeric", day: "numeric",
+  if (!Number.isFinite(date.getTime())) return t("m0134");
+  if (difference < 60000) return t("m0135");
+  if (difference < 3600000) return Math.floor(difference / 60000) + t("m0136");
+  return date.toLocaleString(dashboardLocale(), {timeZone: dashboardTimeZone(), month: "numeric", day: "numeric",
     hour: "2-digit", minute: "2-digit", hour12: false});
 }
 async function refreshHistory(manual = false) {
@@ -979,7 +979,7 @@ async function refreshHistory(manual = false) {
   } catch (error) {
     if (epoch === generation && request === historyRequest) {
       // Optional history failures never disconnect the playback controls.
-      $("history-status").textContent = error.message || "暫時無法取得播放紀錄。";
+      $("history-status").textContent = error.message || t("m0137");
       if (manual) notice(error.message, true);
       historyUpdated = Date.now();
     }
@@ -991,25 +991,25 @@ function applyHistory(result, guild = selected, epoch = generation) {
     $("history-list").replaceChildren();
     const entries = recentHistory = (result.history || []).slice(0, 50);
     renderRecommendations();
-    $("history-status").textContent = entries.length ? "" : "還沒有播放紀錄，先點一首喜歡的歌。";
+    $("history-status").textContent = entries.length ? "" : t("m0138");
     for (const song of entries) {
       const row = document.createElement("li"), info = document.createElement("div");
       info.className = "history-info";
       const title = songTitle(document.createElement("p"), song);
       const meta = document.createElement("small");
-      meta.textContent = (song.duration ? duration(song.duration) : "長度未知") + " · 點播：" + requesterName(song) + " · " + playedTime(song.played_at);
+      meta.textContent = (song.duration ? duration(song.duration) : t("m0097")) + t("m0112") + requesterName(song) + " · " + playedTime(song.played_at);
       info.append(title, meta);
       if (safeURL(song.requester?.avatar)) {
         const avatar = imageElement(song.requester.avatar, "requester-avatar"); avatar.alt = ""; info.append(avatar);
       }
       const actions = document.createElement("div"); actions.className = "history-actions";
       if (safeURL(song.url)) {
-        const replay = document.createElement("button"); replay.type = "button"; replay.textContent = "再點一次";
+        const replay = document.createElement("button"); replay.type = "button"; replay.textContent = t("m0139");
         replay.addEventListener("click", async () => {
           if (replay.disabled || busy || epoch !== generation || guild !== selected) return;
           await previewHistorySong(song, guild, epoch);
         });
-        const link = document.createElement("a"); link.textContent = "來源 ↗";
+        const link = document.createElement("a"); link.textContent = t("m0140");
         link.href = song.url; link.target = "_blank"; link.rel = "noopener noreferrer";
         actions.append(replay, link);
         if (typeof librarySaveButton === "function") actions.append(librarySaveButton(song));
@@ -1034,8 +1034,8 @@ function resetLyrics(close = false) {
   $("lyrics-content").replaceChildren(); $("lyrics-content").textContent = "";
   $("lyrics-content").classList.toggle("plain-lyrics", false);
   $("lyrics-status").textContent = ""; $("lyrics-search-form").hidden = true;
-  $("lyrics-query").value = ""; $("lyrics-heading").textContent = "歌詞";
-  $("lyrics-offset").textContent="";$("lyrics-sync-prompt").hidden=true;$("lyrics-sync").textContent="對時";
+  $("lyrics-query").value = ""; $("lyrics-heading").textContent = t("m0141");
+  $("lyrics-offset").textContent="";$("lyrics-sync-prompt").hidden=true;$("lyrics-sync").textContent=t("m0142");
   $("lyrics-timing-controls").hidden=true;
   lyricsUserScrollUntil=0;lyricsAutoScrollUntil=0;lyricsCenterPending=false;
   if (close) {
@@ -1045,9 +1045,9 @@ function resetLyrics(close = false) {
 }
 function applyLyricsOffset(value) {
   lyricsOffset = Number.isFinite(Number(value.offset)) ? Number(value.offset) : 0;
-  const source = {matched:"自動比對",silence:"靜音偵測",manual:"手動校正",duration:"長度相近，不位移"}[value.offset_source];
-  $("lyrics-offset").textContent = (source ? source+" · "+(lyricsOffset>=0?"+":"")+lyricsOffset.toFixed(1)+" 秒" :
-    "MV 版本可能有前奏，可按『對時』校正") + (value.analysis_pending ? " · 自動分析中…" : "");
+  const source = {matched:t("m0143"),silence:t("m0144"),manual:t("m0145"),duration:t("m0146")}[value.offset_source];
+  $("lyrics-offset").textContent = (source ? source+" · "+(lyricsOffset>=0?"+":"")+lyricsOffset.toFixed(1)+t("m0147") :
+    t("m0148")) + (value.analysis_pending ? t("m0149") : "");
   lyricsActive=-2;syncLyrics();
 }
 async function pollLyricsOffset() {
@@ -1077,12 +1077,12 @@ async function loadLyrics(query = "") {
   window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null;lyricsSyncArmed=false;
   $("lyrics-content").replaceChildren(); $("lyrics-content").textContent = "";
   $("lyrics-content").classList.toggle("plain-lyrics", false);
-  $("lyrics-status").textContent = "正在找歌詞…"; $("lyrics-search-form").hidden = true; controls();
-  $("lyrics-timing-controls").hidden=true;$("lyrics-sync-prompt").hidden=true;$("lyrics-sync").textContent="對時";
+  $("lyrics-status").textContent = t("m0150"); $("lyrics-search-form").hidden = true; controls();
+  $("lyrics-timing-controls").hidden=true;$("lyrics-sync-prompt").hidden=true;$("lyrics-sync").textContent=t("m0142");
   try {
     const result = await api("api/guilds/" + guild + "/lyrics" + (query ? "?query=" + encodeURIComponent(query) : ""));
     if (!lyricsOpen || epoch !== generation || guild !== selected || key !== currentTrackKey() || request !== lyricsRequest) return;
-    $("lyrics-heading").textContent = result.artist ? result.title + " · " + result.artist : result.title || "歌詞";
+    $("lyrics-heading").textContent = result.artist ? result.title + " · " + result.artist : result.title || t("m0141");
     lyricsVideo=result.video_id || "";
     $("lyrics-offset").textContent="";
     if (result.status === "synced" && Array.isArray(result.lines) && result.lines.length) {
@@ -1097,16 +1097,16 @@ async function loadLyrics(query = "") {
       if (lyricsVideo) lyricsOffsetTimer=window.setTimeout(pollLyricsOffset,5000);
     } else if (result.status === "plain" && result.plain_lyrics) {
       $("lyrics-content").textContent = result.plain_lyrics;
-      $("lyrics-status").textContent = "純文字歌詞"; $("lyrics-content").classList.toggle("plain-lyrics", true);
+      $("lyrics-status").textContent = t("m0151"); $("lyrics-content").classList.toggle("plain-lyrics", true);
     } else if (result.status === "instrumental") {
-      $("lyrics-status").textContent="純音樂";
+      $("lyrics-status").textContent=t("m0152");
     } else {
-      $("lyrics-status").textContent = result.status === "unavailable" ? "歌詞服務暫時無法使用，請稍後再試。" : "找不到這首的歌詞";
+      $("lyrics-status").textContent = result.status === "unavailable" ? t("m0153") : t("m0154");
       $("lyrics-search-form").hidden = false;
     }
   } catch (error) {
     if (epoch === generation && request === lyricsRequest && lyricsOpen) {
-      $("lyrics-status").textContent = error.message || "暫時無法取得歌詞。";
+      $("lyrics-status").textContent = error.message || t("m0155");
       if (error.status===403) { if(state) state.lyrics_available=false;toggleLyrics(false,false); }
       else $("lyrics-search-form").hidden = false;
       notice(error.message, true);
@@ -1156,7 +1156,7 @@ async function changeLyricsOffset(action, extra = {}) {
   try {
     const value=await api("api/guilds/"+guild+"/lyrics/offset","POST",{action,track_token:state.current.track_token,...extra});
     if (lyricsOpen && key===currentTrackKey() && epoch===generation && sequence===lyricsOffsetSequence) {
-      applyLyricsOffset(value);lyricsSyncArmed=false;$("lyrics-sync").textContent="對時";$("lyrics-sync-prompt").hidden=true;
+      applyLyricsOffset(value);lyricsSyncArmed=false;$("lyrics-sync").textContent=t("m0142");$("lyrics-sync-prompt").hidden=true;
     }
   } catch(error){if(epoch===generation&&key===currentTrackKey())notice(error.message,true);}
   finally {if(epoch===generation&&key===currentTrackKey()){lyricsTimingBusy=false;controls();}}
@@ -1167,8 +1167,8 @@ $("lyrics-reset").addEventListener("click",()=>changeLyricsOffset("reset"));
 $("lyrics-sync").addEventListener("click",()=>{
   if(!lyricsSyncArmed){
     const first=lyricsLines.find(line=>line.text.trim());if(!first)return;
-    lyricsSyncArmed=true;$("lyrics-sync").textContent="聽到時按";
-    $("lyrics-sync-prompt").textContent="聽到「"+first.text+"」時，再按一次對時。";$("lyrics-sync-prompt").hidden=false;
+    lyricsSyncArmed=true;$("lyrics-sync").textContent=t("m0156");
+    $("lyrics-sync-prompt").textContent=t("m0157")+first.text+t("m0158");$("lyrics-sync-prompt").hidden=false;
   }else return changeLyricsOffset("sync",{position:localProgress()});
 });
 function lyricUserScroll() { lyricsUserScrollUntil=Date.now()+5000;lyricsCenterPending=true; }
@@ -1202,16 +1202,16 @@ function queueSchedule(value, progress = Number(value?.progress) || 0) {
   const known = songs.reduce((sum, song) => sum + (valid(song.duration) ? Number(song.duration) : 0), 0);
   const unknown = songs.some((song) => !valid(song.duration));
   const minutes = Math.ceil(known / 60);
-  const total = (unknown ? "已知 " : "共 ") + Math.floor(minutes / 60) + " 小時 " + minutes % 60 + " 分" +
-    (unknown ? "・含長度未知歌曲" : "");
+  const total = (unknown ? t("m0159") : t("m0000")) + Math.floor(minutes / 60) + t("m0160") + minutes % 60 + t("m0161") +
+    (unknown ? t("m0162") : "");
   let wait = value?.current && valid(value.current.duration) ? Math.max(0, Number(value.current.duration) - progress) : null;
   const times = new Map();
   for (const song of songs) {
     let text;
-    if (value.repeat === "song") text = "單曲重複中，時間未定";
-    else if (value.status === "paused") text = "暫停中，時間順延";
-    else if (value.status !== "playing" || wait === null) text = "時間未定";
-    else text = wait < 60 ? "約 1 分鐘內" : "約 " + Math.ceil(wait / 60) + " 分鐘後";
+    if (value.repeat === "song") text = t("m0163");
+    else if (value.status === "paused") text = t("m0164");
+    else if (value.status !== "playing" || wait === null) text = t("m0165");
+    else text = wait < 60 ? t("m0166") : t("m0167") + Math.ceil(wait / 60) + t("m0168");
     times.set(song.position, text);
     if (wait !== null) wait = valid(song.duration) ? wait + Number(song.duration) : null;
   }
@@ -1220,10 +1220,10 @@ function queueSchedule(value, progress = Number(value?.progress) || 0) {
 function updateQueueTimes() {
   const schedule = queueSchedule(state, localProgress());
   $("queue-total").textContent = schedule.total;
-  $("queue-timing-note").textContent = state?.repeat === "all" ? "整個佇列重複：顯示本輪預計時間。" : "";
+  $("queue-timing-note").textContent = state?.repeat === "all" ? t("m0169") : "";
   for (const row of $("queue").children) {
     const time = row.children[2]?.children[2];
-    if (time) time.textContent = schedule.times.get(Number(row.dataset.position)) || "時間未定";
+    if (time) time.textContent = schedule.times.get(Number(row.dataset.position)) || t("m0165");
   }
 }
 function setQueueFilter(mine) {
@@ -1231,19 +1231,19 @@ function setQueueFilter(mine) {
   cancelDrag(); queueRevision = null;
   $("queue-all").setAttribute("aria-pressed", String(!mine));
   $("queue-mine").setAttribute("aria-pressed", String(mine));
-  const reason = [mine ? "我的點歌" : "", queueSearch ? "搜尋篩選中" : ""].filter(Boolean).join("＋");
+  const reason = [mine ? t("m0170") : "", queueSearch ? t("m0171") : ""].filter(Boolean).join("＋");
   $("drag-help").textContent = reason
-    ? reason + "：停用拖曳與洗牌；↑ ↓ 與刪除仍使用完整佇列的位置。"
-    : "拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。";
-  $("shuffle").title = reason ? reason + "：停用洗牌，請先清除篩選。" : "將完整佇列洗牌";
+    ? reason + t("m0172")
+    : t("m0173");
+  $("shuffle").title = reason ? reason + t("m0174") : t("m0175");
   if (state) { renderQueue(); controls(); updateQueueTimes(); }
 }
 function renderCommunity(value) {
   const listeners = value?.listeners || {connected: false, members: []};
   const members = listeners.members || [];
   $("listeners-status").textContent = listeners.connected
-    ? (listeners.channel || "語音頻道") + "・" + members.length + " 人"
-    : "機器人目前不在語音頻道";
+    ? (listeners.channel || t("m0176")) + "・" + members.length + t("m0177")
+    : t("m0178");
   const list = $("listeners-list"); list.replaceChildren();
   const add = (member, parent) => {
     const row = document.createElement("span"); row.className = "listener";
@@ -1253,20 +1253,20 @@ function renderCommunity(value) {
   members.slice(0, 8).forEach((member) => add(member, list));
   if (members.length > 8) {
     const details = document.createElement("details"), summary = document.createElement("summary");
-    summary.textContent = "另外 " + (members.length - 8) + " 人"; details.append(summary);
+    summary.textContent = t("m0179") + (members.length - 8) + t("m0177"); details.append(summary);
     const more = document.createElement("div"); more.className = "listeners-list";
     members.slice(8).forEach((member) => add(member, more)); details.append(more); list.append(details);
   }
   const records = (value?.activity?.activity || []).slice(0, 100);
   $("activity-list").replaceChildren();
-  $("activity-status").textContent = records.length ? "最近 100 筆操作，重新啟動後清空。" : "尚無操作紀錄。";
+  $("activity-status").textContent = records.length ? t("m0180") : t("m0181");
   for (const item of records) {
     const row = document.createElement("li"), line = document.createElement("p"), meta = document.createElement("small");
     line.textContent = item.actor + "・" + item.detail;
     const stamp = new Date(Number(item.time) * 1000);
-    const time = Number.isFinite(stamp.getTime()) ? stamp.toLocaleTimeString("zh-TW",
-      {timeZone: "Asia/Taipei", hour12: false}) : "時間未知";
-    meta.textContent = time + "・" + ({web: "網頁", discord_text: "Discord 文字", discord_slash: "Discord 斜線"}[item.source] || "Discord") + "・" + item.result;
+    const time = Number.isFinite(stamp.getTime()) ? stamp.toLocaleTimeString(dashboardLocale(),
+      {timeZone: dashboardTimeZone(), hour12: false}) : t("m0182");
+    meta.textContent = time + "・" + ({web: t("m0183"), discord_text: t("m0184"), discord_slash: t("m0185")}[item.source] || "Discord") + "・" + item.result;
     row.append(line, meta); $("activity-list").append(row);
   }
 }
@@ -1288,7 +1288,7 @@ function startEvents(reset = true) {
   if (reset) { eventFailures = 0; nextStreamTry = 0; }
   if (!streamEligible()) { fallbackPolling = true; return; }
   const epoch = eventEpoch, guild = selected, view = generation;
-  const source = eventSource = new EventSource("/api/guilds/" + guild + "/events");
+  const source = eventSource = new EventSource("/api/guilds/" + guild + "/events?lang=" + encodeURIComponent(dashboardLocale()));
   const current = () => epoch === eventEpoch && source === eventSource && guild === selected && view === generation;
   const failed = async () => {
     if (!current()) return;
@@ -1300,7 +1300,7 @@ function startEvents(reset = true) {
     if (epoch !== eventEpoch || guild !== selected || view !== generation) return;
     const delay = eventFailures >= 4 ? 60000 : Math.min(30000, 1000 * 2 ** (eventFailures - 1));
     nextStreamTry = Date.now() + delay;
-    connectionStatus(eventFailures >= 4 ? "一般更新・即時連線重試中" : "即時連線重試中");
+    connectionStatus(eventFailures >= 4 ? t("m0186") : t("m0187"));
     eventTimer = window.setTimeout(() => {
       if (epoch === eventEpoch && guild === selected && view === generation) startEvents(false);
     }, delay);
@@ -1314,7 +1314,7 @@ function startEvents(reset = true) {
       window.clearTimeout(eventWatchdog);
       render(bundle.state);
       if (bundle.history) applyHistory(bundle.history, guild, view);
-      connectionStatus("即時連線");
+      connectionStatus(t("m0188"));
       nextStreamTry = 0;
     } catch { failed(); }
   });
@@ -1322,10 +1322,10 @@ function startEvents(reset = true) {
     if (!current()) return;
     source.close(); eventSource = null; fallbackPolling = true;
     let status; try { status = JSON.parse(event.data).status; } catch { status = 401; }
-    if (status === 401) signedOut("登入已過期，請重新登入。");
+    if (status === 401) signedOut(t("m0055"));
     else {
       stopEvents(); ++generation; selected = ""; state = null; connected = false;
-      resetView(); controls(); notice("你已無法查看這個伺服器，正在更新伺服器清單。", true);
+      resetView(); controls(); notice(t("m0189"), true);
       connect();
     }
   });

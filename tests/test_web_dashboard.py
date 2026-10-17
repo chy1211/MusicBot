@@ -21,7 +21,7 @@ from musicbot.exceptions import PermissionsError
 from musicbot.playlist import Playlist
 from musicbot.web_dashboard import Dashboard, DashboardConfig, start_dashboard
 
-HEADERS = {"X-MusicBot-Dashboard": "1"}
+HEADERS = {"X-MusicBot-Dashboard": "1", "X-Dashboard-Language": "zh-TW"}
 BASE = "/api/guilds/1/"
 
 
@@ -145,7 +145,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.bot = FakeBot()
         self.dashboard = Dashboard(self.bot, DashboardConfig())
-        self.client = TestClient(TestServer(self.dashboard.app))
+        self.client = TestClient(TestServer(self.dashboard.app), headers={"Accept-Language":"zh-TW"})
         await self.client.start_server()
 
     async def asyncTearDown(self):

@@ -1,5 +1,6 @@
 """Per-guild empty-queue policy and bounded YouTube radio, independent of HTTP."""
 from __future__ import annotations
+from .web_dashboard_i18n import message as _web_text
 
 import asyncio
 import json
@@ -341,7 +342,7 @@ class DashboardRadio:
             try:
                 settings = validate_settings(data)
             except (ValueError, TypeError):
-                raise APIError(400, "佇列空時設定不正確；最低與最高秒數須為非負整數，最高 0 表示不限。") from None
+                raise APIError(400, _web_text('m0575')) from None
             async with self.admin_lock:
                 if self.discord_auth:
                     self.authenticate(request)

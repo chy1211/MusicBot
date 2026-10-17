@@ -8,15 +8,16 @@ from dataclasses import dataclass
 from functools import wraps
 
 from .constructs import ErrorResponse
+from .web_dashboard_i18n import message
 
 log = logging.getLogger(__name__)
 ACTIVE = ContextVar("dashboard_native_activity", default=None)
 ACTIONS = {
-    "play": "點歌", "playnext": "插播", "playnow": "立即播放",
-    "shuffleplay": "隨機點歌", "stream": "串流點歌", "skip": "跳過",
-    "undo": "復原", "remove": "移除", "move": "移動", "shuffle": "洗牌", "clear": "清空佇列",
-    "pause": "暫停", "resume": "繼續", "volume": "音量",
-    "repeat": "重複", "seek": "跳轉",
+    "play": "m0231", "playnext": "m0463", "playnow": "m0464",
+    "shuffleplay": "m0465", "stream": "m0466", "skip": "m0333",
+    "undo": "m0122", "remove": "m0467", "move": "m0468", "shuffle": "m0469", "clear": "m0470",
+    "pause": "m0108", "resume": "m0109", "volume": "m0337",
+    "repeat": "m0114", "seek": "m0471",
 }
 
 
@@ -50,7 +51,8 @@ class Capture:
             success = self.success
         after = player_view(self.dashboard.bot, self.guild)
         before = self.before
-        label = ACTIONS[self.action]
+        parts = [{"code":ACTIONS[self.action]}]
+        label = message(ACTIONS[self.action])
         titles = []
         if self.action in ("play", "playnext", "playnow", "shuffleplay", "stream", "undo"):
             titles = [name for key, name in after["entries"].items() if key not in before["entries"]]
@@ -65,22 +67,34 @@ class Capture:
         elif self.action == "skip":
             titles = [before["current"][1]] if before["current"] else []
             if after["current"] == before["current"] and after["votes"]:
-                label = "投票跳過"
+                label = message("m0472")
+                parts = [{"code":"m0472"}]
         if self.action == "volume" and success:
             label += f"：{after['volume']}%"
+            parts = [{"code":"activity.volume","params":{"p0":after["volume"]}}]
         elif self.action == "repeat" and success:
-            label += "：" + {"off": "關閉", "song": "單曲", "all": "整個佇列"}[after["repeat"]]
+            code = {"off":"m0118","song":"m0115","all":"m0119"}[after["repeat"]]
+            label += ":" + message(code)
+            parts.extend([{"code":"punct.colon"},{"code":code}])
         elif self.action == "seek" and success:
             position = self.target_position if self.target_position is not None else after["progress"]
             label += f"：{position} 秒"
+            parts.append({"code":"m0389","params":{"p0":position}})
         # Names only; no query, URL, command arguments, raw exceptions or user IDs.
         detail = "、".join(titles[:8])
         if len(titles) > 8:
             detail += f" 等 {len(titles)} 首"
+        if titles:
+            parts.append({"code":"punct.colon"})
+            for i,title in enumerate(titles[:8]):
+                if i:parts.append({"code":"punct.list"})
+                parts.append(title)
+            if len(titles)>8:parts.append({"code":"m0473","params":{"p0":len(titles)}})
         self.dashboard.record_activity(
             self.guild, self.actor, self.action, self.source,
             label + ("：" + detail if detail else ""),
-            "成功" if success else "被拒或未完成")
+            message("m0024" if success else "m0474"),
+            detail_parts=parts,result_code="m0024" if success else "m0474")
 
 
 def capture(dashboard, guild, actor, action, source):

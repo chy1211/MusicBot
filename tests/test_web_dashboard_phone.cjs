@@ -1,7 +1,8 @@
+const {t,dashboardLocale,dashboardTimeZone,dashboardI18nReady}=require("./dashboard_i18n_fixture.cjs");
 "use strict";
 const {test}=require("node:test"), assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
 const source=fs.readFileSync("musicbot/web/dashboard.js","utf8");
-const c=vm.createContext({});
+const c=vm.createContext({t,dashboardLocale,dashboardTimeZone,dashboardI18nReady,});
 vm.runInContext(source.slice(source.indexOf("function segmentGeometry"),source.indexOf("/* Progressive visual helpers")),c);
 test("segmented pill stays in padded container: three/four tabs, compact and rotated",()=>{
  for(const n of [3,4])for(const width of [349,364,700])for(const height of [46,54]){

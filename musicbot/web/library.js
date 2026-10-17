@@ -9,7 +9,7 @@ function libraryButton(text, run) {
 async function libraryRun(button, run) {
   if (libraryBusy) return;
   libraryBusy = true; buttonBusy(button, true);
-  try { await run(); } catch (error) { notice(error.message || "操作失敗，請稍後再試。", true); }
+  try { await run(); } catch (error) { notice(error.message || t("m0190"), true); }
   finally { libraryBusy = false; buttonBusy(button, false); button.disabled = false; favoriteRender(); controls(); }
 }
 function libraryClear() {
@@ -46,7 +46,7 @@ function libraryRender() {
     button.type = "button"; button.className = "library-choice";
     const title = document.createElement("span"); title.textContent = item.name;
     const meta = document.createElement("small");
-    meta.textContent = item.tracks.length + " 首 · " + (item.source_type === "spotify" ? "Spotify" : item.source_url ? "YouTube" : item.id === "favorites" ? "收藏" : "自建");
+    meta.textContent = item.tracks.length + t("m0191") + (item.source_type === "spotify" ? "Spotify" : item.source_url ? "YouTube" : item.id === "favorites" ? t("m0192") : t("m0193"));
     button.append(title, meta); button.setAttribute("aria-current", String(item.id === libraryActive));
     button.addEventListener("click", () => {
       libraryActive = item.id; libraryDetailOpen = true; libraryRender();
@@ -57,7 +57,7 @@ function libraryRender() {
   const list = libraryData.playlists.find(p => p.id === libraryActive);
   $("library-panel").classList.toggle("detail-open", libraryDetailOpen);
   $("library-detail-heading").textContent = list.name;
-  $("library-meta").textContent = list.tracks.length + " 首" + (list.source_url ? " · " + (list.source_type === "spotify" ? "Spotify" : "YouTube") : "");
+  $("library-meta").textContent = list.tracks.length + t("m0033") + (list.source_url ? " · " + (list.source_type === "spotify" ? "Spotify" : "YouTube") : "");
   $("library-rename-form").hidden = list.id === "favorites";
   $("library-delete").hidden = list.id === "favorites";
   $("library-actions").open = false;
@@ -76,7 +76,7 @@ function libraryRender() {
   list.tracks.forEach((song, index) => {
     const row = document.createElement("li"); row.className = "library-track";
     const check = document.createElement("input"); check.type = "checkbox";
-    check.setAttribute("aria-label", "選取：" + song.title);
+    check.setAttribute("aria-label", t("m0095") + song.title);
     check.addEventListener("change", () => {
       if (check.checked) selectedTracks.add(String(index)); else selectedTracks.delete(String(index));
       $("library-play-selected").disabled = selectedTracks.size === 0;
@@ -84,9 +84,9 @@ function libraryRender() {
     const info = document.createElement("div"); info.className = "song";
     const title = songTitle(document.createElement("p"), song); info.append(title);
     const length = document.createElement("small"); length.className = "song-length";
-    length.textContent = song.duration ? duration(song.duration) : "長度未知";
-    const remove = libraryButton("刪除", () => libraryChange(list.id, {action:"remove", index}));
-    remove.setAttribute("aria-label", "刪除：" + song.title);
+    length.textContent = song.duration ? duration(song.duration) : t("m0097");
+    const remove = libraryButton(t("m0004"), () => libraryChange(list.id, {action:"remove", index}));
+    remove.setAttribute("aria-label", t("m0194") + song.title);
     row.append(check, imageElement(song.thumbnail), info, length, remove); $("library-list").append(row);
   });
   $("library-empty").hidden = list.tracks.length !== 0;
@@ -95,10 +95,10 @@ async function libraryChange(id, data, method = "PATCH", suffix = "") {
   const epoch = generation, revision = libraryData.revision;
   const result = await api("/api/library/" + encodeURIComponent(id) + suffix, method, {...data, revision});
   if (epoch !== generation) return;
-  libraryData = result; libraryRender(); favoriteRender(); notice(result.message || "已更新歌單。");
+  libraryData = result; libraryRender(); favoriteRender(); notice(result.message || t("m0195"));
 }
 async function libraryPlay(list, chosen) {
-  if (!selected || !connected) throw new Error("請先選擇可用的伺服器。");
+  if (!selected || !connected) throw new Error(t("m0196"));
   const guild = selected, epoch = generation;
   const data = {revision: libraryData.revision};
   if (chosen !== undefined) data.selected_items = chosen;
@@ -107,7 +107,7 @@ async function libraryPlay(list, chosen) {
   render(result.state, true); notice(result.message, result.skipped > 0);
 }
 async function librarySave(song, favorite = false) {
-  if (!safeURL(song?.url)) throw new Error("這首歌曲沒有可收藏的來源網址。");
+  if (!safeURL(song?.url)) throw new Error(t("m0197"));
   if (!await libraryLoad()) return;
   const track = {title: song.title, url: song.url, duration: song.duration || null};
   if (favorite) return libraryChange("favorites", {track}, "POST", "/tracks");
@@ -120,7 +120,7 @@ async function librarySave(song, favorite = false) {
   $("library-save-dialog").showModal();
 }
 function librarySaveButton(song) {
-  const button = libraryButton("加到歌單…", () => librarySave(song));
+  const button = libraryButton(t("m0198"), () => librarySave(song));
   button.className = "save-to-library"; return button;
 }
 $("nav-play").addEventListener("click", () => libraryView("play"));
@@ -145,14 +145,14 @@ $("library-create").addEventListener("submit", event => {
 });
 $("library-rename").addEventListener("click", () => libraryRun($("library-rename"), () => libraryChange(libraryActive, {name: $("library-name").value})));
 $("library-delete").addEventListener("click", () => {
-  if (!window.confirm("確定刪除這份歌單？")) return;
+  if (!window.confirm(t("m0199"))) return;
   return libraryRun($("library-delete"), () => libraryChange(libraryActive, {}, "DELETE"));
 });
 function favoriteRender() {
   const button = $("favorite"), key = songIdentity(state?.current?.url);
   const saved = !!key && !!libraryData?.playlists[0]?.tracks.some(t => songIdentity(t.url) === key);
   button.setAttribute("aria-pressed", String(saved));
-  button.title = saved ? "取消收藏" : "收藏這首歌";
+  button.title = saved ? t("m0200") : t("m0201");
   button.textContent = saved ? "♥" : "♡";
   button.setAttribute("aria-label", button.title);
   button.classList.toggle("is-favorite", saved);
@@ -183,12 +183,12 @@ function libraryImportElement(tag, text, id) {
   return element;
 }
 function libraryInitImports() {
-  const hint = libraryButton("要匯入歌單？在上方點歌框貼上歌單網址", async () => {
+  const hint = libraryButton(t("m0202"), async () => {
     libraryView("play"); $("query").focus();
   });
   hint.className = "subtle library-import-hint";
   $("library-import-hint").append(hint);
-  const sync = libraryButton("從來源重新同步", librarySync); sync.hidden = true;
+  const sync = libraryButton(t("m0203"), librarySync); sync.hidden = true;
   const origin = libraryImportElement("p", "", "library-source"); origin.hidden = true;
   $("library-sync-slot").append(origin, sync);
   libraryImportUI = {sync, origin};
@@ -196,7 +196,7 @@ function libraryInitImports() {
 function libraryImportRender(list) {
   if (!libraryImportUI) return;
   libraryImportUI.sync.hidden = libraryImportUI.origin.hidden = !list?.source_url;
-  libraryImportUI.origin.textContent = list?.source_url ? "可從來源重新同步" : "";
+  libraryImportUI.origin.textContent = list?.source_url ? t("m0204") : "";
 }
 async function librarySavePreview(song, selectedItems, name, button) {
   return libraryRun(button, async () => {
@@ -210,12 +210,12 @@ async function librarySavePreview(song, selectedItems, name, button) {
   });
 }
 async function librarySync() {
-  if (!selected) throw new Error("請先選擇伺服器。");
+  if (!selected) throw new Error(t("m0205"));
   const epoch = generation, guild = selected, pid = libraryActive, revision = libraryData.revision;
   const value = await api("/api/guilds/" + guild + "/library/" + encodeURIComponent(pid) + "/sync/preview", "POST", {revision});
   if (epoch !== generation || guild !== selected || pid !== libraryActive) return;
-  const text = "重新同步將取代目前曲目：新增 " + value.diff.added + " 首、移除 " + value.diff.removed + " 首。"
-    + value.warning + "確定從來源重新同步？";
+  const text = t("m0206") + value.diff.added + t("m0207") + value.diff.removed + t("m0208")
+    + value.warning + t("m0209");
   if (!window.confirm(text)) return;
   const result = await api("/api/library/" + encodeURIComponent(pid) + "/sync", "POST", {preview_id: value.preview_id, revision: value.revision});
   if (epoch !== generation || guild !== selected) return;

@@ -1,5 +1,6 @@
 """Private, bounded personal playlists; no Discord identifiers in payloads."""
 from __future__ import annotations
+from .web_dashboard_i18n import message as _web_text
 import asyncio
 import copy
 import hashlib
@@ -30,14 +31,14 @@ def fail(status, message):
 def song(value):
     from .web_dashboard import public_url
     if not isinstance(value, dict):
-        fail(400, "歌曲資料格式不正確。")
+        fail(400, _web_text('m0534'))
     title, url, length = value.get("title"), value.get("url"), value.get("duration")
     if not isinstance(title, str) or not title.strip() or len(title) > 300:
-        fail(400, "歌曲標題須為 1 至 300 字。")
+        fail(400, _web_text('m0535'))
     if not isinstance(url, str) or len(url) > 2000 or not public_url(url) or any(c.isspace() for c in url):
-        fail(400, "歌曲網址只接受 HTTP／HTTPS，最多 2000 字且不可包含空白。")
+        fail(400, _web_text('m0536'))
     if length is not None and (type(length) not in (int, float) or not 0 <= length <= 31536000 or not math.isfinite(length)):
-        fail(400, "歌曲長度須為非負秒數，或留空表示未知。")
+        fail(400, _web_text('m0537'))
     result = {"title": title.strip(), "url": url, "duration": length, "added_at": time.time()}
     cover = public_url(value.get("thumbnail"))
     if cover: result["thumbnail"] = cover
@@ -46,7 +47,7 @@ def song(value):
 
 def name(value):
     if not isinstance(value, str) or not 1 <= len(value.strip()) <= 60 or any(ord(c) < 32 for c in value):
-        fail(400, "歌單名稱須為 1 至 60 字，且不可包含控制字元。")
+        fail(400, _web_text('m0538'))
     return value.strip()
 
 
@@ -87,12 +88,12 @@ class PlaylistStore:
     def path(self, uid):
         # uid always comes from the authenticated server session, never a body.
         if type(uid) is not int or not 0 < uid < 10**20:
-            fail(403, "登入身分不正確。")
+            fail(403, _web_text('m0539'))
         return self.root / (str(uid) + ".json")
 
     @staticmethod
     def fresh():
-        return {"version": 1, "playlists": [{"id": "favorites", "name": "收藏", "tracks": []}]}
+        return {"version": 1, "playlists": [{"id": "favorites", "name": _web_text('m0192'), "tracks": []}]}
 
     def read(self, uid):
         path = self.path(uid)
@@ -136,7 +137,7 @@ class PlaylistStore:
                 raise
             path.rename(path.with_name(path.name + ".corrupt-" + str(time.time_ns())))
             log.error("Dashboard personal playlist quarantined (%s)", type(exc).__name__)
-            fail(409, "歌單檔案損壞，已保留原檔供復原；請重新整理後再試。")
+            fail(409, _web_text('m0540'))
 
     @staticmethod
     def revision(value):
@@ -148,7 +149,7 @@ class PlaylistStore:
                 authorize()
             value = self.read(uid)
             if revision is not None and revision != self.revision(value):
-                fail(409, "歌單已更新，請重新整理後再操作。")
+                fail(409, _web_text('m0520'))
             if change is not None:
                 dedupe_favorites(value)
                 change(value)
@@ -177,7 +178,7 @@ class DashboardLibrary(DashboardImports):
                 self.check_blocked(member)
                 found = True
         if not found:
-            fail(403, "你目前不是機器人所在伺服器的成員。")
+            fail(403, _web_text('m0491'))
         return uid
 
     async def library(self, request):
@@ -186,65 +187,65 @@ class DashboardLibrary(DashboardImports):
             if self.discord_auth:
                 self.authenticate(request)
             if self.library_identity(request) != uid:
-                fail(403, "登入身分已變更，請重新登入。")
+                fail(403, _web_text('m0508'))
         owner = uid == self.bot.config.owner_id
         if request.method == "GET":
             return web.json_response(dict(await self.playlist_store.transact(uid, authorize=authorize), owner=owner, sources={"spotify": self.spotify_import_enabled(), "youtube": True}))
         data = await self.payload(request)
         if any(key in data for key in ("user_id", "filename", "path")):
-            fail(400, "請求包含不支援的欄位。")
+            fail(400, _web_text('m0541'))
         pid = request.match_info.get("playlist_id")
-        message = "已更新歌單。"
+        message = _web_text('m0195')
         def change(value):
             nonlocal message
             if pid is None:
                 if set(data) != {"name"}:
-                    fail(400, "建立歌單只接受名稱。")
+                    fail(400, _web_text('m0542'))
                 if len(value["playlists"]) >= 21:
-                    fail(400, "自訂歌單最多 20 份。")
+                    fail(400, _web_text('m0524'))
                 value["playlists"].append({"id": secrets.token_hex(12), "name": name(data.get("name")), "tracks": []})
                 return
             target = next((item for item in value["playlists"] if item["id"] == pid), None)
             if target is None:
-                fail(404, "找不到你的歌單。")
+                fail(404, _web_text('m0521'))
             if request.method == "DELETE":
                 if pid == "favorites":
-                    fail(400, "收藏不能刪除。")
+                    fail(400, _web_text('m0543'))
                 value["playlists"].remove(target)
             elif request.path.endswith("/tracks"):
                 candidate = song(data.get("track"))
                 if pid == "favorites" and any(media_url(t["url"]) == media_url(candidate["url"]) for t in target["tracks"]):
-                    message = "已在收藏中"
+                    message = _web_text('m0544')
                     return
                 if len(target["tracks"]) >= 200:
-                    fail(400, "每份歌單最多 200 首歌曲。")
+                    fail(400, _web_text('m0545'))
                 target["tracks"].append(candidate)
-                message = "已收藏" if pid == "favorites" else message
+                message = _web_text('m0546') if pid == "favorites" else message
             elif pid == "favorites" and data.get("action") == "remove_url":
                 key = media_url(data.get("url"))
-                if not key: fail(400, "請提供有效的歌曲網址。")
+                if not key: fail(400, _web_text('m0547'))
                 target["tracks"][:] = [t for t in target["tracks"] if media_url(t["url"]) != key]
-                message = "已取消收藏"
+                message = _web_text('m0548')
             elif "name" in data:
                 if pid == "favorites":
-                    fail(400, "收藏不能改名。")
+                    fail(400, _web_text('m0549'))
                 target["name"] = name(data["name"])
             elif data.get("action") in ("remove", "move"):
                 tracks = target["tracks"]
                 index = data.get("index")
                 if type(index) is not int or not 0 <= index < len(tracks):
-                    fail(400, "歌曲位置已失效，請重新整理。")
+                    fail(400, _web_text('m0457'))
                 if data["action"] == "remove":
                     tracks.pop(index)
                 else:
                     dest = data.get("to")
                     if type(dest) is not int or not 0 <= dest < len(tracks):
-                        fail(400, "歌曲位置不正確。")
+                        fail(400, _web_text('m0486'))
                     tracks.insert(dest, tracks.pop(index))
             else:
-                fail(400, "不支援這個歌單操作。")
+                fail(400, _web_text('m0550'))
         if pid is not None and not isinstance(data.get("revision"), str):
-            fail(400, "請提供歌單版本，重新整理後再操作。")
+            fail(400, _web_text('m0551'))
         result = await self.playlist_store.transact(uid, change, data.get("revision"), authorize=authorize)
         return web.json_response(dict(result, owner=owner, message=message))
 
@@ -254,15 +255,15 @@ class DashboardLibrary(DashboardImports):
         data = await self.payload(request)
         value = await self.playlist_store.transact(uid)
         if data.get("revision") != value["revision"]:
-            fail(409, "歌單已更新，請重新整理後再加入。")
+            fail(409, _web_text('m0552'))
         target = next((item for item in value["playlists"] if item["id"] == request.match_info["playlist_id"]), None)
         if target is None:
-            fail(404, "找不到你的歌單。")
+            fail(404, _web_text('m0521'))
         chosen = data.get("selected_items", [str(i) for i in range(len(target["tracks"]))])
         if (not isinstance(chosen, list) or not chosen or len(chosen) > 200
                 or any(type(i) is not str or i not in {str(n) for n in range(len(target["tracks"]))} for i in chosen)
                 or len(set(chosen)) != len(chosen)):
-            fail(400, "請選取有效且不重複的歌曲。")
+            fail(400, _web_text('m0553'))
         self.user_rate_limit(member)
         preview = {"count": len(target["tracks"]), "url": "", "status": "ready",
                    "entries": [dict(item, item_id=str(i)) for i, item in enumerate(target["tracks"])]}
@@ -276,5 +277,5 @@ class DashboardLibrary(DashboardImports):
                 raise
             finish(value, result["added"] > 0)
             reasons = list(dict.fromkeys(row["reason"] for row in result["results"] if row["reason"]))
-            return web.json_response(dict(result, message=f"已加入 {result['added']} 首，被拒 {result['skipped']} 首。" + "；".join(reasons),
+            return web.json_response(dict(result, message=_web_text('m0554', p0=result['added'], p1=result['skipped']) + "；".join(reasons),
                                           state=self.snapshot(guild, member)))

@@ -8,11 +8,11 @@ async function adminPermissionsLoad() {
   adminPermissions = value; adminPermissionsRender();
 }
 function permissionText(value) {
-  return typeof value === "boolean" ? value ? "是" : "否" : Array.isArray(value) ? value.join("、") || "未設定" : String(value);
+  return typeof value === "boolean" ? value ? t("m0210") : t("m0211") : Array.isArray(value) ? value.join("、") || t("m0212") : String(value);
 }
 function adminPermissionsRender() {
   $("admin-permissions").replaceChildren();
-  const heading = document.createElement("h3"); heading.textContent = "權限群組";
+  const heading = document.createElement("h3"); heading.textContent = t("m0213");
   $("admin-permissions").append(heading);
   for (const group of adminPermissions.groups) {
     const details = document.createElement("details"), summary = document.createElement("summary");
@@ -25,17 +25,17 @@ function adminPermissionsRender() {
         const input = document.createElement(field === "AllowPlaylists" ? "select" : "input");
         input.setAttribute("aria-label", group.name + " " + field);
         if (field === "AllowPlaylists") {
-          for (const [label, v] of [["是", "true"], ["否", "false"]]) {
+          for (const [label, v] of [[t("m0210"), "true"], [t("m0211"), "false"]]) {
             const option = document.createElement("option"); option.value = v; option.textContent = label; input.append(option);
           }
           input.value = String(value);
         } else {
           input.type = "number"; input.min = "0"; input.max = String(adminPermissions.limits[field]); input.step = "1"; input.value = String(value);
         }
-        const confirm = libraryButton("修改", async () => {
+        const confirm = libraryButton(t("m0214"), async () => {
           const next = field === "AllowPlaylists" ? input.value === "true" : Number(input.value);
           if (field !== "AllowPlaylists" && (!/^\d+$/.test(input.value) || !Number.isSafeInteger(next) || next < 0 || next > adminPermissions.limits[field]))
-            throw new Error("請輸入範圍內的非負整數。");
+            throw new Error(t("m0215"));
           if (value === next) return;
           pendingPermission = {guild: selected, epoch: generation, group: group.name, field, old_value: value, value: next};
           $("permission-confirm-text").textContent = group.name + "・" + field + "：" + permissionText(value) + " → " + permissionText(next);

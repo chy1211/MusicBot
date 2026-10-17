@@ -9,7 +9,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from musicbot.web_dashboard import DashboardConfig
 from tools.dashboard_demo import DemoBot, DemoDashboard
 
-HEADERS = {"X-MusicBot-Dashboard": "1"}
+HEADERS = {"X-MusicBot-Dashboard": "1", "X-Dashboard-Language": "zh-TW"}
 BASE = "/api/guilds/1/"
 
 
@@ -19,7 +19,7 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         self.dashboard = DemoDashboard(self.bot, DashboardConfig(
             auth_mode="discord", public_url="http://127.0.0.1",
             discord_client_id="1000", discord_client_secret="not-a-credential"))
-        self.client = TestClient(TestServer(self.dashboard.app), cookie_jar=CookieJar(unsafe=True))
+        self.client = TestClient(TestServer(self.dashboard.app), headers={"Accept-Language":"zh-TW"}, cookie_jar=CookieJar(unsafe=True))
         await self.client.start_server()
         self.dashboard.config = replace(self.dashboard.config,
                                         public_url=str(self.client.make_url("/")).rstrip("/"))

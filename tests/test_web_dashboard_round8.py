@@ -15,7 +15,7 @@ class CapabilitiesTests(unittest.IsolatedAsyncioTestCase):
         self.dashboard = Dashboard(self.bot, DashboardConfig(
             auth_mode="discord", public_url="http://localhost",
             discord_client_id="123", discord_client_secret="demo-not-a-credential"))
-        self.client = TestClient(TestServer(self.dashboard.app), cookie_jar=CookieJar(unsafe=True))
+        self.client = TestClient(TestServer(self.dashboard.app), headers={"Accept-Language":"zh-TW"}, cookie_jar=CookieJar(unsafe=True))
         await self.client.start_server()
         self.origin = str(self.client.make_url("/")).rstrip("/")
         self.dashboard.config = replace(self.dashboard.config, public_url=self.origin)
