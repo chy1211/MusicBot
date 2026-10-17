@@ -10,6 +10,7 @@ from pathlib import Path
 
 from aiohttp import web
 from .permissions import Permissions
+from .web_dashboard_guild_settings import VoteSkipStore, validate_vote_skip
 from .web_dashboard_library import fail, atomic_write
 
 FIELDS = {
@@ -59,9 +60,38 @@ def replace_value(raw, group, field, value):
 
 class DashboardPermissions:
     def init_permissions_admin(self):
+        self.vote_skip_store = VoteSkipStore()
+        vote_path = "/api/guilds/{guild_id}/admin/vote-skip"
+        self.app.router.add_get(vote_path, self.admin_vote_skip)
+        self.app.router.add_post(vote_path, self.admin_vote_skip)
+        self.app.router.add_delete(vote_path, self.admin_vote_skip)
         path = "/api/guilds/{guild_id}/admin/permissions"
         self.app.router.add_get(path, self.admin_permissions)
         self.app.router.add_patch(path, self.admin_permissions)
+
+    async def admin_vote_skip(self, request):
+        self.require_owner(request)
+        async with self.admin_lock:
+            if self.discord_auth:
+                self.authenticate(request)
+            guild, _owner = self.require_owner(request)
+            if request.method in ("POST", "DELETE"):
+                try:
+                    value = ({"enabled": True} if request.method == "DELETE"
+                             else validate_vote_skip(await self.payload(request)))
+                except (ValueError, TypeError):
+                    fail(400, _web_text("vote_skip.invalid"))
+                try:
+                    # Clearing persists the default through the same atomic writer.
+                    value = await self.vote_skip_store.put(guild, value)
+                except OSError:
+                    fail(503, _web_text("vote_skip.save_failed"))
+            else:
+                value = await asyncio.to_thread(self.vote_skip_store.read, guild)
+            if self.discord_auth:
+                self.authenticate(request)
+            self.require_owner(request)
+            return web.json_response(value)
 
     def permissions_view(self, guild):
         path = Path(self.bot._perms_file)

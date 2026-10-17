@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from functools import wraps
 
 from .constructs import ErrorResponse
+from .web_dashboard_guild_settings import vote_skip_enabled
 from .web_dashboard_i18n import message
 
 log = logging.getLogger(__name__)
@@ -28,7 +29,8 @@ def player_view(bot, guild):
     return {"entries": {id(item): str(item.title)[:160] for item in entries},
             "order": [id(item) for item in entries],
             "current": (id(current), str(current.title)[:160]) if current else None,
-            "votes": len(getattr(getattr(player, "skip_state", None), "skippers", ())),
+            "votes": (len(getattr(getattr(player, "skip_state", None), "skippers", ()))
+                      if vote_skip_enabled(bot, guild) else 0),
             "volume": round(getattr(player, "volume", 0) * 100),
             "repeat": ("song" if getattr(player, "repeatsong", False) else
                        "all" if getattr(player, "loopqueue", False) else "off"),

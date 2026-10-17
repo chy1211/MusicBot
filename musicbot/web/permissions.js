@@ -3,8 +3,10 @@ let adminPermissions = null, pendingPermission = null;
 async function adminPermissionsLoad() {
   if (!adminOwner || !selected) return;
   const guild = selected, epoch = generation;
+  await adminVoteSkipLoad();
+  if (epoch !== generation || guild !== selected || !adminOwner) return;
   const value = await api("/api/guilds/" + guild + "/admin/permissions");
-  if (epoch !== generation || guild !== selected) return;
+  if (epoch !== generation || guild !== selected || !adminOwner) return;
   adminPermissions = value; adminPermissionsRender();
 }
 function permissionText(value) {
@@ -69,3 +71,28 @@ $("permission-confirm").addEventListener("click", () => libraryRun($("permission
   if (epoch !== generation || guild !== selected) return;
   adminPermissions = result; adminPermissionsRender(); notice(result.message);
 }));
+
+async function adminVoteSkipLoad() {
+  if (!adminOwner || !selected) return;
+  const guild = selected, epoch = generation;
+  $("admin-vote-skip-enabled").disabled = true;
+  $("admin-vote-skip-save").disabled = true;
+  const value = await api("/api/guilds/" + guild + "/admin/vote-skip");
+  if (epoch !== generation || guild !== selected || !adminOwner) return;
+  $("admin-vote-skip-enabled").checked = value.enabled;
+  $("admin-vote-skip-enabled").disabled = false;
+  $("admin-vote-skip-save").disabled = false;
+  $("admin-vote-skip-status").textContent = "";
+}
+$("admin-vote-skip-form").addEventListener("submit", event => {
+  event.preventDefault();
+  return libraryRun($("admin-vote-skip-save"), async () => {
+    if (!adminOwner || !selected || $("admin-vote-skip-enabled").disabled) return;
+    const guild = selected, epoch = generation;
+    const value = await api("/api/guilds/" + guild + "/admin/vote-skip", "POST",
+      {enabled:$("admin-vote-skip-enabled").checked});
+    if (epoch !== generation || guild !== selected || !adminOwner) return;
+    $("admin-vote-skip-enabled").checked = value.enabled;
+    $("admin-vote-skip-status").textContent = t("vote_skip.saved");
+  });
+});

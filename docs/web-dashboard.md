@@ -1935,3 +1935,84 @@ independent per-guild settings, clear via the default option, English translatio
 and mobile layout without horizontal overflow. Screenshots:
 - /tmp/musicbot-r17-shots/admin-desktop.png
 - /tmp/musicbot-r17-shots/admin-mobile.png
+
+
+### Round 18: per-server vote-to-skip switch
+
+Owner management's server permissions section adds **Vote to skip**, enabled by
+default, with the explanation: when disabled, anyone with Skip permission can
+skip immediately. The existing global permission groups remain separate.
+
+Owner-only GET/POST/DELETE /api/guilds/{guild_id}/admin/vote-skip uses the existing
+authentication, membership, blocklist, dashboard header and same-origin checks.
+POST accepts exactly {"enabled":false} or {"enabled":true}; GET returns the same
+shape. DELETE clears the override by atomically persisting {"enabled":true}.
+Non-Owners receive 403; invalid values receive 400; write failures receive 503.
+The operation log action is admin_vote_skip for every method.
+
+The file is data/web_dashboard/vote_skip/<guild_id>.json. Fictional guild 1:
+~~~json
+{"enabled":false}
+~~~
+Missing, corrupt, oversized or unreadable files default to enabled. Removing a
+guild file also restores the default. Reads are bounded to 4096 bytes and direct
+atomic file replacements take effect on the next command. The shared
+GuildSettingsStore is extracted from round17's NotificationChannelStore: both use
+the same existing JSON writer (sibling temp file, file fsync, atomic rename,
+directory fsync; new files 0600, replacements preserve mode and ownership).
+No guild/member names are stored, and all examples and test IDs are fictional.
+
+Text dispatch, /skip and the web skip button still use the single cmd_skip.
+Previously the web button validated Skip/voice access then called cmd_skip with
+message=None and param=""; it recorded deduplicated votes for ordinary members,
+using SkipsRequired/SkipRatio, while InstaSkip followed LegacySkip/force rules.
+Only the force-path decision now reads this guild's setting. Disabled voting
+enters the existing direct-skip path without counting members, adding votes or
+calculating thresholds. It uses the existing "Force skipped" response. The
+original Skip gate, voice checks and SkipLooped rules remain in place, including
+the existing force behavior for actual InstaSkip holders. Other guilds continue
+to read their own setting, defaulting to their original voting behavior.
+
+Activity's votes value is zero while disabled, including pre-existing votes
+while the audio player has yet to advance, so the vote label and remaining-votes
+reply never appear for new disabled-mode skips. No skip logic is duplicated.
+The setting also works when the dashboard is disabled and honors --write-dir.
+The demo overrides its settings root to its own TemporaryDirectory.
+
+Static assets and service worker use r18-vote-skip. The switch has an accessible
+label, help text and switch role; it is disabled until the Owner read succeeds,
+and late responses cannot restore another server's or a logged-out session's
+setting. All new text is in the matching en/zh-TW catalogs.
+
+
+Round18 validation: 582/582 backend tests (555 existing + 27 new), 191/191 frontend
+checks (183 existing + 8 new), 16/16 compound-link cases, 606 matching translated
+catalog keys (599 existing + 7 new); zero failures. Backend coverage includes real
+text dispatch and real /skip callbacks (enabled/disabled and denied permission),
+web voting/threshold/deduplication/direct skips, InstaSkip force/LegacySkip,
+SkipLooped, voice gates, guild isolation, non-Owner 403, clear-to-default, strict
+schemas, owner/membership rechecks, atomic failure preservation and stale votes.
+Targeted fixture tests were corrected before this complete passing run; existing
+authorization semantics and rejection status codes were retained.
+
+The staged tree was archived with git archive "$(git write-tree)" and extracted
+into an isolated context, using a test Dockerfile with FROM musicbot:ytdlp-base,
+USER 0:0, WORKDIR /musicbot, COPY src/ /musicbot/ and both zh_TW po2mo compilations.
+Complete commands (all container names/images use the musicbot-webtest- prefix):
+~~~sh
+docker build --network none -t musicbot-webtest-r18-suite:check -f "$context/Dockerfile" "$context"
+docker run --rm --network none --user 0:0 --name musicbot-webtest-r18-unit --entrypoint python3 musicbot-webtest-r18-suite:check -m unittest discover -s tests -p 'test_*.py'
+docker run --rm --network none --user 0:0 --name musicbot-webtest-r18-links --entrypoint python3 musicbot-webtest-r18-suite:check -m tools.test_compound_link
+docker run --rm --network none --user 0:0 --name musicbot-webtest-r18-i18n --entrypoint python3 musicbot-webtest-r18-suite:check -m tools.check_dashboard_i18n
+node --test tests/*.cjs
+~~~
+The browser used its own headless Chromium and a credential-free --network none
+demo container reached only through the existing loopback stdio relay. Six browser
+checks passed: Owner disable, reload persistence, independent second-guild default,
+English translation, mobile width, and re-enable. No page errors. Screenshots:
+- /tmp/musicbot-r18-shots/permissions-desktop.png
+- /tmp/musicbot-r18-shots/permissions-mobile.png
+- /tmp/musicbot-r18-shots/browser-checks.json (browser evidence)
+
+No deployment, production config/data reads, production container access or cookie
+sync was needed. No additional reviewer or acceptance subagent was used.

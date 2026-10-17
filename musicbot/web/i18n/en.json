@@ -597,5 +597,12 @@
   "notify.unavailable": "Configured channel (unavailable)",
   "notify.saved": "Notification channel saved.",
   "notify.invalid": "Choose a text channel in this server that the bot can view and send messages in, or clear the setting.",
-  "notify.save_failed": "Could not save the notification channel. Try again later."
+  "notify.save_failed": "Could not save the notification channel. Try again later.",
+  "vote_skip.heading": "Server permissions",
+  "vote_skip.label": "Vote to skip",
+  "vote_skip.save": "Save skip settings",
+  "vote_skip.help": "Applies to this server. When disabled, anyone with Skip permission can skip immediately.",
+  "vote_skip.saved": "Skip settings saved.",
+  "vote_skip.invalid": "Invalid skip settings.",
+  "vote_skip.save_failed": "Could not save skip settings. Try again later."
 }

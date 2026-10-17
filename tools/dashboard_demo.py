@@ -308,6 +308,8 @@ class DemoDashboard(Dashboard):
         self.session_store_root = Path(self.demo_temp.name) / "sessions"
         super().__init__(bot, config)
         self.notification_store.root = Path(self.demo_temp.name) / "notification_channels"
+        self.vote_skip_store.root = Path(self.demo_temp.name) / "vote_skip"
+        bot._web_dashboard = self
         # Replace the provider boundary before any request can run.
         self.popularity_store.root = Path(self.demo_temp.name) / "stats"
         import datetime as dt

@@ -5690,7 +5690,11 @@ class MusicBot(commands.Bot):
         )
         force_skip = param.lower() in ["force", "f"]
 
-        if permission_force_skip and (force_skip or self.config.legacy_skip):
+        # One guild-scoped decision; all command surfaces share this skip path.
+        from .web_dashboard_guild_settings import vote_skip_enabled
+        if not vote_skip_enabled(self, guild) or (
+            permission_force_skip and (force_skip or self.config.legacy_skip)
+        ):
             if (
                 not permission_force_skip
                 and not permissions.skip_looped
