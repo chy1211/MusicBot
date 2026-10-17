@@ -93,6 +93,23 @@ from .utils import (
     slugify,
 )
 
+def build_play_response(ssd_, *, number, track, position, playlist=False):
+    """Shared native enqueue formatting, without queue or command side effects."""
+    template = (
+        "Enqueued **%(number)s** songs to be played.\n"
+        "Position in queue: %(position)s"
+        if playlist else
+        "Enqueued `%(track)s` to be played.\n"
+        "Position in queue: %(position)s"
+    )
+    response = Response(_D(template, ssd_) % {
+        "number": number, "track": track, "position": position,
+    })
+    # Observational metadata for one dashboard batch summary. Discord ignores it.
+    response.queue_position_text = position
+    return response
+
+
 # optional imports
 try:
     import objgraph
@@ -4549,11 +4566,6 @@ class MusicBot(commands.Bot):
                         fmt_args={"max": permissions.max_song_length},
                     )
 
-                reply_text = _D(
-                    "Enqueued **%(number)s** songs to be played.\n"
-                    "Position in queue: %(position)s",
-                    ssd_,
-                )
 
             # If it's an entry
             else:
@@ -4586,11 +4598,6 @@ class MusicBot(commands.Bot):
                 if confirmed_check is not None:
                     confirmed_check.enqueued = True
 
-                reply_text = _D(
-                    "Enqueued `%(track)s` to be played.\n"
-                    "Position in queue: %(position)s",
-                    ssd_,
-                )
                 track_title = _D(entry.title, ssd_)
 
             log.debug("Added song(s) at position %s", position)
@@ -4633,13 +4640,9 @@ class MusicBot(commands.Bot):
                         "Cannot estimate time until playing for position: %d", position
                     )
 
-        reply_text %= {
-            "number": listlen,
-            "track": track_title,
-            "position": pos_str,
-        }
-
-        return Response(reply_text)
+        return build_play_response(
+            ssd_, number=listlen, track=track_title, position=pos_str,
+            playlist=bool(info.has_entries and info.entry_count > 1))
 
     @command_helper(
         usage=["{cmd} <URL>"],

@@ -1005,6 +1005,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                   if item["item_id"] in data["selected_items"]]
         preview["status"], preview["selection"] = "submitted", data["selected_items"]
         results = []
+        first_response = None
         deadline = time.monotonic() + self.BATCH_TIMEOUT
         for item in chosen:
             error = ""
@@ -1053,6 +1054,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     CONFIRMED_ENTRY_CHECK.reset(token)
                 if isinstance(response, ErrorResponse):
                     raise APIError(409, denial_text(response.description or ""))
+                if first_response is None:
+                    first_response = response
                 success = True
             except APIError as exc:
                 error = str(exc)
@@ -1071,7 +1074,35 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         added = sum(item["added"] for item in results)
         summary = {"added": added, "skipped": len(results) - added, "results": results}
         preview["summary"], preview["status"] = summary, "done"
+        if added and first_response is not None:
+            from .bot import build_play_response
+            response = build_play_response(
+                self.bot.server_data[guild.id], number=added, track="",
+                position=getattr(first_response, "queue_position_text", ""), playlist=True)
+            await self.send_web_response(request, guild, owner, response, "play")
         return summary
+
+    async def send_web_response(self, request, guild, owner, response, command):
+        """Reuse the native Response and safe sender, including auto deletion."""
+        if not hasattr(self.bot, "safe_send_message"):
+            return
+        try:
+            if self.discord_auth:
+                self.authenticate(request)
+                guild, owner = self.guild_owner(request)
+            channel = self.channel_for(guild, owner)
+            ssd = self.bot.server_data[guild.id]
+            if not response.title:
+                response.title = _D("**Command:** %(name)s", ssd) % {"name": command}
+            response.content += "\n\n\u4f86\u81ea\u7db2\u9801\u63a7\u5236\u53f0"
+            if not getattr(self.bot.config, "embeds", True):
+                response.content = f"<@{owner.id}>\n" + response.content
+            response.description = response.overload_description
+            response.set_author(name=getattr(owner, "display_name", None) or owner.name)
+            # Do not bypass safe_send_message's embed/text/delete settings.
+            await asyncio.wait_for(self.bot.safe_send_message(channel, response), 10)
+        except Exception as exc:
+            log.warning("Dashboard Discord response failed (%s)", type(exc).__name__)
 
     async def mutate(self, request):
         data = await self.payload(request)
@@ -1263,21 +1294,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             if preview:
                 preview["status"] = "done"
             message = response.content if summary else "已完成操作。"
-            if self.discord_auth and response is not None:
+            if response is not None and not summary:
                 message = getattr(response, "content", "") or message
-                # Discord messages are sent by the bot, visibly attributed to the caller.
-                # Embed authors do not survive MusicBotResponse.to_markdown().
-                if not getattr(self.bot.config, "embeds", True):
-                    response.content = f"<@{owner.id}>\n" + message
-                    response.description = response.overload_description
-                if hasattr(response, "set_author"):
-                    response.set_author(name=getattr(owner, "display_name", owner.name))
-                if hasattr(self.bot, "safe_send_message"):
-                    try:
-                        channel = self.channel_for(guild, owner)
-                        await asyncio.wait_for(self.bot.safe_send_message(channel, response), 10)
-                    except Exception as exc:
-                        log.warning("Dashboard Discord response failed (%s)", type(exc).__name__)
+                await self.send_web_response(request, guild, owner, response, action)
             return web.json_response({"message": message, "state": self.snapshot(guild, owner), **summary})
 
     async def start(self):
