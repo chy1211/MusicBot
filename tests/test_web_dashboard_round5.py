@@ -306,14 +306,14 @@ class Round5Discord(unittest.IsolatedAsyncioTestCase):
         await self.call(BASE + "play", {"query": body["history"][0]["url"]}, status=403)
         self.login_as(99)
         await self.call(BASE + "history", method="GET", status=403)
-        await self.call(BASE + "lyrics", method="GET", status=403)
+        await self.call(BASE + "lyrics", method="GET", status=401)
 
     async def test_lyrics_removed_member_rechecked_after_await(self):
         async def lookup(*args, **kwargs):
             self.bot.members.pop(43)
             return result("Track", "", {"plainLyrics": "Private"})
         self.dashboard.lyrics_client = NS(lookup=lookup)
-        await self.call(BASE + "lyrics", method="GET", status=403)
+        await self.call(BASE + "lyrics", method="GET", status=401)
 
 
 class LyricsTests(unittest.IsolatedAsyncioTestCase):

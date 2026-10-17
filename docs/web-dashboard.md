@@ -1651,3 +1651,29 @@ Modal focus enters Collapse; Collapse, Escape and a downward touch swipe on the
 sheet header close it and restore focus to Expand. Controls/links do not trigger
 expansion. Volume lives in the full panel at all widths. The phone bar remains
 152px with no extra row. Empty playback retains a stable bar and explicit status.
+
+
+### Round 11 offline demo and verification
+Use the temporary image/context workflow above with a new musicbot-webtest-r11
+name and a git archive of feature/dashboard-round11. Run the demo with
+--network none and the loopback dashboard_demo_relay.py; no config/data mounts.
+
+* Log in as fake owner. Resolve https://open.spotify.com/playlist/Demo123 :
+  covers, selections, enqueue, save and source resync use fabricated data.
+* Resolve https://www.youtube.com/watch?v=demo0000000&list=RDdemo :
+  25 fabricated tracks, marked seed, sole default selection. Save selected
+  tracks and verify the saved collection has no sync action.
+* My Playlists: empty Favorites, custom list with long title/unknown duration,
+  stable Spotify-source list. At 1280/768/390 check left/top/mobile drill-in
+  navigation, More actions, confirmed deletion and title clipping.
+* From any page, expand the bottom player, adjust volume/favorite/Spotify/lyrics,
+  collapse or press Escape; phone sheet header also supports a downward swipe.
+  Empty-queue demo toggles remain available through the existing demo controls.
+* Account -> Log out all devices demonstrates the protected new session route.
+  All demo session files live in its TemporaryDirectory, created before auth init.
+
+Backend: python3 -W error::DeprecationWarning:aiohttp.web_protocol -m unittest
+discover -s tests -p 'test_web_dashboard*.py' in a musicbot-webtest-* container
+with --network none. Frontend: node --test tests/test_web_dashboard*.cjs (VM-only,
+no network). Links: python3 -m tools.test_compound_link in a --network none
+temporary container. Fabricated tests add no external calls or production mounts.

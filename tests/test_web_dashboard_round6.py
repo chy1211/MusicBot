@@ -84,6 +84,7 @@ class Round6Tests(unittest.IsolatedAsyncioTestCase):
     async def test_all_new_reads_require_membership(self):
         self.bot.members.pop(43)
         for path in ("listeners", "activity", "events"):
+            self.login_as(43)
             await self.call(BASE+path, method="GET", status=403)
 
     async def test_web_activity_success_rejection_no_keyword(self):

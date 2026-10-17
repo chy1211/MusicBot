@@ -131,6 +131,7 @@ class LibraryTests(unittest.IsolatedAsyncioTestCase):
         self.bot.blocked_users.add(43)
         await self.call("/api/library", method="GET", status=403)
         self.bot.blocked_users.clear()
+        self.login_as(43)
         self.bot.members.pop(43)
         await self.call("/api/library", method="GET", status=403)
         self.client.session.cookie_jar.clear()

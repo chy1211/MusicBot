@@ -964,8 +964,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     "thumbnail": public_url(info.thumbnail_url), "duration": 0,
                     "count": count, "checked_count": len(items), "eligible_count": eligible,
                     "entries": items, "allowed": not reason, "reason": reason,
-                    "truncated": count > len(items), "limit": self.PREVIEW_LIMIT,
-                    "warning": (f"來源至少 {count} 首、目前只讀得到 {len(items)} 首。" if imported and imported.get("count_is_minimum") else "") +
+                    "truncated": count > len(items), "limit": 25 if imported and imported.get("is_mix") else self.PREVIEW_LIMIT,
+                    "warning": ("合輯最多提供 25 首，預設只勾選第一首。" if imported and imported.get("is_mix") else "") +
+                               (f"來源至少 {count} 首、目前只讀得到 {len(items)} 首。" if imported and imported.get("count_is_minimum") else "") +
                                (f"僅提供前 {self.PREVIEW_LIMIT} 首，超過的歌曲未加入預覽。" if count > len(items) else "") +
                                "確認時會逐首重新檢查；佇列額滿時回報部分成功。",
                 })
