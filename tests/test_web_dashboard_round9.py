@@ -127,3 +127,115 @@ class RecommendedGuildTests(unittest.IsolatedAsyncioTestCase):
         result = await self.call("/api/guilds", method="GET")
         self.assertIsNone(result["recommended_guild_id"])
         self.assertEqual(set(result), {"guilds", "recommended_guild_id"})
+
+
+import test_web_dashboard_discord as identity
+import test_web_dashboard_library as library_fixtures
+from musicbot.bot import build_play_response
+from musicbot.downloader import YtdlpResponseDict
+from types import MethodType
+
+
+class NativeNotificationTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = identity.DiscordTests.asyncSetUp
+    asyncTearDown = identity.DiscordTests.asyncTearDown
+    call = identity.DiscordTests.call
+    login_as = identity.DiscordTests.login_as
+    provider_token = identity.DiscordTests.provider_token
+    provider_me = identity.DiscordTests.provider_me
+
+    async def test_web_single_reuses_real_discord_response_content_and_metadata(self):
+        initial = list(self.bot.player.playlist.entries)
+        native = await self.bot.cmd_play(
+            message=None, player=self.bot.player, channel=self.bot.channel,
+            guild=self.bot.guild, author=self.bot.member,
+            permissions=self.bot.member_perms, leftover_args=[], song_url="same song")
+        expected = native.content
+        self.bot.player.playlist.entries.clear()
+        self.bot.player.playlist.entries.extend(initial)
+        await self.call(BASE + "play", {"query": "same song"})
+        self.bot.safe_send_message.assert_awaited_once()
+        channel, sent = self.bot.safe_send_message.call_args.args
+        self.assertIs(channel, self.bot.channel)
+        self.assertEqual(sent.content, expected + "\n\n\u4f86\u81ea\u7db2\u9801\u63a7\u5236\u53f0")
+        self.assertEqual(sent.description, sent.content)
+        self.assertEqual(sent.title, "**Command:** play")
+        self.assertEqual(sent.author.name, "Friend")
+        self.assertEqual(sent.delete_after, native.delete_after)
+
+    async def test_seek_notification_uses_same_integer_as_activity(self):
+        seek_entry(self.bot)
+        await self.call(BASE + "seek", {"position": 82.5})
+        sent = self.bot.safe_send_message.call_args.args[1]
+        self.assertEqual(sent.content.split("\n")[0], "\u8df3\u8f49\uff1a83 \u79d2")
+        self.assertEqual(self.dashboard.activities[1][0]["detail"], "\u8df3\u8f49\uff1a83 \u79d2")
+
+    async def test_playnext_original_response_and_plain_attribution(self):
+        seek_entry(self.bot)
+        self.bot.config.embeds = False
+        await self.call(BASE + "playnext", {"query": "next song"})
+        sent = self.bot.safe_send_message.call_args.args[1]
+        self.assertTrue(sent.content.startswith("<@43>\nEnqueued"))
+        self.assertIn("Position in queue:", sent.content)
+        self.assertEqual(self.bot.player.playlist.entries[0].title, "Added")
+        self.assertTrue(sent.content.endswith("\u4f86\u81ea\u7db2\u9801\u63a7\u5236\u53f0"))
+        self.bot.safe_send_message.assert_awaited_once()
+
+    async def test_batch_uses_native_playlist_formatter_once_and_retry_never_resends(self):
+        self.bot.member_perms.allow_playlists = True
+        info = dict(self.bot.info)
+        self.bot.info = dict(info, entries=[
+            dict(info, title="One", webpage_url="https://example.test/one"),
+            dict(info, title="Two", webpage_url="https://example.test/two")], playlist_count=2)
+        preview = (await self.call(BASE + "resolve", {"query": "https://example.test/list"}))["results"][0]
+        self.bot.info = info
+        data = {"query": preview["url"], "preview_id": preview["preview_id"]}
+        result = await self.call(BASE + "play", data)
+        self.assertEqual(result["added"], 2)
+        self.bot.safe_send_message.assert_awaited_once()
+        sent = self.bot.safe_send_message.call_args.args[1]
+        expected = build_play_response(None, number=2, track="",
+            position="4 - estimated time until playing: `00:00`", playlist=True)
+        self.assertEqual(sent.content, expected.content + "\n\n\u4f86\u81ea\u7db2\u9801\u63a7\u5236\u53f0")
+        await self.call(BASE + "play", data)
+        self.bot.safe_send_message.assert_awaited_once()
+
+    async def test_bound_channel_and_missing_send_permission_never_notify(self):
+        self.bot.config.bound_channels = {999}
+        await self.call(BASE + "play", {"query": "song"}, status=403)
+        self.bot.safe_send_message.assert_not_awaited()
+        self.bot.config.bound_channels = set()
+        self.bot.channel.permissions_for = lambda member: NS(view_channel=True, send_messages=False)
+        await self.call(BASE + "play", {"query": "song"}, status=403)
+        self.bot.safe_send_message.assert_not_awaited()
+
+    async def test_no_send_if_permission_disappears_after_enqueue(self):
+        original = self.bot.cmd_play
+        async def revoke(**kwargs):
+            response = await original(**kwargs)
+            self.bot.channel.permissions_for = lambda member: NS(view_channel=True, send_messages=False)
+            return response
+        self.bot.cmd_play = revoke
+        await self.call(BASE + "play", {"query": "song"})
+        self.bot.safe_send_message.assert_not_awaited()
+
+
+class LibraryNotificationTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = library_fixtures.LibraryTests.asyncSetUp
+    asyncTearDown = library_fixtures.LibraryTests.asyncTearDown
+    call = identity.DiscordTests.call
+    login_as = identity.DiscordTests.login_as
+    provider_token = identity.DiscordTests.provider_token
+    provider_me = identity.DiscordTests.provider_me
+    get = library_fixtures.LibraryTests.get
+    add = library_fixtures.LibraryTests.add
+
+    async def test_personal_playlist_uses_one_native_summary(self):
+        value = await self.add()
+        value = await self.add(track={"title": "Other", "url": "https://example.test/other", "duration": 1})
+        result = await self.call(BASE + "library/favorites/play", {"revision": value["revision"]})
+        self.assertEqual(result["added"], 2)
+        self.bot.safe_send_message.assert_awaited_once()
+        sent = self.bot.safe_send_message.call_args.args[1]
+        self.assertIn("Enqueued **2** songs to be played.", sent.content)
+        self.assertIn("Position in queue: 4", sent.content)
