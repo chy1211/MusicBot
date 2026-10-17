@@ -103,6 +103,7 @@ async function setup(options = {}) {
     let body, status = 200;
     if (url === "/auth/session") body = clone(session);
     else if (url === "/auth/logout") { session.authenticated = false; session.user = null; body = {message: "signed out"}; }
+    else if (url.endsWith("/admin/maintenance")) body = {cookie:{status:"unused"},host_status:{status:"missing"},viewers:1};
     else if (url === "api/guilds") body = {guilds: [{id: "1", name: "First Guild"}, {id: "2", name: "Second Guild"}]};
     else {
       const match = url.match(/^api\/guilds\/(\d+)\/(.+)$/);
@@ -1912,4 +1913,19 @@ test("Spotify lookup failure offers an encoded search URL", async () => {
   app.hook(url => url.endsWith("/spotify") ? Promise.resolve({ok:false,status:503,json:async()=>({error:"稍後再試"})}) : null);
   await app.run('spotifyPrefetch()');
   assert.equal(app.element("spotify-link").getAttribute("href"), "https://open.spotify.com/search/First");
+});
+
+
+test("maintenance renders owner metadata safely and discards stale replies", async () => {
+  const app=await setup({round7:true});
+  app.run('adminOwner=true');
+  app.hook(url=>url.endsWith("/admin/maintenance")?Promise.resolve({ok:true,status:200,json:async()=>({
+    cookie:{status:"ok",earliest_expiry:"2026-10-20T00:00:00Z",remaining_days:3,warning:true,cookies:[]},
+    versions:{"yt-dlp":"2026.10.17"},host_status:{status:"missing"},viewers:2})}):null);
+  await app.run('adminMaintenanceLoad()');
+  const rows=app.element("maintenance-details").children;
+  assert.ok(rows.some(row=>row.textContent.includes("剩餘 3 天")&&row.classes.has("maintenance-warning")));
+  assert.ok(rows.some(row=>row.textContent==="2 人（最近 45 秒）"));
+  app.run('adminClear()');
+  assert.equal(app.element("maintenance-details").children.length,0);
 });

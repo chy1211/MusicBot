@@ -5,6 +5,7 @@ function adminClear() {
   $("nav-admin").hidden = true; $("admin-panel").hidden = true;
   $("autoplaylist-current").hidden = true; $("admin-apl-list").replaceChildren();
   $("admin-permissions")?.replaceChildren();
+  $("maintenance-details").replaceChildren(); $("maintenance-status").textContent = "";
   if (typeof pendingPermission !== "undefined") pendingPermission = null;
   $("permission-confirm-dialog").close?.();
 }
@@ -49,7 +50,7 @@ async function adminAplChange(data, method = "POST") {
 }
 $("nav-admin").addEventListener("click", () => libraryRun($("nav-admin"), async () => {
   if (!adminOwner) return;
-  libraryView("admin"); await adminAplLoad();
+  libraryView("admin"); await adminMaintenanceLoad(); await adminAplLoad();
   if (typeof adminPermissionsLoad === "function") await adminPermissionsLoad();
 }));
 $("admin-apl-search").addEventListener("submit", event => {
@@ -68,3 +69,42 @@ $("admin-apl-add").addEventListener("submit", event => {
 $("autoplaylist-current").addEventListener("click", () => libraryRun($("autoplaylist-current"), () => adminAplChange({current: true})));
 
 if (connected) adminCapability();
+
+function maintenanceDate(value) {
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime()) ? date.toLocaleString("zh-TW", {timeZone:"Asia/Taipei", hour12:false}) : "無資料";
+}
+async function adminMaintenanceLoad() {
+  if (!adminOwner || !selected) return;
+  const epoch = generation, guild = selected;
+  $("maintenance-status").textContent = "讀取中…";
+  const value = await api("/api/guilds/" + guild + "/admin/maintenance");
+  if (epoch !== generation || guild !== selected || !adminOwner) return;
+  const list = $("maintenance-details"); list.replaceChildren();
+  function row(label, text, warning = false) {
+    const key = document.createElement("dt"), detail = document.createElement("dd");
+    key.textContent = label; detail.textContent = text; detail.classList.toggle("maintenance-warning", warning);
+    list.append(key, detail);
+  }
+  const cookie = value.cookie || {};
+  row("YouTube cookie", cookie.status === "unused" ? "未使用 cookie" : cookie.status !== "ok" ? "暫時無法讀取" :
+    cookie.earliest_expiry ? maintenanceDate(cookie.earliest_expiry) + "・剩餘 " + cookie.remaining_days + " 天" : "沒有可判斷到期日的登入 cookie", cookie.warning);
+  if (cookie.updated_at) row("cookie 更新時間", maintenanceDate(cookie.updated_at));
+  for (const item of cookie.cookies || []) row(item.name, maintenanceDate(item.expires_at) + "・剩餘 " + item.remaining_days + " 天", item.remaining_days <= 7);
+  for (const name of ["yt-dlp","yt-dlp-ejs"]) row(name, value.versions?.[name] || "未載入");
+  row("本次啟動", maintenanceDate(value.started_at));
+  row("上次停止", value.last_stop ? maintenanceDate(value.last_stop.time) + "・" + value.last_stop.classification : "無資料");
+  row("控制台版本", value.dashboard_version || "無資料");
+  row("連線中的網頁人數", String(value.viewers ?? 0) + " 人（最近 45 秒）");
+  const host = value.host_status || {};
+  if (host.status === "ok") {
+    row("主機狀態更新", maintenanceDate(host.written_at));
+    row("主機套件更新", maintenanceDate(host.ytdlp_update?.updated) + "・" + (host.ytdlp_update?.channel || "unknown"));
+    for (const name of ["yt-dlp","yt-dlp-ejs","bgutil-plugin"]) if (host.ytdlp_update?.[name]) row("主機 " + name, host.ytdlp_update[name]);
+    const result = {success:"成功",failure:"失敗",running:"執行中",unknown:"無資料"};
+    row("cookie 同步", (result[host.cookie_sync?.result] || "無資料") + "・上次 " + maintenanceDate(host.cookie_sync?.last_run) + "・下次 " + maintenanceDate(host.cookie_sync?.next_run));
+  } else if (host.status === "unavailable") row("主機狀態", "暫時無法讀取");
+  $("maintenance-status").textContent = "";
+}
+$("maintenance-refresh").addEventListener("click", () =>
+  libraryRun($("maintenance-refresh"), adminMaintenanceLoad));

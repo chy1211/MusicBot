@@ -180,8 +180,9 @@ def revision(player) -> str:
 
 from .web_dashboard_undo import DashboardUndo
 from .web_dashboard_spotify import DashboardSpotify
+from .web_dashboard_maintenance import DashboardMaintenance
 
-class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin, DashboardUndo, DashboardSpotify):
+class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin, DashboardUndo, DashboardSpotify, DashboardMaintenance):
     def __init__(self, bot, config: DashboardConfig):
         self.bot = bot
         self.config = config
@@ -207,6 +208,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.init_admin()
         self.init_undo()
         self.init_spotify_lookup()
+        self.init_maintenance()
         self.popularity_store = PopularityStore(write_path("data/web_dashboard/stats"))
         async def cleanup_popularity(_app):
             try:
@@ -411,6 +413,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             raise APIError(403, "你不是這個伺服器的成員。" if self.discord_auth
                            else "OwnerID 本人不在這個伺服器。")
         self.check_blocked(owner)
+        now = time.monotonic()
+        self.web_viewers = {uid: at for uid, at in self.web_viewers.items() if at > now-45}
+        self.web_viewers[owner.id] = now
         return guild, owner
 
     def check_blocked(self, member):

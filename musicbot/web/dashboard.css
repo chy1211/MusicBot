@@ -197,3 +197,9 @@ body.no-selection,body.no-selection *,.drag-handle,input[type=range]{
 a.song-title{color:inherit;text-decoration:none;border-radius:3px}
 a.song-title:hover{text-decoration:underline}
 a.song-title:focus-visible{outline:2px solid var(--green);outline-offset:3px;text-decoration:underline}
+
+.maintenance-details {display:grid;grid-template-columns:minmax(7rem,auto) minmax(0,1fr);gap:.6rem 1rem;}
+.maintenance-details dt {color:var(--muted);}
+.maintenance-details dd {margin:0;overflow-wrap:anywhere;}
+.maintenance-warning {color:var(--warning,#d58a13);font-weight:600;}
+@media(max-width:640px){.maintenance-details{grid-template-columns:1fr;gap:.35rem;}.maintenance-details dd{margin-bottom:.65rem;}}

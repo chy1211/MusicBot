@@ -1381,3 +1381,50 @@ The frontend prefetches on track changes and enables the actual link only after
 the result arrives, so normal target=_blank navigation avoids blocked popups.
 Late results for old tracks/guilds are discarded. The demo provider always
 returns a fake Spotify track without making any outbound request.
+
+## Round 10: read-only maintenance
+
+GET /api/guilds/{guild_id}/admin/maintenance requires OwnerID himself and guild
+membership, with the standard session/header/origin/blocklist checks. No body
+and no write action. Returns cookie metadata, loaded versions, optional sanitized
+host status, process started_at, last_stop {time, classification}, SW version,
+and viewer count (unique members seen by guild APIs/SSE in the last 45 seconds).
+Disk inspection is off the event loop and cached 15 seconds; live identity is
+rechecked after waiting. No cookie values, raw log text, paths or IDs are returned.
+
+Cookie parsing opens the container's data/cookies.txt read-only, bounds its
+size to 4 MiB and memory-maps separators; only expiry and name column slices are
+decoded. The value column is never materialized as a field/line, persisted or
+logged. The earliest positive expiry among known login-cookie names is shown
+with file mtime; within seven days (including expired) warns. Session-only
+cookies have no known expiry. A missing file says 未使用 cookie.
+Last stop selects logs/musicbot.ended-*.log, examines at most 16 KiB/40 tail
+lines internally, classifies explicit clean-shutdown markers versus failure or
+uncertain endings, and returns only UTC mtime and 正常/異常. mtime avoids the
+legacy rotation filename's month/minute formatting ambiguity. No ended file
+means no last-stop record; this is an inference, not a process-exit database.
+
+The host may optionally supply data/web_dashboard/host_status.json, max 32 KiB:
+~~~json
+{
+  "written_at": "2026-10-17T06:00:00Z",
+  "ytdlp_update": {
+    "updated": "2026-10-17T04:30:00Z",
+    "channel": "stable",
+    "yt-dlp": "2026.10.14",
+    "yt-dlp-ejs": "0.3.1",
+    "bgutil-plugin": "1.2.2"
+  },
+  "cookie_sync": {
+    "last_run": "2026-10-17T03:58:00Z",
+    "next_run": "2026-10-18T03:58:00Z",
+    "result": "success"
+  }
+}
+~~~
+Use timezone-aware ISO timestamps; channel is stable/nightly; result is
+success/failure/running. Unknown fields are discarded, invalid fields become
+null/unknown. Missing host file hides that section; malformed/oversize data shows
+a read-only unavailable state. The dashboard creates no host script or timer.
+The demo uses a self-generated fake cookie in TemporaryDirectory, never the
+real config/data/logs. Test fixtures also create only temporary fake files.
