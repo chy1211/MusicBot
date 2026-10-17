@@ -1726,3 +1726,22 @@ Phone player height 112px; desktop/tablet 118px. The normal functional layer
 has two active backdrop surfaces (navigation and player), adding one per open
 lyrics area/popover. Opaque preference has none. Collapsed details descendants
 must be excluded with checkVisibility when counting actual painted surfaces.
+
+## Round 12: radio seeds and diversity
+The most recent five distinct human-requested YouTube songs form each server's
+seed pool. Radio, bot requests and automatic playlists never replace it.
+Each refill rotates to the next seed (one mix per refill, up to three additions).
+Without human seeds, the top five all-period YouTube popularity entries rotate;
+without either source, the existing automatic playlist handles the empty queue.
+From the first 25 mix entries, weighted sampling without replacement uses
+weight 1/(rank+1). Every candidate is rechecked for duration/blocklist/policy.
+A batch rejects repeated channel IDs/names or artist names. NFKC titles strip
+presentation/version labels, brackets and a labeled artist prefix; canonical URL
+and normalized song title are both compared against the previous 50 plays.
+Only URL/title and the rotation cursor persist, atomically, under
+data/web_dashboard/radio/<guild_id>.json. Missing, invalid or oversized (64KiB)
+state is empty. No requester is stored. Owner empty-queue GET adds seed_titles
+and seed_count; management shows the current pool. Existing locks, failover and
+three-failure ten-minute suspension remain. Native playback's observational
+hook now awaits the off-thread atomic state update inside its existing try/except;
+Discord commands, queues, player/playlist/Spotify code are unchanged.

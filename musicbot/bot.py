@@ -1086,7 +1086,7 @@ class MusicBot(commands.Bot):
         log.debug("Running on_player_play")
         try:
             from .web_dashboard_radio import radio_for
-            radio_for(self).remember(player.voice_client.channel.guild, entry)
+            await radio_for(self).remember(player.voice_client.channel.guild, entry)
         except Exception as exc:
             log.warning("Radio history observation failed (%s)", type(exc).__name__)
         # Optional web metadata history observes the actual playback event.

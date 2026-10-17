@@ -58,8 +58,8 @@ class RadioTests(unittest.IsolatedAsyncioTestCase):
             return song,len(self.player.playlist.entries)
         self.player.playlist.add_entry_from_info=add
         self.service=self.bot._dashboard_radio=RadioService(self.bot,Path(self.temp.name)/"settings")
-        self.seed=base.entry();self.seed.url="https://www.youtube.com/watch?v=seed0000001"
-        self.service.remember(self.bot.guild,self.seed)
+        self.seed=base.entry(author=self.bot.owner);self.seed.url="https://www.youtube.com/watch?v=seed0000001"
+        await self.service.remember(self.bot.guild,self.seed)
 
     async def asyncTearDown(self):
         self.temp.cleanup()
@@ -101,8 +101,8 @@ class RadioTests(unittest.IsolatedAsyncioTestCase):
         await self.mode(low=60,high=300)
         for i in range(51):
             song=base.entry();song.url=f"https://www.youtube.com/watch?v=track{i:06d}"
-            self.service.remember(self.bot.guild,song)
-            self.service.remember(self.bot.guild,song)
+            await self.service.remember(self.bot.guild,song)
+            await self.service.remember(self.bot.guild,song)
         self.assertEqual(len(self.service.recent[1]),50)
         self.bot.blocked={"Blocked"}
         items=[{"id":"track000000","title":"Old outside 50","duration":180},
@@ -116,7 +116,7 @@ class RadioTests(unittest.IsolatedAsyncioTestCase):
                {"id":"fresh000006","title":"Good 2","duration":300}]
         self.bot.downloader.extract_public_playlist.return_value=mix(items)
         await self.finish()
-        self.assertEqual([e.title for e in self.player.playlist.entries],["Old outside 50","Good","Good 2"])
+        self.assertCountEqual([e.title for e in self.player.playlist.entries],["Old outside 50","Good","Good 2"])
 
     async def test_off_matches_disabled_autoplay_without_global_mutation(self):
         await self.mode("off")
@@ -182,10 +182,10 @@ class RadioTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_seed_empty_mix_and_twenty_second_timeout(self):
         settings=await self.mode()
-        self.service.last_youtube.clear()
+        self.service.seeds.clear()
         self.assertFalse(await self.service.fill(self.player,settings))
         self.bot.downloader.extract_public_playlist.assert_not_awaited()
-        self.service.last_youtube[1]=self.seed.url
+        self.service.seeds[1].append({"url":self.seed.url,"title":self.seed.title})
         self.bot.downloader.extract_public_playlist.return_value=mix([])
         self.assertFalse(await self.service.fill(self.player,settings))
         async def timeout(coro,seconds):

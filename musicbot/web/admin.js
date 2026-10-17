@@ -5,7 +5,7 @@ function adminClear() {
   $("nav-admin").hidden = true; $("admin-panel").hidden = true;
   $("admin-apl-list").replaceChildren();
   $("admin-permissions")?.replaceChildren();
-  $("empty-queue-status").textContent = "";
+  $("empty-queue-status").textContent = ""; $("radio-seeds").textContent = "";
   $("empty-queue-mode").value = "autoplaylist";
   $("maintenance-details").replaceChildren(); $("maintenance-status").textContent = "";
   if (typeof pendingPermission !== "undefined") pendingPermission = null;
@@ -104,6 +104,7 @@ $("maintenance-refresh").addEventListener("click", () =>
   libraryRun($("maintenance-refresh"), adminMaintenanceLoad));
 
 function adminEmptyQueueRender(value) {
+  $("radio-seeds").textContent = value.seed_count ? "目前種子：" + value.seed_titles[0] + " 等 " + value.seed_count + " 首" : "目前種子：尚無真人點播，會優先使用熱門點播。";
   $("empty-queue-mode").value = value.empty_queue;
   $("radio-min-seconds").value = value.radio_min_seconds;
   $("radio-max-seconds").value = value.radio_max_seconds;
