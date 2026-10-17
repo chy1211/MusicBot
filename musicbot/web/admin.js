@@ -8,6 +8,9 @@ function adminClear() {
   $("empty-queue-status").textContent = ""; $("radio-seeds").textContent = "";
   $("empty-queue-mode").value = "autoplaylist";
   $("admin-lyrics-status").textContent="";
+  $("admin-notify-channel").replaceChildren();
+  $("admin-notify-warning").hidden = true;
+  $("admin-notify-status").textContent = "";
   $("maintenance-details").replaceChildren(); $("maintenance-status").textContent = "";
   if (typeof pendingPermission !== "undefined") pendingPermission = null;
   $("permission-confirm-dialog").close?.();
@@ -53,7 +56,7 @@ async function adminAplChange(data, method = "POST") {
 }
 $("nav-admin").addEventListener("click", () => libraryRun($("nav-admin"), async () => {
   if (!adminOwner) return;
-  libraryView("admin"); await adminMaintenanceLoad(); await adminEmptyQueueLoad(); await adminLyricsLoad(); await adminAplLoad();
+  libraryView("admin"); await adminNotifyLoad(); await adminMaintenanceLoad(); await adminEmptyQueueLoad(); await adminLyricsLoad(); await adminAplLoad();
   if (typeof adminPermissionsLoad === "function") await adminPermissionsLoad();
 }));
 $("admin-apl-search").addEventListener("submit", event => {
@@ -154,4 +157,41 @@ $("admin-lyrics-form").addEventListener("submit",event=>{
    if(!value.enabled)toggleLyrics(false,false);
    await refresh();
  });
+});
+
+
+function adminNotifyRender(value) {
+  const select = $("admin-notify-channel");
+  const option = (id, name, key = "") => {
+    const node = document.createElement("option");
+    node.value = id; node.textContent = name;
+    if (key) node.dataset.i18n = key;
+    return node;
+  };
+  select.replaceChildren(option("", t("notify.default"), "notify.default"));
+  for (const channel of value.channels) select.append(option(channel.id, "#" + channel.name));
+  if (value.channel_id && !value.channels.some(channel => channel.id === value.channel_id)) {
+    const missing = option(value.channel_id, t("notify.unavailable"), "notify.unavailable");
+    missing.disabled = true; select.append(missing);
+  }
+  select.value = value.channel_id || "";
+  $("admin-notify-warning").hidden = !value.unavailable;
+}
+async function adminNotifyLoad() {
+  if (!adminOwner || !selected) return;
+  const guild = selected, epoch = generation, token = adminEpoch;
+  const value = await api("/api/guilds/" + guild + "/admin/notification-channel");
+  if (epoch !== generation || guild !== selected || token !== adminEpoch || !adminOwner) return;
+  adminNotifyRender(value); $("admin-notify-status").textContent = "";
+}
+$("admin-notify-form").addEventListener("submit", event => {
+  event.preventDefault();
+  return libraryRun($("admin-notify-save"), async () => {
+    if (!adminOwner || !selected) return;
+    const guild = selected, epoch = generation, token = adminEpoch;
+    const value = await api("/api/guilds/" + guild + "/admin/notification-channel", "POST",
+      {channel_id: $("admin-notify-channel").value || null});
+    if (epoch !== generation || guild !== selected || token !== adminEpoch || !adminOwner) return;
+    adminNotifyRender(value); $("admin-notify-status").textContent = t("notify.saved");
+  });
 });

@@ -12,14 +12,14 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title data-i18n="m0223">Music dashboard</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r16-i18n-events">
-  <script src="/i18n.js?v=r16-i18n-events" defer></script>
-  <script src="/dashboard.js?v=r16-i18n-events" defer></script>
-  <script src="/library.js?v=r16-i18n-events" defer></script>
-  <script src="/popular.js?v=r16-i18n-events" defer></script>
-  <script src="/admin.js?v=r16-i18n-events" defer></script>
-  <script src="/permissions.js?v=r16-i18n-events" defer></script>
-  <script src="/pwa.js?v=r16-i18n-events" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r17-notify-channel">
+  <script src="/i18n.js?v=r17-notify-channel" defer></script>
+  <script src="/dashboard.js?v=r17-notify-channel" defer></script>
+  <script src="/library.js?v=r17-notify-channel" defer></script>
+  <script src="/popular.js?v=r17-notify-channel" defer></script>
+  <script src="/admin.js?v=r17-notify-channel" defer></script>
+  <script src="/permissions.js?v=r17-notify-channel" defer></script>
+  <script src="/pwa.js?v=r17-notify-channel" defer></script>
 </head>
 <body>
 <div class="language-preference"><label for="dashboard-language" data-i18n="language">Language</label>
@@ -151,6 +151,14 @@
 <p id="maintenance-status" role="status" aria-live="polite"></p>
 <dl id="maintenance-details" class="maintenance-details"></dl>
 </section>
+<form id="admin-notify-form" class="selection-tools" aria-describedby="admin-notify-help">
+<label for="admin-notify-channel"><span data-i18n="notify.label">Fallback notification channel</span></label>
+<select id="admin-notify-channel" aria-describedby="admin-notify-warning"><option value="" data-i18n="notify.default">Not specified (use defaults)</option></select>
+<button id="admin-notify-save" type="submit"><span data-i18n="notify.save">Save notification channel</span></button>
+<p id="admin-notify-help" class="hint"><span data-i18n="notify.help">Used only when no request channel is available. Binding and speaking permissions still apply.</span></p>
+<p id="admin-notify-warning" class="maintenance-warning" role="status" hidden><span data-i18n="notify.warning">The configured channel is deleted, inaccessible, or excluded by channel bindings. Notifications will use the default fallback order.</span></p>
+<p id="admin-notify-status" role="status" aria-live="polite"></p>
+</form>
 <form id="admin-lyrics-form" class="selection-tools"><label for="admin-lyrics-enabled"><span data-i18n="m0304">Server lyrics</span></label><select id="admin-lyrics-enabled"><option value="true" data-i18n="m0305">Allow (off by default for everyone)</option><option value="false" data-i18n="m0306">Disable</option></select><button id="admin-lyrics-save" type="submit"><span data-i18n="m0307">Save lyrics settings</span></button><p id="admin-lyrics-status" class="hint"></p></form>
 <form id="empty-queue-form" class="selection-tools">
 <label for="empty-queue-mode"><span data-i18n="m0308">When the queue is empty</span></label>

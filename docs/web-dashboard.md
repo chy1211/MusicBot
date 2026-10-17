@@ -1875,3 +1875,63 @@ favorite toggle, library list/detail, More menu and opaque preference.
 - Text-bearing popovers (title chooser, menus, dialogs, toast, lyrics) use the denser
   Regular material (`--panel`, 24px blur); the primary button is a flat tinted glass
   capsule with no coloured outer glow.
+
+
+### Round 17: per-server fallback notification channel
+
+Owner management adds a text-channel selector with **Not specified (use defaults)**.
+The choices include only this guild's text/announcement channels for which the bot
+can view and send messages. A deleted, inaccessible or binding-excluded selection
+shows a warning and can still be cleared. Each request's acting member and the bot
+must both be able to view/send in the eventual destination.
+
+The exact candidate order is: current track request channel, latest inserted
+queued track request channel, configured fallback notification channel, sorted
+bound channels, guild system channel, guild text channels, then the member's voice
+channel text chat. Existing restrictions, voice demotion, deduplication and the
+final 403 when no destination is usable remain unchanged.
+
+Owner-only GET/POST /api/guilds/{guild_id}/admin/notification-channel uses the
+existing membership, blocklist, same-origin and dashboard-header checks.
+POST accepts exactly {"channel_id":"101"} or {"channel_id":null}.
+IDs must be canonical positive decimal strings; foreign guilds, missing channels,
+voice/stage/forum/category/thread channels and bot-inaccessible channels return
+400. Non-Owners return 403. Responses contain channel_id, channels (id/name)
+and unavailable (boolean). The operation log action is
+admin_notification_channel and never contains the channel name or request body.
+
+Settings live at data/web_dashboard/notification_channels/<guild_id>.json.
+For fictional guild 1 and channel 101, write notification_channels/1.json:
+~~~json
+{"channel_id":"101"}
+~~~
+Clear with {"channel_id":null} or remove the guild file. Missing, unreadable or
+malformed settings use the original fallback order. Small bounded reads mean
+direct file changes take effect on the next notification/admin read; no restart
+is required. External edits should use a sibling temporary file and atomic rename.
+The API uses the existing settings writer: fsync, atomic rename, directory fsync;
+new files are mode 0600 and replacements preserve the existing mode/ownership.
+No guild or channel names are stored. All IDs here and in tests are fictional.
+
+Offline validation from this branch:
+~~~sh
+git archive HEAD | tar -x -C "$context/src"
+docker build --network none -t musicbot-webtest-r17:check -f "$context/Dockerfile" "$context"
+docker run --rm --network none --user 0:0 --name musicbot-webtest-r17-unit --entrypoint python3 musicbot-webtest-r17:check -m unittest discover -s tests -p 'test_*.py'
+docker run --rm --network none --user 0:0 --name musicbot-webtest-r17-links --entrypoint python3 musicbot-webtest-r17:check -m tools.test_compound_link
+docker run --rm --network none --user 0:0 --name musicbot-webtest-r17-i18n --entrypoint python3 musicbot-webtest-r17:check -m tools.check_dashboard_i18n
+node --test tests/*.cjs
+~~~
+The isolated test Dockerfile uses FROM musicbot:ytdlp-base, WORKDIR /musicbot,
+COPY src/ /musicbot/ and compiles both zh_TW catalogs with tools/po2mo.py,
+as in round16. It has no production mounts or network. Demo notification settings
+also use the demo's TemporaryDirectory. Static cache version: r17-notify-channel.
+
+Validation result (round16 baseline retained): 555 backend tests (526 + 29),
+183 frontend checks (175 + 8, including the existing catalog fixture file),
+16 compound-link cases, and 599 matching en/zh-TW catalog keys; all passed.
+The demo browser checks passed with no page errors: saved value after reload,
+independent per-guild settings, clear via the default option, English translation,
+and mobile layout without horizontal overflow. Screenshots:
+- /tmp/musicbot-r17-shots/admin-desktop.png
+- /tmp/musicbot-r17-shots/admin-mobile.png

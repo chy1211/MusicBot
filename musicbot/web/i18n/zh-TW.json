@@ -588,5 +588,14 @@
   "punct.colon": "：",
   "punct.list": "、",
   "activity.volume": "音量：{p0}%",
-  "message.skip": "已送出跳過請求；投票進度請看 Discord。"
+  "message.skip": "已送出跳過請求；投票進度請看 Discord。",
+  "notify.label": "備用通知頻道",
+  "notify.default": "不指定（沿用預設）",
+  "notify.save": "儲存通知頻道",
+  "notify.help": "只在找不到點歌頻道時使用，仍須符合頻道綁定與雙方發言權限。",
+  "notify.warning": "指定頻道已刪除、失去權限，或不符合綁定限制；通知會沿原順序往下尋找。",
+  "notify.unavailable": "已指定的頻道（無法使用）",
+  "notify.saved": "已儲存通知頻道。",
+  "notify.invalid": "請選擇此伺服器中機器人能看見且能發言的文字頻道，或清除設定。",
+  "notify.save_failed": "無法儲存通知頻道，請稍後再試。"
 }
