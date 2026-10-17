@@ -339,6 +339,14 @@ class DemoDashboard(Dashboard):
         for gid in bot.server_data:
             bot.server_data[gid] = NS(autoplaylist=apl)
         self.backup_root = Path(self.demo_temp.name) / "backups"
+        self.maintenance_root = Path(self.demo_temp.name) / "data"
+        self.maintenance_logs = Path(self.demo_temp.name) / "logs"
+        self.maintenance_root.mkdir()
+        self.maintenance_logs.mkdir()
+        expiry = int(time.time()) + 5*86400
+        (self.maintenance_root / "cookies.txt").write_text(
+            f"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t{expiry}\tSAPISID\tFAKE-DEMO-VALUE\n")
+
         from musicbot.permissions import Permissions
         bot._perms_file = Path(self.demo_temp.name) / "permissions.ini"
         bot._perms_file.write_text("[Owner (auto)]\nMaxPlaylistLength = 30\nMaxSearchItems = 5\n"

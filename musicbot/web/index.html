@@ -12,13 +12,13 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r10-7">
-  <script src="/dashboard.js?v=r10-7" defer></script>
-  <script src="/library.js?v=r10-7" defer></script>
-  <script src="/popular.js?v=r10-7" defer></script>
-  <script src="/admin.js?v=r10-7" defer></script>
-  <script src="/permissions.js?v=r10-7" defer></script>
-  <script src="/pwa.js?v=r10-7" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r10-8">
+  <script src="/dashboard.js?v=r10-8" defer></script>
+  <script src="/library.js?v=r10-8" defer></script>
+  <script src="/popular.js?v=r10-8" defer></script>
+  <script src="/admin.js?v=r10-8" defer></script>
+  <script src="/permissions.js?v=r10-8" defer></script>
+  <script src="/pwa.js?v=r10-8" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -136,7 +136,12 @@
 </dialog>
 <dialog id="library-save-dialog"><h2>加到歌單</h2><label for="playlist-picker">選擇歌單</label><select id="playlist-picker"></select><div class="selection-tools"><button id="library-save-confirm" type="button">加入歌單</button><button id="library-save-cancel" type="button">取消</button></div></dialog>
 <section id="admin-panel" class="card" hidden aria-labelledby="admin-heading">
-<h2 id="admin-heading">管理</h2><h3>自動播放清單</h3>
+<h2 id="admin-heading">管理</h2>
+<section aria-labelledby="maintenance-heading">
+<div class="section-top"><h3 id="maintenance-heading">維護狀態</h3><button id="maintenance-refresh" type="button">重新整理</button></div>
+<p id="maintenance-status" role="status" aria-live="polite"></p>
+<dl id="maintenance-details" class="maintenance-details"></dl>
+</section><h3>自動播放清單</h3>
 <form id="admin-apl-search" class="input-row"><label for="admin-apl-query">搜尋網址</label><input id="admin-apl-query" type="search" maxlength="100"><button id="admin-apl-search-button" type="submit">搜尋</button></form>
 <p id="admin-apl-count" role="status"></p><ol id="admin-apl-list" class="admin-apl-list"></ol>
 <div class="selection-tools"><button id="admin-apl-prev" type="button">上一頁</button><button id="admin-apl-next" type="button">下一頁</button></div>

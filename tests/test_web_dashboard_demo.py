@@ -223,7 +223,7 @@ class Round9DemoTests(unittest.IsolatedAsyncioTestCase):
         await self.call(BASE+"seek",{"position":83.456})
         self.assertIn("跳轉：83 秒", self.bot.discord_messages[-1]["response"]["description"])
         await self.call(BASE+"play",{"query":"https://example.test/track/2"})
-        self.assertIn("來自網頁控制台",self.bot.discord_messages[-1]["response"]["description"])
+        self.assertIn("透過網頁控制台點歌",self.bot.discord_messages[-1]["response"]["description"])
         self.assertEqual(self.bot.discord_messages[-1]["channel"],"點歌文字頻道")
 
     async def test_fake_spotify_match_no_network(self):
