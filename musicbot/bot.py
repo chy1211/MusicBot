@@ -8314,12 +8314,12 @@ class MusicBot(commands.Bot):
 
             # check for cookies file and use it.
             if self.config.cookies_path.is_file():
-                self.downloader.enable_ytdl_cookies()
+                await asyncio.to_thread(self.downloader.enable_ytdl_cookies)
             else:
                 # or rename the file as needed.
                 try:
                     self.config.disabled_cookies_path.rename(self.config.cookies_path)
-                    self.downloader.enable_ytdl_cookies()
+                    await asyncio.to_thread(self.downloader.enable_ytdl_cookies)
                 except OSError as e:
                     raise exceptions.CommandError(
                         "Could not enable cookies due to error:  %(raw_error)s",
@@ -8328,8 +8328,7 @@ class MusicBot(commands.Bot):
             return Response(_D("Cookies have been enabled.", ssd_))
 
         if opt == "off":
-            if self.downloader.cookies_enabled:
-                self.downloader.disable_ytdl_cookies()
+            await asyncio.to_thread(self.downloader.disable_ytdl_cookies)
 
             if self.config.cookies_path.is_file():
                 try:
@@ -8358,10 +8357,14 @@ class MusicBot(commands.Bot):
                     {"raw_error": e},
                 )
 
-        # simply save the uploaded file in attachment 1 as cookies.txt.
+        # Publish uploads atomically so concurrent workers never read a partial
+        # attachment. The temporary file is on the same filesystem.
+        upload_path = self.config.cookies_path.with_name(".cookies-upload-" + uuid.uuid4().hex)
+        # Save only attachment 1.
         try:
             assert message is not None
-            await message.attachments[0].save(self.config.cookies_path)
+            await message.attachments[0].save(upload_path)
+            upload_path.replace(self.config.cookies_path)
         except discord.HTTPException as e:
             raise exceptions.CommandError(
                 "Error downloading the cookies file from discord:  %(raw_error)s",
@@ -8373,9 +8376,12 @@ class MusicBot(commands.Bot):
                 fmt_args={"raw_error": e},
             ) from e
 
-        # enable cookies if it is not already.
-        if not self.downloader.cookies_enabled:
-            self.downloader.enable_ytdl_cookies()
+        finally:
+            upload_path.unlink(missing_ok=True)
+
+        # Always reload after an upload; params alone do not invalidate yt-dlp's
+        # cached cookiejar when cookies were already in use.
+        await asyncio.to_thread(self.downloader.enable_ytdl_cookies)
 
         return Response(_D("Cookies uploaded and enabled.", ssd_))
 

@@ -230,7 +230,8 @@ class AlignmentService:
             except OSError:pass
 
     async def run_worker(self,downloader,details,cache_file):
-        source=getattr(downloader,"unsafe_ytdl",None)
+        snapshot=getattr(downloader,"cookie_ytdl_snapshot",None)
+        source=await asyncio.to_thread(snapshot) if snapshot else getattr(downloader,"unsafe_ytdl",None)
         if source is None:return dict(UNCERTAIN)
         params={}
         for key,value in source.params.items():

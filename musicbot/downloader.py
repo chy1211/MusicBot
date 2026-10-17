@@ -26,6 +26,7 @@ from .exceptions import ExtractionError, MusicbotException
 from .i18n import _L
 from .spotify import Spotify
 from .utils import check_extractor
+from .ytdlp_cookies import CookieYtdlClients
 
 if TYPE_CHECKING:
     from multidict import CIMultiDictProxy
@@ -182,14 +183,6 @@ class Downloader:
             if bot.config.debug_level <= logging.NOISY:  # type: ignore[attr-defined]
                 ytdl_format_options["verbose"] = True
 
-        # check if we should apply a cookies file to ytdlp.
-        if bot.config.cookies_path.is_file():
-            log.info(
-                "MusicBot will use cookies for yt-dlp from:  %s",
-                bot.config.cookies_path,
-            )
-            ytdl_format_options["cookiefile"] = bot.config.cookies_path
-
         if bot.config.ytdlp_proxy:
             log.info("Yt-dlp will use your configured proxy server.")
             ytdl_format_options["proxy"] = bot.config.ytdlp_proxy
@@ -201,38 +194,44 @@ class Downloader:
                 self.download_folder, str(otmpl)
             )
 
-        self.unsafe_ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
-        self.safe_ytdl = youtube_dl.YoutubeDL(
-            {**ytdl_format_options, "ignoreerrors": True}
+        self._cookie_clients = CookieYtdlClients(
+            ytdl_format_options, bot.config.cookies_path
         )
 
     @property
+    def unsafe_ytdl(self) -> youtube_dl.YoutubeDL:
+        return self._cookie_clients.snapshot()[0]
+
+    @property
+    def safe_ytdl(self) -> youtube_dl.YoutubeDL:
+        return self._cookie_clients.snapshot()[1]
+
+    @property
     def ytdl(self) -> youtube_dl.YoutubeDL:
-        """Get the Safe (errors ignored) instance of YoutubeDL."""
+        """Get the safe client for stateless filename/sanitization helpers."""
         return self.safe_ytdl
 
     @property
     def cookies_enabled(self) -> bool:
-        """
-        Get status of cookiefile option in ytdlp objects.
-        """
-        return all(
-            "cookiefile" in ytdl.params for ytdl in [self.safe_ytdl, self.unsafe_ytdl]
-        )
+        return self._cookie_clients.enabled
 
     def enable_ytdl_cookies(self) -> None:
-        """
-        Set the cookiefile option on the ytdl objects.
-        """
-        self.safe_ytdl.params["cookiefile"] = self.bot.config.cookies_path
-        self.unsafe_ytdl.params["cookiefile"] = self.bot.config.cookies_path
+        """Reload now, even when cookies were already enabled."""
+        self._cookie_clients.enable()
 
     def disable_ytdl_cookies(self) -> None:
-        """
-        Remove the cookiefile option on the ytdl objects.
-        """
-        del self.safe_ytdl.params["cookiefile"]
-        del self.unsafe_ytdl.params["cookiefile"]
+        """Publish cookie-free clients; in-flight workers keep their snapshot."""
+        self._cookie_clients.disable()
+
+    def cookie_ytdl_snapshot(self) -> youtube_dl.YoutubeDL:
+        """For auxiliary workers that need the current authenticated client."""
+        return self._cookie_clients.snapshot(refresh=True)[0]
+
+    def _run_ytdl(self, safe: bool, method: str, *args: Any, **kwargs: Any) -> Any:
+        # Runs in the executor: filesystem I/O/client construction never blocks
+        # the event loop during ordinary extraction or download.
+        client = self._cookie_clients.snapshot(refresh=True)[int(safe)]
+        return getattr(client, method)(*args, **kwargs)
 
     def randomize_user_agent_string(self) -> None:
         """
@@ -509,7 +508,7 @@ class Downloader:
         private = {k: src.pop(k) for k in list(src) if k.startswith("__")}
         result = await self.bot.loop.run_in_executor(
             self.thread_pool,
-            functools.partial(self.unsafe_ytdl.process_ie_result, src, download=True),
+            functools.partial(self._run_ytdl, False, "process_ie_result", src, download=True),
         )
         result = self.ytdl.sanitize_info(result)
         result.update(private)
@@ -593,7 +592,7 @@ class Downloader:
             data = await self.bot.loop.run_in_executor(
                 self.thread_pool,
                 functools.partial(
-                    self.unsafe_ytdl.extract_info, song_subject, *args, **kwargs
+                    self._run_ytdl, False, "extract_info", song_subject, *args, **kwargs
                 ),
             )
         except DownloadError as e:
@@ -634,7 +633,7 @@ class Downloader:
             data = await self.bot.loop.run_in_executor(
                 self.thread_pool,
                 functools.partial(
-                    self.unsafe_ytdl.extract_info, song_subject, *args, **kwargs
+                    self._run_ytdl, False, "extract_info", song_subject, *args, **kwargs
                 ),
             )
 
@@ -675,7 +674,7 @@ class Downloader:
         )
         return await self.bot.loop.run_in_executor(
             self.thread_pool,
-            functools.partial(self.safe_ytdl.extract_info, *args, **kwargs),
+            functools.partial(self._run_ytdl, True, "extract_info", *args, **kwargs),
         )
 
     def _return_local_media(self, song_subject: str) -> "YtdlpResponseDict":
