@@ -20,7 +20,7 @@ async function popularLoad() {
       const row = document.createElement("li"), rank = document.createElement("span");
       rank.className = "popular-rank"; rank.textContent = String(index + 1);
       const info = document.createElement("div"); info.className = "history-info";
-      const title = document.createElement("p"); title.textContent = song.title;
+      const title = songTitle(document.createElement("p"), song);
       const meta = document.createElement("small");
       meta.textContent = song.count + " 次 · " + (song.duration ? duration(song.duration) : "長度未知");
       info.append(title, meta);

@@ -35,6 +35,25 @@ function safeURL(value) {
     return /^https?:$/.test(url.protocol) && !url.username && !url.password ? value : "";
   } catch { return ""; }
 }
+let suppressSongLinksUntil = 0;
+function songLinkURL(value) {
+  const url = safeURL(value);
+  if (!url) return "";
+  const key = songIdentity(url);
+  return key.startsWith("youtube:") ? "https://www.youtube.com/watch?v=" + key.slice(8) : url;
+}
+function songTitle(element, song) {
+  element.textContent = song?.title || "";
+  const url = songLinkURL(song?.url || "");
+  if (!url) return element;
+  const link = document.createElement("a"); link.className = "song-title";
+  link.textContent = song.title; link.href = url; link.target = "_blank"; link.rel = "noopener noreferrer";
+  link.addEventListener("click", event => {
+    if (drag || Date.now() < suppressSongLinksUntil) event.preventDefault();
+  });
+  element.replaceChildren(link);
+  return element;
+}
 function songIdentity(value) {
   const raw = safeURL(String(value || "").trim());
   if (!raw) return "";
@@ -211,7 +230,7 @@ function renderQueue() {
     number.className = "number"; number.textContent = String(song.position).padStart(2, "0");
     const img = imageElement(song.thumbnail);
     const info = document.createElement("div"); info.className = "song";
-    const title = document.createElement("p"); title.textContent = song.title;
+    const title = songTitle(document.createElement("p"), song);
     const source = document.createElement("small"); source.textContent = "點播：" + requesterName(song);
     const estimate = document.createElement("small"); estimate.className = "queue-estimate";
     info.append(title, source, estimate);
@@ -297,6 +316,7 @@ function cancelDrag(message, preserve = false) {
   if (!drag) { if (!preserve) settleDrag(); return; }
   if (!preserve) settleDrag();
   const old = drag; drag = null;
+  if (old.active) suppressSongLinksUntil = Date.now() + 600;
   window.clearTimeout(old.timer);
   window.cancelAnimationFrame(old.frame);
   old.row.classList.toggle("dragging", false);
@@ -580,9 +600,9 @@ function render(next, force = false) {
   state = next; stateAt = Date.now();
   if (seekDrag && seekDrag.track !== currentTrackKey()) cancelSeek();
   if (previousTrack !== currentTrackKey()) resetLyrics(false);
-  $("title").textContent = state.current ? state.current.title : "選一首喜歡的歌";
+  songTitle($("title"), state.current || {title:"選一首喜歡的歌"});
   $("subtitle").textContent = state.current ? "點播：" + requesterName(state.current) : "請先加入 Discord 語音頻道，再點播歌曲";
-  const source = safeURL(state.current?.url || "");
+  const source = songLinkURL(state.current?.url || "");
   $("source-link").hidden = !source;
   if (source) {
     $("source-link").href = source;
@@ -592,7 +612,7 @@ function render(next, force = false) {
   if (typeof favoriteRender === "function") favoriteRender();
   $("play-status").textContent = labels[state.status] || "準備中";
   $("toggle").textContent = state.status === "playing" ? "暫停" : "繼續";
-  $("bar-title").textContent = state.current ? state.current.title : "還沒有播放中的歌曲";
+  songTitle($("bar-title"), state.current || {title:"還沒有播放中的歌曲"});
   $("bar-status").textContent = labels[state.status] || "準備中";
   const cover = safeURL(state.current?.thumbnail || "");
   if (cover) { $("bar-cover").src = cover; $("bar-cover").hidden = false; }
@@ -860,7 +880,7 @@ function renderRecommendations() {
   for (const song of songs) {
     const row = document.createElement("li"), info = document.createElement("div");
     info.className = "history-info";
-    const title = document.createElement("p"); title.textContent = song.title;
+    const title = songTitle(document.createElement("p"), song);
     const meta = document.createElement("small");
     meta.textContent = (song.duration ? duration(song.duration) : "長度未知") + " · 點播：" + requesterName(song);
     info.append(title, meta);
@@ -912,7 +932,7 @@ function applyHistory(result, guild = selected, epoch = generation) {
     for (const song of entries) {
       const row = document.createElement("li"), info = document.createElement("div");
       info.className = "history-info";
-      const title = document.createElement("p"); title.textContent = song.title;
+      const title = songTitle(document.createElement("p"), song);
       const meta = document.createElement("small");
       meta.textContent = (song.duration ? duration(song.duration) : "長度未知") + " · 點播：" + requesterName(song) + " · " + playedTime(song.played_at);
       info.append(title, meta);

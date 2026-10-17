@@ -64,8 +64,9 @@ function libraryRender() {
       if (check.checked) selectedTracks.add(String(index)); else selectedTracks.delete(String(index));
       $("library-play-selected").disabled = selectedTracks.size === 0;
     });
-    const label = document.createElement("span");
-    label.textContent = song.title + " · " + (song.duration ? duration(song.duration) : "長度未知");
+    const label = songTitle(document.createElement("span"), song);
+    const length = document.createElement("small"); length.textContent = " · " + (song.duration ? duration(song.duration) : "長度未知");
+    label.append(length);
     const actions = document.createElement("div"); actions.className = "actions";
     for (const [text, to] of [["↑", index - 1], ["↓", index + 1], ["刪除", null]]) {
       const b = libraryButton(text, () => libraryChange(list.id, {action: to === null ? "remove" : "move", index, to}));
