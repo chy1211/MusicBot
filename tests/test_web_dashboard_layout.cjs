@@ -83,3 +83,19 @@ test("glass foreground palette meets AA on conservative wallpaper compositions",
   }
   assert.ok(ratio(rgb("ffffff"),rgb("07509f"))>=4.5);
 });
+
+test("explicit server survives the login redirect and is consumed after selection", () => {
+  const vm=require("node:vm");
+  const source=fs.readFileSync(path.join(__dirname,"../musicbot/web/dashboard.js"),"utf8");
+  const snippet=source.slice(source.indexOf("function rememberGuild"),source.indexOf("async function connect"));
+  const stored=new Map(), window={location:{href:"https://music.example.com/?guild=2"},
+    sessionStorage:{getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)}};
+  const c=vm.createContext({window,URL,entryGuild:"",manualGuild:"",data:{guilds:[{id:"1"},{id:"2"}],recommended_guild_id:"1"}});
+  vm.runInContext(snippet,c);vm.runInContext("captureEntryGuild()",c);
+  assert.equal(stored.size,1);
+  window.location.href="https://music.example.com/";c.entryGuild="";
+  vm.runInContext("captureEntryGuild()",c);
+  assert.equal(vm.runInContext("initialGuild(data)",c),"2");
+  vm.runInContext('rememberGuild("2")',c);assert.equal(stored.size,0);
+  c.manualGuild="1";assert.equal(vm.runInContext("initialGuild(data)",c),"1");
+});
