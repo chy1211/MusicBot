@@ -56,3 +56,30 @@ test("initial server respects URL, recommendation, browser and first choice", ()
   c.manualGuild="99"; window.location.href="https://music.example.com/?guild=99";
   assert.equal(vm.runInContext("initialGuild(data)",c),"1");
 });
+
+test("glass provides both themes, prefixed blur and opaque accessibility fallbacks", () => {
+  assert.match(css, /backdrop-filter:blur\(22px\) saturate\(155%\)/);
+  assert.match(css, /-webkit-backdrop-filter:blur\(22px\) saturate\(155%\)/);
+  assert.match(css, /@media\(prefers-color-scheme:light\)/);
+  assert.match(css, /@supports not \(backdrop-filter:blur\(1px\)\)/);
+  assert.match(css, /@media\(prefers-reduced-transparency:reduce\)/);
+  assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
+  assert.match(css, /\.card\{backdrop-filter:none;-webkit-backdrop-filter:none/);
+});
+test("glass foreground palette meets AA on conservative wallpaper compositions", () => {
+  const rgb=hex=>hex.match(/[0-9a-f]{2}/gi).map(n=>parseInt(n,16)/255);
+  const mix=(fg,bg,a)=>fg.map((n,i)=>n*a+bg[i]*(1-a));
+  const lum=rgb=>rgb.map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4)
+    .reduce((n,c,i)=>n+c*[.2126,.7152,.0722][i],0);
+  const ratio=(a,b)=>(Math.max(lum(a),lum(b))+.05)/(Math.min(lum(a),lum(b))+.05);
+  for (const light of [false,true]) for (let mask=0;mask<8;mask++) {
+    let bg=rgb(light?"edf2fc":"070d1c");
+    const colors=["4c77ff","bf51e2","1fa3b6"],alphas=light?[.28,.22,.18]:[.58,.42,.28];
+    colors.forEach((color,i)=>{if(mask&(1<<i))bg=mix(rgb(color),bg,alphas[i]);});
+    bg=mix(rgb(light?"ffffff":"0b1223"),bg,.62);
+    assert.ok(ratio(rgb(light?"142137":"f8fafc"),bg)>=4.5);
+    assert.ok(ratio(rgb(light?"435471":"c2ccdd"),bg)>=4.5);
+    assert.ok(ratio(rgb(light?"064c85":"a5ddff"),bg)>=4.5);
+  }
+  assert.ok(ratio(rgb("ffffff"),rgb("07509f"))>=4.5);
+});
