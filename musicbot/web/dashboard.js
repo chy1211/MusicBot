@@ -654,7 +654,7 @@ async function act(action, data = {}, method = "POST") {
         window.clearTimeout(toastTimer);
         const undo = document.createElement("button"); undo.type = "button"; undo.textContent = "復原";
         undo.addEventListener("click", async () => {
-          if (undo.disabled || epoch !== generation) return;
+          if (busy || undo.disabled || epoch !== generation) return;
           undo.disabled = true; buttonBusy(undo, true);
           await act("queue/undo", {undo_token:result.undo_token});
         });

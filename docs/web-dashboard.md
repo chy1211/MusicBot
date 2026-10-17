@@ -1,7 +1,7 @@
-# Web dashboard: round 8 (development only)
+# Web dashboard: round 10 (development only)
 
 Optional aiohttp dashboard inside the bot event loop, without another Discord
-client or dependency. The round-7 branch starts at dev 9af6f8d (round 6). This feature branch is not deployed. The public production
+client or dependency. The round-10 branch starts at dev 896fe4f (round 9). This feature branch is not deployed. The public production
 dashboard already uses Discord login. Each caller acts with their own guild
 membership, permissions and voice state. Default AuthMode=owner preserves legacy
 OwnerID behavior when the key is missing; owner mode requires external SSO.
@@ -1480,3 +1480,91 @@ Offline tests cover default/off, native fallback, the shared fallback lock,
 recent-50 boundary, blocklist/length filters, stats exclusion, timeout and
 three-failure cooldown, using only mock YouTube Mixes. The browser demo stores
 policy only in its TemporaryDirectory.
+
+## Remaining round-10 changes and API compatibility
+
+* Seek: cmd_seek temporarily requeues the current entry and restarts its audio
+  source. Previously the dashboard exposed that entry as an additional queued
+  song and combined the old frame counter with its new start offset; repeat
+  modes could requeue it twice. A pending transition now supplies the true
+  position/paused state and excludes that technical requeue from visible queue
+  and ETA calculations. Resume reinstates normal frame counting. Discord and
+  web seek share this fix; command arguments/responses otherwise stay native.
+* Source titles: queue/current/bar/history/popular/library titles link to safe
+  http/https sources with target=_blank and noopener noreferrer. YouTube variants
+  use the canonical watch URL. Handles remain separate, and drag/settling clicks
+  suppress navigation. Title style is retained with hover/focus underline.
+* Favorites: normalized identity (YouTube video ID) drives filled-heart,
+  aria-pressed/title state, reduced-motion animation and request disabling.
+  POST /api/library/favorites/tracks still accepts {revision, track}; an existing
+  song returns 200 with message 已在收藏中 and does not append.
+  PATCH /api/library/favorites adds {revision, action:"remove_url", url} and
+  returns the updated private collection with 已取消收藏. Only the session's own
+  library is touched. Existing duplicates remain readable and are deduped under
+  the existing atomic transaction lock at the next write.
+* Preview expiry: POST /play or /playnext with the existing {query, preview_id}
+  (plus selected_items for batches) renews only on confirmation, using saved
+  original input. Same canonical URLs are matched, never replaced by a different
+  search hit. Missing singles return 409 with safe new results; batches report
+  added/skipped and recheck all permissions/limits. Renewal is charged to the
+  existing per-person rate limit. Provenance is retained up to one hour in
+  bounded memory; older previews or a restart still require a fresh search.
+* Undo: DELETE /queue/{position} adds undo_token, undo_expires_in:10 and
+  removed_title to its ordinary message/state response. POST /queue/undo accepts
+  only {undo_token}; live same-voice membership, remove/play permissions,
+  requester/user limits and blocklists are rechecked. The server-owned exact
+  entry is reinserted at its previous index (or end), preserving the original
+  requester. Tokens are actor/guild-bound, single-use, latest-only, expire after
+  ten seconds and are deleted on cleanup. Existing current/queued identity
+  blocks duplicate restore. Removal/undo each create an activity record.
+  The passive toast overlay enables pointer events on its action button.
+* Mobile: volume lives inside the current-track card below the progress row;
+  the <=640px bottom bar omits its volume row. Desktop volume stays in the bar.
+  Queue/seek/volume gestures temporarily disable selection/callouts and clear
+  on completion/cancel/Esc/blur; ordinary title copying remains available.
+  Pause/resume/skip show text only. Seek/drag guidance is screen-reader-only;
+  the timezone sentence is removed. The sidebar says 連線狀態, with color/dot
+  and a state tooltip.
+* Web Discord notifications always use plain content, no embed, with a small
+  -# display-name source line and native play/playlist body. Mentions are disabled.
+  Native Discord response configuration is unchanged.
+* Homepage playlist URLs share the normal selectable preview and batch-queue
+  path. The second action saves the selected source tracks as a new private
+  playlist via the existing import API, retaining source URL/name for resync.
+  The separate library import form/provider picker is removed; its hint focuses
+  the homepage input. Existing source-resync controls remain.
+* Spotify playlist reads try the existing API, then the public embed JSON:
+  ten-second timeout, three-MiB bound, no redirects and Spotify host validation.
+  The fallback is shared with Discord get_playlist; API success is unchanged,
+  and failed fallback rethrows an existing API error when one exists.
+  Missing data gives a sanitized Chinese dashboard error. Albums/tracks retain
+  their existing API methods. Embed previews are explicitly marked partial.
+
+### Round-10 offline verification
+
+Use only a tracked-source archive or an isolated context, with no production
+mounts/configuration. Example from the feature worktree before it is removed:
+~~~sh
+ctx=$(mktemp -d /tmp/musicbot-webtest-r10.XXXXXX)
+git archive feature/dashboard-round10 | tar -x -C "$ctx"
+printf 'FROM musicbot:ytdlp-base\nWORKDIR /webtest\nCOPY . .\n' > "$ctx/Dockerfile.webtest"
+docker build --network none -t musicbot-webtest-r10:check -f "$ctx/Dockerfile.webtest" "$ctx"
+docker run --rm --network none --name musicbot-webtest-r10-unit --entrypoint python3 musicbot-webtest-r10:check -W error::DeprecationWarning:aiohttp.web_protocol -m unittest discover -s tests -p 'test_web_dashboard*.py'
+docker run --rm --network none --name musicbot-webtest-r10-links --entrypoint python3 musicbot-webtest-r10:check -m tools.test_compound_link
+node --test tests/test_web_dashboard*.cjs
+~~~
+Final suites: 424 backend tests, 139 frontend tests, 16 compound-link cases;
+all pass. The original 377/131/16 coverage is retained with fixtures updated for
+deduplication, renewed previews, public imports and nonmentioning notifications.
+Seven browser smoke checks passed through the loopback relay in desktop Chrome
+and at 390px: fake Spotify href, title link attributes, favorite toggle, paused
+forward/back seek, deletion/undo, owner metadata/radio form, compact mobile
+volume/hidden helper text/no horizontal overflow. No screenshots, page errors
+or external requests. The demo uses no real credentials or config/data files.
+
+Run the same --network none demo/relay pattern as round nine, using round-ten
+resource names. In the fake Owner session pause then seek to 100 and back to
+20 seconds to compare the first queue ETA, click the song title's source link,
+toggle the heart twice and observe its count in favorites, and inspect the
+fake Spotify track href. Owner management shows the fake cookie warning and
+radio controls. All demo storage is inside TemporaryDirectory.

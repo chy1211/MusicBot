@@ -109,7 +109,7 @@ class LibraryTests(unittest.IsolatedAsyncioTestCase):
             await self.call("/api/library", {"name": str(i)})
         await self.call("/api/library", {"name": "overflow"}, status=400)
         store = self.dashboard.playlist_store
-        await store.transact(43, lambda v: v["playlists"][0].update(tracks=[song(TRACK) for _ in range(200)]))
+        await store.transact(43, lambda v: v["playlists"][0].update(tracks=[song(dict(TRACK,url=f"https://example.test/saved/{i}")) for i in range(200)]))
         v = await self.get()
         await self.call("/api/library/favorites/tracks", {"revision": v["revision"], "track": TRACK}, status=400)
         await self.call("/api/library/favorites", {"revision": "stale", "action": "remove", "index": 0}, "PATCH", 409)
@@ -138,7 +138,7 @@ class LibraryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_full_partial_real_hook_maxsongs_and_length(self):
         await self.add()
-        v = await self.add(track=dict(TRACK, title="Second"))
+        v = await self.add(track=dict(TRACK, title="Second", url="https://example.test/second"))
         self.bot.member_perms.max_songs = 1
         result = await self.call(BASE + "library/favorites/play", {"revision": v["revision"]})
         self.assertEqual((result["added"], result["skipped"]), (1, 1))
