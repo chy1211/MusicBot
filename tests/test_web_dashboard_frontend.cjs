@@ -1846,3 +1846,16 @@ test("round10 mobile volume, selection locks and connection states", async () =>
   assert.match(css,/playback-bar>\.volume-row\{display:none\}/);
   assert.match(css,/-webkit-touch-callout:none/);
 });
+
+
+test("round10 favorite toggles pressed state and normalized identities", async () => {
+  const fixture=libraryFixture(), app=await setup({round7:true,hook:fixture.hook});
+  await flush();
+  app.run('libraryData.playlists[0].tracks=[{url:"https://youtu.be/video000001?t=3"}]; state.current.url="https://music.youtube.com/watch?v=video000001";favoriteRender()');
+  assert.equal(app.element("favorite").attributes["aria-pressed"],"true");
+  assert.match(app.element("favorite").textContent,/♥/);
+  app.run('libraryData.playlists[0].tracks=[];favoriteRender()');
+  assert.equal(app.element("favorite").attributes["aria-pressed"],"false");
+  app.element("favorite").dataset.loading="1"; app.run("controls()");
+  assert.equal(app.element("favorite").disabled,true);
+});

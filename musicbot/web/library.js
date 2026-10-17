@@ -10,11 +10,12 @@ async function libraryRun(button, run) {
   if (libraryBusy) return;
   libraryBusy = true; buttonBusy(button, true);
   try { await run(); } catch (error) { notice(error.message || "操作失敗，請稍後再試。", true); }
-  finally { libraryBusy = false; buttonBusy(button, false); button.disabled = false; }
+  finally { libraryBusy = false; buttonBusy(button, false); button.disabled = false; favoriteRender(); controls(); }
 }
 function libraryClear() {
   libraryData = null; libraryPendingSong = null; libraryActive = "favorites";
   libraryImportPending = null;
+  favoriteRender();
   if (libraryImportUI) {
     libraryImportUI.sync.hidden = libraryImportUI.origin.hidden = true;
     libraryImportUI.origin.textContent = "";
@@ -34,7 +35,7 @@ async function libraryLoad() {
   const epoch = generation;
   const value = await api("/api/library");
   if (epoch !== generation || !(authMode === "owner" || authenticated)) return false;
-  libraryData = value; libraryRender(); return true;
+  libraryData = value; libraryRender(); favoriteRender(); return true;
 }
 function libraryRender() {
   const select = $("library-select"); select.replaceChildren();
@@ -79,7 +80,7 @@ async function libraryChange(id, data, method = "PATCH", suffix = "") {
   const epoch = generation, revision = libraryData.revision;
   const result = await api("/api/library/" + encodeURIComponent(id) + suffix, method, {...data, revision});
   if (epoch !== generation) return;
-  libraryData = result; libraryRender(); notice("已更新歌單。");
+  libraryData = result; libraryRender(); favoriteRender(); notice(result.message || "已更新歌單。");
 }
 async function libraryPlay(list, chosen) {
   if (!selected || !connected) throw new Error("請先選擇可用的伺服器。");
@@ -128,7 +129,25 @@ $("library-delete").addEventListener("click", () => {
   if (!window.confirm("確定刪除這份歌單？")) return;
   return libraryRun($("library-delete"), () => libraryChange(libraryActive, {}, "DELETE"));
 });
-$("favorite").addEventListener("click", () => libraryRun($("favorite"), () => librarySave(state?.current, true)));
+function favoriteRender() {
+  const button = $("favorite"), key = songIdentity(state?.current?.url);
+  const saved = !!key && !!libraryData?.playlists[0]?.tracks.some(t => songIdentity(t.url) === key);
+  button.setAttribute("aria-pressed", String(saved));
+  button.title = saved ? "取消收藏" : "收藏這首歌";
+  button.textContent = saved ? "♥ 已收藏" : "♡ 收藏";
+  button.classList.toggle("is-favorite", saved);
+  if (button.dataset.loading === "1") button.disabled = true;
+}
+$("favorite").addEventListener("click", () => libraryRun($("favorite"), async () => {
+  const song = state?.current, epoch = generation;
+  if (!song || !await libraryLoad() || epoch !== generation) return;
+  const key = songIdentity(song.url);
+  const saved = libraryData.playlists[0].tracks.some(t => songIdentity(t.url) === key);
+  await libraryChange("favorites", saved ? {action:"remove_url",url:song.url}
+    : {track:{title:song.title,url:song.url,duration:song.duration || null}}, saved ? "PATCH" : "POST", saved ? "" : "/tracks");
+  if (!reduceMotion() && $("favorite").animate)
+    $("favorite").animate([{transform:"scale(1)"},{transform:"scale(1.12)"},{transform:"scale(1)"}], {duration:230});
+}));
 $("library-save-cancel").addEventListener("click", () => $("library-save-dialog").close());
 $("library-save-confirm").addEventListener("click", () => libraryRun($("library-save-confirm"), async () => {
   if (!libraryPendingSong) return;

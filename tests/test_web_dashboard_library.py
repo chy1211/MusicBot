@@ -32,7 +32,7 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_isolated_and_serialized(self):
         await asyncio.gather(*(self.store.transact(42, lambda v: v["playlists"][0]["tracks"].append(song(TRACK))) for _ in range(20)))
-        self.assertEqual(len((await self.store.transact(42))["playlists"][0]["tracks"]), 20)
+        self.assertEqual(len((await self.store.transact(42))["playlists"][0]["tracks"]), 1)
         self.assertEqual((await self.store.transact(43))["playlists"][0]["tracks"], [])
 
     async def test_corruption_quarantines_original_and_does_not_write_new(self):

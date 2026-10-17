@@ -191,3 +191,5 @@ body.no-selection,body.no-selection *,.drag-handle,input[type=range]{
   .mobile-volume{display:flex;justify-content:flex-start;margin-top:12px;flex-wrap:wrap}
   .mobile-volume input{flex:1;min-width:70px;max-width:160px}
 }
+
+#favorite.is-favorite{color:var(--green);border-color:var(--green)}
