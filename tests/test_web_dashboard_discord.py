@@ -58,6 +58,11 @@ class DiscordBot(fixtures.FakeBot):
 class DiscordTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.bot = DiscordBot()
+        self.auth_temp = tempfile.TemporaryDirectory(prefix="musicbot-webtest-auth-")
+        self.auth_path_patch = patch("musicbot.web_dashboard_auth.write_path",return_value=Path(self.auth_temp.name))
+        self.auth_path_patch.start()
+        self.addCleanup(self.auth_temp.cleanup)
+        self.addCleanup(self.auth_path_patch.stop)
         self.dashboard = Dashboard(self.bot, DashboardConfig(
             auth_mode="discord", public_url="http://127.0.0.1",
             discord_client_id="123", discord_client_secret=SECRET,
@@ -192,7 +197,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         cookie = response.cookies[self.dashboard.session_cookie]
         self.assertTrue(cookie["httponly"])
         self.assertEqual(cookie["samesite"], "Lax")
-        self.assertEqual(int(cookie["max-age"]), 168 * 3600)
+        self.assertEqual(int(cookie["max-age"]), 30 * 86400)
         self.assertNotIn(state, self.dashboard.oauth_states)
         identity = await (await self.client.get("/auth/session")).json()
         self.assertEqual(identity["user"]["id"], "43")
@@ -275,7 +280,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_session_expiry_and_signature_tamper_401(self):
         token = self.login_as(43)
-        self.dashboard.sessions[token.split(".")[0]]["expires"] = time.monotonic() - 1
+        self.dashboard.sessions[self.dashboard.session_digest(token)]["expires"] = time.monotonic() - 1
         await self.call("/api/guilds", method="GET", status=401)
         token = self.login_as(43)
         self.client.session.cookie_jar.update_cookies(
@@ -353,8 +358,8 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
     async def test_nonmember_403_membership_rechecked_each_request(self):
         self.login_as(999)
         await self.call(BASE + "state", method="GET", status=403)
-        await self.call(BASE + "pause", {}, status=403)
-        self.assertEqual((await self.call("/api/guilds", method="GET"))["guilds"], [])
+        await self.call(BASE + "pause", {}, status=401)
+        await self.call("/api/guilds", method="GET", status=401)
         self.login_as(43)
         await self.call(BASE + "state", method="GET")
         self.bot.members.pop(43)
@@ -363,8 +368,8 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
     async def test_blocked_users_readonly_denied_owner_exempt(self):
         self.bot.blocked_users.update({42, 43})
         await self.call("/api/guilds", method="GET", status=403)
-        await self.call(BASE + "state", method="GET", status=403)
-        await self.call(BASE + "pause", {}, status=403)
+        await self.call(BASE + "state", method="GET", status=401)
+        await self.call(BASE + "pause", {}, status=401)
         self.login_as(42)
         await self.call(BASE + "state", method="GET")
 
@@ -589,7 +594,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(started.wait(), 1)
                 try:
                     if reason == "expiry":
-                        self.dashboard.sessions[token.split(".")[0]]["expires"] = time.monotonic() - 1
+                        self.dashboard.sessions[self.dashboard.session_digest(token)]["expires"] = time.monotonic() - 1
                     else:
                         await self.call("/auth/logout", {})
                 finally:
@@ -695,7 +700,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
                     if change == "voice":
                         self.bot.member.voice = NS(channel=NS(id=99))
                     else:
-                        self.dashboard.sessions.pop(token.split(".")[0])
+                        self.dashboard.sessions.pop(self.dashboard.session_digest(token))
                     return self.bot.player
                 self.bot.get_player.side_effect = changed
                 await self.call(BASE + "pause", {}, status=status)
@@ -730,7 +735,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         _, _, state = await self.begin_oauth()
         response = await self.finish_oauth(state)
         self.assertEqual(response.status, 302)
-        self.assertNotIn(old.split(".")[0], self.dashboard.sessions)
+        self.assertNotIn(self.dashboard.session_digest(old), self.dashboard.sessions)
         self.client.session.cookie_jar.update_cookies(
             {self.dashboard.session_cookie: old}, response_url=self.client.make_url("/"))
         await self.call("/api/guilds", method="GET", status=401)
@@ -775,11 +780,12 @@ class DiscordConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dashboard.client_id, "123")
         await dashboard.close()
 
-    async def test_random_session_key_and_repr_secret_redaction(self):
+    async def test_opaque_sessions_need_no_signing_key_and_repr_redacts_legacy_secret(self):
         bot = DiscordBot()
         config = dataclasses.replace(self.config(), session_secret="")
         first, second = Dashboard(bot, config), Dashboard(bot, config)
-        self.assertNotEqual(first.session_key, second.session_key)
+        self.assertFalse(hasattr(first, "session_key"))
+        self.assertFalse(hasattr(second, "session_key"))
         self.assertNotIn(SECRET, repr(config))
         self.assertNotIn("FAKE-ONLY-SESSION-SECRET", repr(self.config()))
         await first.close()

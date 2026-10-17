@@ -21,8 +21,6 @@ AuthMode = discord
 PublicURL = https://music.example.com
 DiscordClientID =
 DiscordClientSecret = <OAUTH2_CLIENT_SECRET>
-SessionSecret = <RANDOM_SECRET_AT_LEAST_32_BYTES_RECOMMENDED>
-SessionHours = 168
 SharedSecret =
 ~~~
 
@@ -30,10 +28,11 @@ PublicURL is an absolute root origin, without credentials, path, query or fragme
 A trailing slash is accepted. HTTPS is required except for local loopback demos.
 A blank DiscordClientID uses the bot's application_id, cached application ID,
 or bot user ID. DiscordClientSecret is required; it is not the bot token.
-SessionHours must be positive and finite. Blank SessionSecret generates a random
-key on startup. Sessions always live in process memory, so even a persistent
-SessionSecret does not preserve logins across restarts. SharedSecret is ignored
-in Discord mode; it remains optional Bearer protection in owner mode.
+Logins persist across restarts with a fixed 30-day inactivity window.
+Legacy SessionSecret/SessionHours may remain in existing configuration; the new
+opaque-session mechanism does not use either to sign tokens or shorten/extend
+the 30-day lifetime (legacy duration syntax is still validated).
+SharedSecret remains optional Bearer protection only in owner mode.
 
 Missing/disabled configuration does not start a listener. Invalid or incomplete
 enabled Discord configuration **does not start the dashboard**, logs only the
@@ -41,7 +40,7 @@ exception type, and lets MusicBot continue normally. This includes missing publi
 origin/client secret/application ID or invalid session duration. Read once after
 the first successful on_ready; changing settings needs a separately approved
 deployment/restart. close/logout/run_musicbot-finally clean up the listener,
-session records and resolver tasks.
+in-memory session cache and resolver tasks; persisted sessions remain valid.
 
 In https://discord.com/developers/applications select the bot application (or the
 application matching DiscordClientID). Under **OAuth2**, copy **Client Secret**,
@@ -70,16 +69,39 @@ session, ten-second timeout, no redirects or environment proxy inheritance, and
 16 KiB response limits. Only ID, display name and validated Discord avatar URL
 survive. Access/refresh tokens and authorization codes are never saved.
 
-Session cookies contain a random nonce plus HMAC-SHA256. The server stores only
-the profile and absolute monotonic expiry (default seven days). Cookies are
-HttpOnly, SameSite=Lax, path=/, no Domain; HTTPS also uses Secure and __Host-
-names. Login rotates the session; POST /auth/logout revokes the server record
-immediately, clears cookies and this browser's pending login. Replaying a logged
-out cookie fails. GET never logs out. Logout requires a live session, custom
-header and same-origin checks.
+Session cookies contain 32 random bytes encoded as an opaque URL-safe token.
+Only SHA-256(token), minimal profile (ID/name/avatar), creation time, last renewal
+and expiry are persisted in data/web_dashboard/sessions/sessions.json. Writes use
+a 0600 temporary sibling, flush/fsync and atomic replacement; the directory is
+created 0700. No raw token, OAuth access/refresh token or authorization code is
+stored. No signing/encryption key is needed; SessionSecret is unused.
+
+Cookies have Max-Age=2592000 (30 days), HttpOnly, SameSite=Lax, Path=/, no Domain;
+HTTPS retains Secure and __Host- names. A successful same-origin request renews
+server expiry and cookie at most once per rolling day. The maximum inactivity is
+30 days after the last persisted renewal. Active browser pages also check the
+session daily, including when using a long-lived SSE stream. No per-request disk
+write. Startup and daily cleanup remove expired records; max 10 sessions/person
+(evict oldest) and max 1024 globally. Missing/corrupt files start with no sessions.
+Each use checks bot-cached membership and blocklist; removal/blocking revokes the
+session, and protected operations continue checking the target guild/permissions.
+
+POST /auth/logout revokes the current server record immediately and clears
+cookies/pending OAuth state. POST /auth/logout-all revokes every session for the
+authenticated user (other users remain signed in), then clears this browser's
+cookies. Both accept an empty JSON object and return {message}, require a live
+Discord session, X-MusicBot-Dashboard: 1 and the existing host/origin checks.
+Owner mode returns 404, unauthenticated 401, bad CSRF/origin 403, wrong method 405.
+GET never logs out. POST /auth/logout-all is available in the account menu.
+
+To force everyone to sign in again: stop the dashboard/bot through your normal
+maintenance procedure, delete only data/web_dashboard/sessions/sessions.json,
+then restart. Do not edit configuration or OAuth credentials. Deleting the file
+while a process is running does not revoke its in-memory sessions; restart is
+required. Deletion discards only login state, not playlists or settings.
 
 Pending states and sessions are capped at 1024 each; expired records are removed
-during login/session creation. Login admission is capped at 60 per minute
+at startup, daily and during session validation. Login admission is capped at 60 per minute
 globally (429), and new sessions fail at capacity (503). These are memory bounds,
 not internet-edge DDoS protection.
 

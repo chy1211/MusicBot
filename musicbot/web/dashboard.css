@@ -279,3 +279,6 @@ body.player-open{overflow:hidden}
 @keyframes player-rise{from{transform:translateY(12%);opacity:.3}to{transform:translateY(0);opacity:1}}
 @media(prefers-reduced-motion:reduce){.player-panel{animation:none}}
 @media(prefers-reduced-transparency:reduce){.player-panel{background:var(--opaque);backdrop-filter:none}}
+
+.account-actions{position:relative}.account-actions summary{font-size:12px;padding:8px 12px;min-height:44px;border:1px solid var(--line);border-radius:24px}
+.account-actions>div{position:absolute;right:0;top:100%;z-index:12;display:grid;gap:8px;width:180px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--opaque);box-shadow:var(--glass-shadow)}
