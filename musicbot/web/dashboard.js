@@ -1127,13 +1127,17 @@ function syncLyrics() {
     });
   }
   if (lyricsCenterPending && Date.now()>=lyricsUserScrollUntil && index>=0) {
-    const row=$("lyrics-content").children[index];
+    const box=$("lyrics-content"),row=box.children[index];
+    // Hidden panels have no layout yet. Keep the pending center until visible.
+    if (!row || !box.clientHeight) return;
+    const rowRect=row.getBoundingClientRect(),boxRect=box.getBoundingClientRect();
+    // Both rectangles use viewport coordinates, independent of offsetParent.
+    // Measure after highlighting: the larger active font can wrap onto more lines.
+    const top=Math.max(0,box.scrollTop+rowRect.top-boxRect.top-box.clientTop-box.clientHeight/2+rowRect.height/2);
     lyricsAutoScrollUntil=Date.now()+1200;
-    // Scroll only the lyric viewport. Native scrollIntoView can move the page.
-    if (typeof $("lyrics-content").scrollTo === "function" && Number.isFinite(row.offsetTop)) {
-      const box=$("lyrics-content");
-      box.scrollTo({top:Math.max(0,row.offsetTop-box.offsetTop-box.clientHeight/2+row.offsetHeight/2),behavior:reduceMotion()?"auto":"smooth"});
-    } else row.scrollIntoView?.({behavior:reduceMotion()?"auto":"smooth",block:"center"});
+    // Scroll only this viewport, including the fallback for older browsers.
+    if (typeof box.scrollTo === "function") box.scrollTo({top,behavior:reduceMotion()?"auto":"smooth"});
+    else box.scrollTop=top;
     lyricsCenterPending=false;
   }
 }
@@ -1144,10 +1148,12 @@ function toggleLyrics(open = !lyricsOpen, persist = true) {
     try { window.localStorage?.setItem("musicbot-lyrics:"+viewerKey,open?"on":"off"); } catch {}
   }
   lyricsOpen = open; $("lyrics-panel").hidden = !open;
+  if (open) lyricsCenterPending=true;
   $("lyrics-toggle").setAttribute("aria-expanded", String(open));
   if (!open) { ++lyricsRequest;++lyricsOffsetSequence;lyricsLoading=false;window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null; }
   else if (lyricsTrack !== currentTrackKey() || !$("lyrics-content").textContent && !lyricsLines.length) return loadLyrics();
   else if(lyricsVideo)lyricsOffsetTimer=window.setTimeout(pollLyricsOffset,5000);
+  if (open) syncLyrics();
 }
 async function changeLyricsOffset(action, extra = {}) {
   if (!lyricsOpen || lyricsTimingBusy || !lyricsVideo || !lyricsLines.length) return;
