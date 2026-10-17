@@ -626,7 +626,6 @@ function render(next, force = false) {
   $("bar-status").textContent = state.current ? (labels[state.status] || "準備中") + " · 點播：" + requesterName(state.current) : "選一首喜歡的歌";
   $("playback-bar").classList.toggle("is-empty", !state.current);
   const cover = safeURL(state.current?.thumbnail || "");
-  if (typeof updateWallpaper === "function") updateWallpaper(cover);
   if (cover) { $("bar-cover").src = cover; $("bar-cover").hidden = false; }
   else { $("bar-cover").hidden = true; $("bar-cover").removeAttribute("src"); }
   const total = state.current ? state.current.duration : 0;
@@ -1384,20 +1383,6 @@ $("song-spotify").addEventListener("click", event => {
 
 
 /* Progressive visual helpers are optional; no dependency on layout in VM tests. */
-let wallpaperURL = "", wallpaperSide = false;
-function updateWallpaper(url) {
-  if (!document.documentElement || url === wallpaperURL) return;
-  wallpaperURL = url;
-  const next = $(wallpaperSide ? "wallpaper-a" : "wallpaper-b"), old = $(wallpaperSide ? "wallpaper-b" : "wallpaper-a");
-  if (!url) { next.classList.remove("active"); old.classList.remove("active"); return; }
-  try {
-    const u = new URL(url, window.location.href);
-    const hosts = ["i.ytimg.com","img.youtube.com","i.scdn.co","mosaic.scdn.co","cdn.discordapp.com","media.discordapp.net"];
-    if (u.origin !== window.location.origin && (u.protocol !== "https:" || !hosts.includes(u.hostname))) return;
-  } catch { return; }
-  next.onload = () => { if (wallpaperURL === url) { next.classList.add("active"); old.classList.remove("active"); wallpaperSide = !wallpaperSide; } };
-  next.src = url;
-}
 function initGlass() {
   if (!document.documentElement) return;
   const root = document.documentElement, input = $("glass-appearance"), nav = document.querySelector(".page-tabs");

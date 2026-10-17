@@ -1,7 +1,7 @@
 :root{color-scheme:dark;--bg:#05060d;--surface:rgba(16,16,24,.38);--raised:rgba(255,255,255,.08);--text:#f2f2f7;--muted:rgba(235,235,245,.6);--green:#64d2ff;--accent2:#bf5af2;--line:rgba(255,255,255,.12);--bar:110px;--glass:linear-gradient(140deg,rgba(255,255,255,.12),rgba(255,255,255,.03) 45%,rgba(255,255,255,.06)),rgba(16,16,24,.38);--glass-shadow:inset 0 1px 0 rgba(255,255,255,.32),inset 0 -1px 0 rgba(255,255,255,.06),inset 0 0 24px rgba(255,255,255,.035),0 12px 40px -12px rgba(0,0,0,.55)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;font-size:15px;line-height:1.55;letter-spacing:.005em;-webkit-font-smoothing:antialiased}
 button,input,select{font:inherit}button,select{cursor:pointer}button{min-height:44px;min-width:44px;border:1px solid #ffffff20;border-radius:24px;padding:9px 18px;background:rgba(255,255,255,.08);color:var(--text);font-weight:650;transition:background .15s,transform .15s}button:hover:enabled{background:rgba(255,255,255,.14);transform:translateY(-1px)}button:disabled{opacity:.4;cursor:default}
-.primary{background:linear-gradient(180deg,rgba(255,255,255,.28),transparent 55%),rgba(10,132,255,.72);color:#fff;border-color:rgba(255,255,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 6px 20px -6px rgba(10,132,255,.8)}.primary:hover:enabled{filter:brightness(1.12)}.subtle{background:transparent}
+.primary{background:linear-gradient(180deg,rgba(255,255,255,.28),transparent 55%),rgba(10,132,255,.72);color:#fff;border-color:rgba(255,255,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}.primary:hover:enabled{filter:brightness(1.12)}.subtle{background:transparent}
 input,select{border:1px solid #ffffff28;background:rgba(255,255,255,.06);color:var(--text);border-radius:12px;padding:12px;min-height:44px;min-width:0}input:focus,select:focus{border-color:var(--green)}:focus-visible{outline:2px solid var(--green);outline-offset:4px}
 h1,h2,h3,p{margin:0}h1{font-size:32px;letter-spacing:-1px}h2{font-size:23px}h3{font-size:17px}.eyebrow{font-size:11px;letter-spacing:2px;color:var(--muted);margin-bottom:10px;font-weight:700}.muted,.hint,small{color:var(--muted)}.hint{font-size:12px;margin-top:10px;line-height:1.7}.badge{display:inline-block;font-size:11px;color:#9be7ff;border:1px solid rgba(100,210,255,.2);background:rgba(100,210,255,.08);padding:5px 11px;border-radius:20px;white-space:nowrap}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 .sidebar{position:fixed;inset:0 auto var(--bar) 0;width:236px;background:var(--glass);border-right:1px solid var(--line);box-shadow:var(--glass-shadow);backdrop-filter:blur(30px) saturate(150%);padding:32px 24px;overflow:auto;display:flex;flex-direction:column;gap:12px}.brand{text-decoration:none;color:var(--text);font-size:20px;font-weight:800;margin-bottom:28px;white-space:nowrap}.brand>span{color:var(--green);font-size:28px}.sidebar>label{color:var(--muted);font-size:12px}.sidebar select{width:100%}.sidebar>.badge{align-self:flex-start}.auth{margin-top:auto;font-size:12px;color:var(--muted)}summary{cursor:pointer;padding:12px 0;min-height:44px}.auth form{display:grid;gap:10px}.auth input{width:100%}
@@ -19,11 +19,10 @@ main{margin-left:236px;padding:38px clamp(20px,4vw,64px) calc(var(--bar) + 36px)
 .login-screen{min-height:100vh;display:grid;place-items:center;padding:24px;background:transparent}.login-card{width:min(100%,460px);padding:48px 36px;text-align:center;border:1px solid var(--line);border-radius:24px;background:var(--glass);box-shadow:var(--glass-shadow);backdrop-filter:blur(30px) saturate(150%)}.login-icon{display:block;color:var(--green);font-size:68px;line-height:1.2;margin-bottom:28px}.login-card h1{margin-bottom:14px}.login-card>p:not(.eyebrow){color:var(--muted);font-size:14px}.login-card .hint{margin-top:16px;overflow-wrap:anywhere}.login-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;min-height:48px;border-radius:28px;font-weight:750;padding:12px 28px;margin-top:28px}.login-button:hover{filter:brightness(1.12)}.user-profile{display:flex;align-items:center;gap:10px;min-width:0}.user-profile img{width:36px;height:36px;border-radius:50%;object-fit:cover}.user-profile span{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.user-profile button{font-size:12px;padding:8px 13px}.login-card .error{color:#ffb6ad}
 @media(max-width:760px){.user-profile{gap:7px;flex-wrap:wrap;justify-content:flex-end}.user-profile span{max-width:100px}.user-profile img{width:30px;height:30px}.page-heading{align-items:flex-start}.login-card{padding:40px 24px}}
 
-/* Shared visual language: dark wallpaper, glass panels, bright rims and capsule controls. */
-body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 0 0,rgba(10,132,255,.3),transparent 45%),radial-gradient(ellipse at 100% 15%,rgba(191,90,242,.26),transparent 50%),radial-gradient(ellipse at 45% 100%,rgba(255,55,95,.12),transparent 55%),var(--bg)}
+/* Shared visual language: glass panels, bright rims and capsule controls. */
 ::selection{background:rgba(100,210,255,.35)}
 button,.login-button{box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
-button.primary,.login-button.primary{box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 6px 20px -6px rgba(10,132,255,.8)}
+button.primary,.login-button.primary{box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
 input:focus,select:focus{border-color:rgba(100,210,255,.7);box-shadow:0 0 0 4px rgba(100,210,255,.18)}
 select option{background:#1c1c22}
 .sidebar,.card,.login-card{border-top-color:rgba(255,255,255,.32)}
@@ -236,24 +235,19 @@ a.song-title:focus-visible{outline:2px solid var(--green);outline-offset:3px;tex
 
 /* Round 12: content is flat; only navigation and overlays carry glass. */
 :root{
- --bg:#070d1c;--text:#f8fafc;--muted:#c2ccdd;--green:#a5ddff;--error:#ffccc5;
- --line:rgba(205,224,255,.28);--raised:rgba(255,255,255,.08);--opaque:#111b30;
- --surface:rgba(28,30,40,.28);--clear:rgba(255,255,255,.08);--flat:rgba(255,255,255,.04);
- --glass:var(--surface);--glass-blur:18px;--wall-shade:rgba(7,13,28,.78);
+ --bg:#0b0b0f;--text:#f8fafc;--muted:#c2ccdd;--green:#a5ddff;--error:#ffccc5;
+ --line:rgba(205,224,255,.28);--raised:rgba(255,255,255,.08);--opaque:#232327;
+ --surface:rgba(30,30,36,.40);--clear:rgba(255,255,255,.08);--flat:#1c1c1e;--dim:.45;--panel:rgba(30,30,36,.56);--popover:rgba(36,36,42,.95);
+ --glass:var(--surface);--glass-blur:18px;--wall-shade:#0b0b0f;
  --glass-shadow:inset 0 1px 1px #ffffff38,inset 0 -1px 1px #ffffff08,0 18px 46px -24px #0009;
  --spring:cubic-bezier(.2,.9,.3,1.2);--float-gap:12px;
 }
 body{isolation:isolate}
-body::before{z-index:-3}
-#wallpaper{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none}
-#wallpaper img{position:absolute;inset:-15%;width:130%;height:130%;object-fit:cover;filter:blur(72px) saturate(160%);opacity:0;transition:opacity 650ms ease}
-#wallpaper img.active{opacity:1}
-#wallpaper::after{content:"";position:absolute;inset:0;background:var(--wall-shade)}
 .card,.now-playing{background:var(--flat);border:1px solid var(--line);border-color:color-mix(in srgb,var(--line),transparent 55%);border-radius:30px;padding:26px;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
 .login-card{background:var(--opaque);backdrop-filter:none;-webkit-backdrop-filter:none}
 .sidebar,.playback-bar,.lyrics-panel,.song-choices,.library-menu,.account-actions>div,dialog,.notice,.page-tabs.mobile-glass{
  background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:28px;
- backdrop-filter:blur(var(--glass-blur)) saturate(180%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+ backdrop-filter:blur(var(--glass-blur)) saturate(160%) brightness(var(--dim,1));-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%) brightness(var(--dim,1));
  box-shadow:var(--glass-shadow);isolation:isolate;
 }
 .sidebar::after,.playback-bar::after,.lyrics-panel::after,.song-choices::after,.library-menu::after,dialog::after,.notice::after,.page-tabs.mobile-glass::after{
@@ -271,7 +265,7 @@ button,input:not([type=range]),select,.badge{border-radius:999px}
 button{background:var(--clear);border-color:var(--line);color:var(--text);box-shadow:inset 0 1px 0 #ffffff24;transition:background 220ms,transform 240ms var(--spring),box-shadow 220ms}
 button:hover:enabled{background:var(--raised);transform:none;box-shadow:inset 0 1px 0 #ffffff55}
 button:active:enabled{transform:scale(.96)}
-.primary,.login-button.primary{background:linear-gradient(#ffffff12,#ffffff02),rgba(0,76,118,.70);color:#fff;border:1px solid #a5ddff70;box-shadow:inset 0 1px 0 #ffffff60,0 6px 20px -10px #0008}
+.primary,.login-button.primary{background:linear-gradient(#ffffff12,#ffffff02),rgba(0,76,118,.70);color:#fff;border:1px solid #a5ddff70;box-shadow:inset 0 1px 0 #ffffff50}
 .primary:hover:enabled{background:rgba(0,65,108,.85)}
 #queue>li{border-radius:22px;min-height:80px;padding:12px 8px}
 .queue-cover,.mini-art{border-radius:14px}
@@ -308,13 +302,13 @@ input[type=range]:active::-moz-range-thumb{transform:scale(1.6);background:var(-
 @media(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference){
  .playback-bar,.sidebar{background-image:radial-gradient(240px circle at var(--pointer-x,30%) var(--pointer-y,0),#ffffff0d,transparent)}
 }
-html[data-glass=clear]{--surface:rgba(28,30,40,.16);--glass-blur:14px}
+html[data-glass=clear]{--surface:rgba(30,30,36,.30);--panel:rgba(30,30,36,.44);--dim:.4;--glass-blur:14px}
 html[data-glass=opaque]{--surface:var(--opaque);--glass-blur:0px}
 html[data-glass=opaque] :is(.sidebar,.playback-bar,.lyrics-panel,.song-choices,.library-menu,.account-actions>div,dialog,.notice,.page-tabs){backdrop-filter:none;-webkit-backdrop-filter:none}
 @media(prefers-color-scheme:light){
- :root{color-scheme:light;--bg:#edf2fc;--text:#142137;--muted:#34445c;--green:#06416f;--error:#962130;
- --line:rgba(40,59,100,.30);--raised:rgba(255,255,255,.44);--opaque:#f4f7fd;--surface:rgba(255,255,255,.32);--flat:rgba(255,255,255,.5);--wall-shade:rgba(244,247,253,.82);--clear:rgba(255,255,255,.1)}
- html[data-glass=clear]{--surface:rgba(255,255,255,.18)}
+ :root{color-scheme:light;--bg:#f2f2f7;--text:#142137;--muted:#34445c;--green:#06416f;--error:#962130;
+ --line:rgba(40,59,100,.30);--raised:rgba(255,255,255,.44);--opaque:#fbfbfd;--surface:rgba(255,255,255,.72);--flat:#fff;--dim:1;--panel:rgba(255,255,255,.84);--popover:rgba(255,255,255,.96);--wall-shade:#f2f2f7;--clear:rgba(255,255,255,.1)}
+ html[data-glass=clear]{--surface:rgba(255,255,255,.72);--panel:rgba(255,255,255,.84)}
  .primary,.login-button.primary{background:linear-gradient(#ffffff12,#ffffff02),rgba(0,62,104,.86);color:#fff}
  .duplicate-note,.duplicate-tag{color:#633600}
  select option{background:var(--opaque);color:var(--text)}
@@ -401,10 +395,23 @@ html[data-glass=opaque] :is(.sidebar,.playback-bar,.lyrics-panel,.song-choices,.
 .glass-filter-defs{position:fixed;pointer-events:none;overflow:hidden}
 @supports (backdrop-filter:url("#glass-edge")){
  html.liquid-refraction:not([data-glass=opaque]) :is(.playback-bar,.page-tabs.mobile-glass){
-  backdrop-filter:blur(var(--glass-blur)) saturate(180%) url("#glass-edge");
-  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%) url("#glass-edge")
+  backdrop-filter:blur(var(--glass-blur)) saturate(160%) brightness(var(--dim,1)) url("#glass-edge");
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(160%) brightness(var(--dim,1)) url("#glass-edge")
  }
 }
 @media(prefers-reduced-transparency:reduce),(prefers-contrast:more){
  html.liquid-refraction :is(.playback-bar,.page-tabs.mobile-glass){backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--opaque)}
 }
+
+/* Round 12c: solid page, no glow; text-bearing floating panels use denser Regular glass. */
+.song-choices,.library-menu,.account-actions>div,dialog,.notice,.lyrics-panel{background:var(--panel);--glass-blur:24px}
+/* Popovers live inside blurred parents (player/sidebar), whose backdrop root hides the page from them: near-opaque. */
+.song-choices,.library-menu,.account-actions>div{background:var(--popover)}
+#bar-title,#bar-title:hover:enabled{background:transparent;box-shadow:none;border:0}
+html[data-glass=opaque] :is(.song-choices,.library-menu,.account-actions>div,dialog,.notice,.lyrics-panel){background:var(--opaque)}
+.song-choices button{background:transparent;box-shadow:none}
+.song-choices button:hover:enabled,.song-choices button:focus-visible{background:var(--raised)}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){
+ .song-choices,.library-menu,.account-actions>div,dialog,.notice,.lyrics-panel{background:var(--opaque)}
+}
+@media(prefers-color-scheme:light){input:not([type=range]),select{background:#f2f2f7}}

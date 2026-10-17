@@ -58,13 +58,18 @@ test("initial server respects URL, recommendation, browser and first choice", ()
 });
 
 test("glass provides both themes, prefixed blur and opaque accessibility fallbacks", () => {
-  assert.match(css, /backdrop-filter:blur\(var\(--glass-blur\)\) saturate\(180%\)/);
-  assert.match(css, /-webkit-backdrop-filter:blur\(var\(--glass-blur\)\) saturate\(180%\)/);
+  assert.match(css, /backdrop-filter:blur\(var\(--glass-blur\)\) saturate\(160%\) brightness\(var\(--dim,1\)\)/);
+  assert.match(css, /-webkit-backdrop-filter:blur\(var\(--glass-blur\)\) saturate\(160%\) brightness\(var\(--dim,1\)\)/);
   assert.match(css, /@media\(prefers-color-scheme:light\)/);
   assert.match(css, /@supports not \(backdrop-filter:blur\(1px\)\)/);
   assert.match(css, /@media\(prefers-reduced-transparency:reduce\)/);
   assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
   assert.match(css, /\.card,\.now-playing\{[^}]*backdrop-filter:none/);
+  assert.doesNotMatch(css, /radial-gradient\([^)]*\)[^;]*var\(--bg\)/);
+  assert.doesNotMatch(css, /#wallpaper/); assert.doesNotMatch(html, /wallpaper/);
+  assert.doesNotMatch(css, /box-shadow:[^;}]*rgba\((10,132,255|100,210,255)[^;}]*\d+px[^;}]*-\d+px/);
+  assert.match(css, /--bg:#0b0b0f/); assert.match(css, /--bg:#f2f2f7/);
+  assert.match(css, /\.song-choices,[^{]*\{background:var\(--panel\)/);
 });
 test("glass foregrounds meet AA on white, black and saturated covers in all preferences", () => {
  const rgb=hex=>hex.match(/[0-9a-f]{2}/gi).map(n=>parseInt(n,16)/255);
@@ -72,9 +77,12 @@ test("glass foregrounds meet AA on white, black and saturated covers in all pref
  const lum=rgb=>rgb.map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4).reduce((n,c,i)=>n+c*[.2126,.7152,.0722][i],0);
  const ratio=(a,b)=>(Math.max(lum(a),lum(b))+.05)/(Math.min(lum(a),lum(b))+.05);
  for(const light of [false,true])for(const pref of ["clear","standard","opaque"])for(const cover of ["ffffff","000000","ff0088","00ffff"]){
-  const wallpaper=mix(rgb(light?"f4f7fd":"070d1c"),rgb(cover),light?.82:.78);
-  const layers=[mix(rgb("ffffff"),wallpaper,light?.5:.04),
-   pref==="opaque"?rgb(light?"f4f7fd":"111b30"):mix(rgb(light?"ffffff":"1c1e28"),wallpaper,pref==="clear"?(light?.18:.16):(light?.32:.28))];
+  // Worst case is the content scrolling under a floating layer: bright/dark/saturated cover thumbnail.
+  const dim=light?1:(pref==="clear"?.4:.45), under=rgb(cover).map(n=>n*dim);
+  const tint=rgb(light?"ffffff":"1e1e24"), a=pref==="clear"?(light?[.72,.84]:[.30,.44]):(light?[.72,.84]:[.40,.56]);
+  const solid=rgb(light?"fbfbfd":"232327");
+  const layers=[rgb(light?"ffffff":"1c1c1e"),rgb(light?"f2f2f7":"0b0b0f"),
+   ...(pref==="opaque"?[solid]:a.map(alpha=>mix(tint,under,alpha)))];
   for(const bg of layers)for(const fg of light?["142137","34445c","06416f"]:["f8fafc","c2ccdd","a5ddff"])
    assert.ok(ratio(rgb(fg),bg)>=4.5,JSON.stringify({light,pref,cover,fg,ratio:ratio(rgb(fg),bg)}));
  }
