@@ -32,7 +32,7 @@ function adminPermissionsRender() {
         } else {
           input.type = "number"; input.min = "0"; input.max = String(adminPermissions.limits[field]); input.step = "1"; input.value = String(value);
         }
-        const confirm = libraryButton(t("m0214"), async () => {
+        const confirm = libraryButton("m0214", async () => {
           const next = field === "AllowPlaylists" ? input.value === "true" : Number(input.value);
           if (field !== "AllowPlaylists" && (!/^\d+$/.test(input.value) || !Number.isSafeInteger(next) || next < 0 || next > adminPermissions.limits[field]))
             throw new Error(t("m0215"));

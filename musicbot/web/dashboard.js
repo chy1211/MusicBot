@@ -139,6 +139,8 @@ function signedOut(message = t("m0048")) {
   notice("");
 }
 async function initialize() {
+  // No dynamic text or authenticated render may race the language catalogs.
+  await dashboardI18nReady;
   captureEntryGuild();
   try {
     const response = await fetch("/auth/session", {cache: "no-store", credentials: "same-origin"});
