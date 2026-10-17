@@ -323,8 +323,7 @@ selection rows and toast share these tokens and 8/12/16/24px spacing.
 
 Differences: hand-written local CSS, without Tailwind tooling/CDN or Google Fonts;
 system stack -apple-system, BlinkMacSystemFont, SF Pro Text, Segoe UI, PingFang TC,
-Microsoft JhengHei, system-ui. Static radial wallpaper replaces animated colour
-blobs. No refraction filter or pointer spotlight. The playback bar is solid
+Microsoft JhengHei, system-ui. Round 12c uses a plain solid page background (no wallpaper). No refraction filter or pointer spotlight. The playback bar is solid
 #1c1c22 for queue-text legibility. Functional sidebar/queue/control layout remains.
 
 Removed exactly the requested groups: 讓音樂繼續陪你 plus sound-bar decoration;
@@ -1339,7 +1338,7 @@ header probing and playback use their existing path without changed options.
 
 Large panels, sidebar, playback bar, dialogs and toasts use translucent surfaces,
 blur+saturate with the WebKit prefix, bright top rims, soft shadows and round
-corners. A fixed colorful radial-gradient wallpaper makes transparency visible.
+corners. Round 12c: the page is a plain solid colour; transparency comes from content scrolling under the floating layers.
 System light/dark themes share contrast-safe text tokens. Static tests verify
 normal/muted/accent text at AA against conservative wallpaper compositions;
 primary button text also passes AA. No deleted decorative slogan is restored.
@@ -1700,8 +1699,8 @@ The functional layer alone uses Regular glass (dark 28,30,40 at .28 / light
 white .32; blur 18px, saturation 180%). Clear preference reduces the tint to
 .16/.18 and blur to 14px. Clear control surfaces are .08/.10 with a highlighted
 rim; child controls share their parent blur rather than stacking backdrop filters.
-Album wallpaper uses two crossfading images, blur 72px / saturation 160%,
-with a dark .78 or light .82 protective tint. Only existing image hosts are used.
+Round 12c removed the album wallpaper and the colour gradient: the page is solid
+(dark #0b0b0f with #1c1c1e content blocks, light #f2f2f7 with white blocks).
 Navigation, player, lyrics, title choice, menus, dialogs and toast are glass.
 Cards, collections and result rows stay flat. Mobile navigation floats 12px
 from the edge; player is 8px above navigation. Each keeps its own plane.
@@ -1861,3 +1860,15 @@ two-click calibration/reset; another signed-in viewer shares the server offset.
 Management shows three fabricated radio seeds and can disable lyrics.
 Check source/Spotify choice focus, direct repeat cycling, seek, volume,
 favorite toggle, library list/detail, More menu and opaque preference.
+
+
+### Round 12c: solid background, no glow
+
+- The page background is a solid colour: dark `#0b0b0f` (content blocks `#1c1c1e`),
+  light `#f2f2f7` (blocks `#fff`). There is no gradient, wallpaper or blurred cover.
+- Glass transparency comes from real content scrolling under the sidebar, player,
+  tab bar, lyrics area, menus and toast. Floating layers dim what is behind them
+  (`brightness(.45)` dark preference) so text stays at least 4.5:1 over any cover.
+- Text-bearing popovers (title chooser, menus, dialogs, toast, lyrics) use the denser
+  Regular material (`--panel`, 24px blur); the primary button is a flat tinted glass
+  capsule with no coloured outer glow.
