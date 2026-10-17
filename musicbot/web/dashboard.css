@@ -174,3 +174,20 @@ select option{background:var(--opaque);color:var(--text)}
 @media(prefers-reduced-transparency:reduce){
   .sidebar,.card,.login-card,.playback-bar,dialog,.notice{background:var(--opaque);backdrop-filter:none;-webkit-backdrop-filter:none}
 }
+
+/* Pointer interactions suppress callouts only for their lifetime. */
+body.no-selection,body.no-selection *,.drag-handle,input[type=range]{
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none
+}
+.mobile-volume{display:none}
+#connection::before{content:"";display:inline-block;width:7px;height:7px;margin-right:7px;border-radius:50%;background:var(--muted)}
+#connection[data-state=online]::before{background:var(--green)}
+#connection[data-state=reconnecting]::before{background:#d79e37}
+#connection[data-state=offline]::before{background:var(--error)}
+@media(max-width:760px){
+  :root{--bar:152px}
+  .playback-bar{--bar:152px;gap:4px;padding-top:8px}
+  .playback-bar>.volume-row{display:none}
+  .mobile-volume{display:flex;justify-content:flex-start;margin-top:12px;flex-wrap:wrap}
+  .mobile-volume input{flex:1;min-width:70px;max-width:160px}
+}

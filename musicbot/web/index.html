@@ -12,13 +12,13 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r10-1">
-  <script src="/dashboard.js?v=r10-1" defer></script>
-  <script src="/library.js?v=r10-1" defer></script>
-  <script src="/popular.js?v=r10-1" defer></script>
-  <script src="/admin.js?v=r10-1" defer></script>
-  <script src="/permissions.js?v=r10-1" defer></script>
-  <script src="/pwa.js?v=r10-1" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r10-2">
+  <script src="/dashboard.js?v=r10-2" defer></script>
+  <script src="/library.js?v=r10-2" defer></script>
+  <script src="/popular.js?v=r10-2" defer></script>
+  <script src="/admin.js?v=r10-2" defer></script>
+  <script src="/permissions.js?v=r10-2" defer></script>
+  <script src="/pwa.js?v=r10-2" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -74,7 +74,8 @@
         <button id="favorite" class="subtle" type="button">♡ 收藏</button>
         <button id="lyrics-toggle" class="subtle" type="button" aria-expanded="false" aria-controls="lyrics-panel" disabled>歌詞 ♫</button>
         <div class="progress-row hero-progress"><span id="hero-elapsed">0:00</span><input id="hero-progress" type="range" min="0" max="1" step="1" value="0" aria-label="正在播放：跳到指定時間" disabled><span id="hero-duration">0:00</span></div>
-        <p class="hint seek-hint">拖動或按左右鍵，放開後跳轉。</p>
+        <div class="volume-row mobile-volume"><label for="hero-volume">音量</label><input id="hero-volume" type="range" min="1" max="100" value="15" disabled><output id="hero-volume-label" for="hero-volume">15%</output></div>
+        <p class="sr-only seek-hint">拖動或按左右鍵，放開後跳轉。</p>
       </div>
     </section>
     <section id="lyrics-panel" class="card lyrics-panel" aria-labelledby="lyrics-heading" hidden>
@@ -90,7 +91,7 @@
       <div class="queue-filters" role="group" aria-label="篩選點播者"><button id="queue-all" type="button" aria-pressed="true">全部</button><button id="queue-mine" type="button" aria-pressed="false">我的點歌</button></div>
       <p id="queue-match-count" class="hint" role="status" aria-live="polite"></p>
       <p id="queue-timing-note" class="hint"></p>
-      <p id="drag-help" class="hint">拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。</p>
+      <p id="drag-help" class="sr-only">拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。</p>
       <div class="queue-head" aria-hidden="true"><span>＃</span><span>歌曲</span><span>長度</span></div>
       <ol id="queue" aria-describedby="drag-help"></ol>
       <section id="queue-recommendations" aria-labelledby="recommendation-heading" hidden>
@@ -147,8 +148,8 @@
     <div class="bar-track"><div class="art mini-art"><span aria-hidden="true">♫</span><img id="bar-cover" alt="" hidden></div>
       <div><p id="bar-title">還沒有播放中的歌曲</p><small id="bar-status">準備好下一首</small></div></div>
     <div class="bar-center">
-      <div class="transport"><button id="toggle" class="primary" aria-label="播放或暫停" disabled>播放 ▶</button>
-        <button id="skip" aria-label="跳過目前歌曲" disabled>跳過 ⏭</button>
+      <div class="transport"><button id="toggle" class="primary" aria-label="播放或暫停" disabled>繼續</button>
+        <button id="skip" aria-label="跳過目前歌曲" disabled>跳過</button>
         <label class="repeat-label" for="repeat">重複<select id="repeat" disabled><option value="off">關閉</option><option value="song">單曲</option><option value="all">整個佇列</option></select></label></div>
       <div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1" step="1" value="0" aria-label="底部播放列：跳到指定時間" disabled><span id="duration">0:00</span></div>
     </div>

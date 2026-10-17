@@ -83,7 +83,7 @@ function signedOut(message = "登入後即可查看你的伺服器並點歌。")
   $("user-avatar").removeAttribute("src"); $("user-avatar").hidden = true;
   resetView(); state = null; controls(); authDisplay();
   $("login-status").textContent = message;
-  $("connection").textContent = "尚未登入";
+  connectionStatus("尚未登入");
   notice("");
 }
 async function initialize() {
@@ -148,7 +148,7 @@ async function api(path, method = "GET", data) {
 function controls() {
   const usable = (authMode === "owner" || authenticated) && connected && !busy && !!selected;
   const hasPlayer = usable && state && state.status !== "disconnected";
-  for (const id of ["toggle", "skip", "repeat", "volume"]) $(id).disabled = !hasPlayer;
+  for (const id of ["toggle", "skip", "repeat", "volume", "hero-volume"]) $(id).disabled = !hasPlayer;
   const active = hasPlayer && !!state.current && ["playing", "paused"].includes(state.status);
   $("toggle").disabled = !active || state.capabilities?.[state.status === "playing" ? "pause" : "resume"] !== true;
   $("skip").disabled = !active || state.capabilities?.skip !== true;
@@ -247,6 +247,18 @@ function renderQueue() {
         {duration: 240, easing: "cubic-bezier(.2,.8,.2,1)"});
   }
 }
+const selectionLocks = new Set();
+function noSelection(kind, active) {
+  if (active) selectionLocks.add(kind); else selectionLocks.delete(kind);
+  document.body.classList.toggle("no-selection", selectionLocks.size > 0);
+}
+function connectionStatus(value) {
+  const badge = $("connection");
+  badge.textContent = "連線狀態"; badge.title = value;
+  badge.dataset.state = /重試|連線中/.test(value) && !/中斷/.test(value) ? "reconnecting"
+    : /已連線|即時連線/.test(value) ? "online" : "offline";
+  badge.setAttribute("aria-label", "連線狀態：" + value);
+}
 let drag = null, dragVisual = null;
 function settleDrag() {
   if (!dragVisual) return;
@@ -281,6 +293,7 @@ function previewDrag(drop = false) {
 }
 
 function cancelDrag(message, preserve = false) {
+  noSelection("queue", false);
   if (!drag) { if (!preserve) settleDrag(); return; }
   if (!preserve) settleDrag();
   const old = drag; drag = null;
@@ -336,6 +349,7 @@ function installDrag(handle, row, from, rev) {
     drag = {handle, row, from, target: from, rev, pointerId: event.pointerId,
       x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY,
       active: false, touch: event.pointerType !== "mouse", epoch: generation};
+    noSelection("queue", true);
     handle.setPointerCapture(event.pointerId);
     if (drag.touch) drag.timer = window.setTimeout(activateDrag, 420);
   });
@@ -371,7 +385,7 @@ function shortcutsHelp() {
 function keyboardShortcut(event) {
   if (event.key === "Escape") {
     if ($("shortcuts-dialog").open) { event.preventDefault(); $("shortcuts-dialog").close(); }
-    cancelDrag("已取消拖曳。");
+    cancelDrag("已取消拖曳。"); cancelSeek(); noSelection("volume", false);
     return;
   }
   if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey ||
@@ -576,7 +590,7 @@ function render(next, force = false) {
       ? "在 YouTube 開啟 ↗" : "在來源網站開啟 ↗";
   } else $("source-link").removeAttribute("href");
   $("play-status").textContent = labels[state.status] || "準備中";
-  $("toggle").textContent = state.status === "playing" ? "暫停 Ⅱ" : "播放 ▶";
+  $("toggle").textContent = state.status === "playing" ? "暫停" : "繼續";
   $("bar-title").textContent = state.current ? state.current.title : "還沒有播放中的歌曲";
   $("bar-status").textContent = labels[state.status] || "準備中";
   const cover = safeURL(state.current?.thumbnail || "");
@@ -591,8 +605,8 @@ function render(next, force = false) {
   drawProgress(seekDrag ? seekDrag.position : state.progress, total);
   if (lyricsOpen && state.current && lyricsTrack !== currentTrackKey() && !lyricsLoading) loadLyrics();
   syncLyrics();
-  if ((force || document.activeElement !== $("volume")) && state.volume !== null) {
-    $("volume").value = state.volume; $("volume-label").value = state.volume + "%";
+  for (const id of ["volume", "hero-volume"]) if ((force || document.activeElement !== $(id)) && state.volume !== null) {
+    $(id).value = state.volume; $(id + "-label").value = state.volume + "%";
   }
   if (force || document.activeElement !== $("repeat")) $("repeat").value = state.repeat;
   renderQueue(); renderRecommendations(); updateDuplicateNotes(); controls(); updateQueueTimes(); renderCommunity(state);
@@ -622,11 +636,11 @@ async function refresh(epoch = generation, force = false) {
   try {
     const next = await api("api/guilds/" + guild + "/state");
     if (epoch !== generation || guild !== selected || sequence !== stateGeneration) return;
-    connected = true; $("connection").textContent = "已連線"; render(next, force);
+    connected = true; connectionStatus("已連線"); render(next, force);
     if (fallbackPolling && !historyLoading && Date.now() - historyUpdated >= 15000) refreshHistory();
   } catch (error) {
     if (epoch !== generation || guild !== selected || sequence !== stateGeneration) return;
-    connected = false; $("connection").textContent = "連線中斷";
+    connected = false; connectionStatus("連線中斷");
     notice(error.message, true); controls();
   }
 }
@@ -675,7 +689,7 @@ async function connect() {
   stopEvents(); fallbackPolling = true;
   const epoch = ++generation;
   loading = true; connected = false; selected = ""; state = null;
-  resetView(); controls(); $("connection").textContent = "連線中";
+  resetView(); controls(); connectionStatus("連線中");
   try {
     const data = await api("api/guilds");
     if (epoch !== generation) return;
@@ -693,7 +707,7 @@ async function connect() {
     if (connected) { notice("已連線，可以開始點歌。"); startEvents(); }
   } catch (error) {
     if (epoch === generation) {
-      notice(error.message, true); $("connection").textContent = "連線失敗";
+      notice(error.message, true); connectionStatus("連線失敗");
     }
   } finally {
     if (epoch === generation) loading = false;
@@ -730,8 +744,14 @@ $("bar-cover").addEventListener("error", () => { $("bar-cover").hidden = true; }
 $("toggle").addEventListener("click", () => act(state.status === "playing" ? "pause" : "resume"));
 $("skip").addEventListener("click", () => act("skip"));
 $("repeat").addEventListener("change", () => act("repeat", {mode: $("repeat").value}));
-$("volume").addEventListener("input", () => { $("volume-label").value = $("volume").value + "%"; });
-$("volume").addEventListener("change", () => act("volume", {volume: Number($("volume").value)}));
+for (const id of ["volume", "hero-volume"]) {
+  const input = $(id);
+  input.addEventListener("input", () => { $(id + "-label").value = input.value + "%"; });
+  input.addEventListener("change", () => { noSelection("volume", false); return act("volume", {volume: Number(input.value)}); });
+  input.addEventListener("pointerdown", () => { if (!input.disabled) noSelection("volume", true); });
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture", "blur"])
+    input.addEventListener(type, () => noSelection("volume", false));
+}
 $("shuffle").addEventListener("click", () => { if (!$("shuffle").disabled && !queueFiltered()) return act("queue/shuffle", {revision: state.revision}); });
 $("logout").addEventListener("click", logout);
 $("user-avatar").addEventListener("error", () => { $("user-avatar").hidden = true; });
@@ -751,11 +771,13 @@ function drawProgress(position, total = state?.current?.duration || 0) {
   for (const id of ["duration", "hero-duration"]) $(id).textContent = total ? duration(total) : "直播／長度未知";
 }
 function cancelSeek() {
+  noSelection("seek", false);
   seekDrag = null;
 }
 function beginSeek(input, kind, event = {}) {
   if (input.disabled || busy || !connected || !state?.current) return false;
   if (seekDrag && seekDrag.input !== input) cancelSeek();
+  if (kind === "pointer") noSelection("seek", true);
   if (!seekDrag) seekDrag = {input, kind, guild: selected, epoch: generation,
     track: currentTrackKey(), trackToken: state.current.track_token, position: Number(input.value), pointerId: event.pointerId};
   return true;
@@ -799,9 +821,11 @@ function installSeek(id) {
 // Native range controls manage pointer capture themselves. Taking/releasing it
 // here makes Chrome emit lostpointercapture during an otherwise valid drag.
 document.addEventListener("pointerup", (event) => {
+  noSelection("volume", false);
   if (seekDrag?.kind === "pointer" && seekDrag.pointerId === event.pointerId) return commitSeek();
 });
 document.addEventListener("pointercancel", (event) => {
+  noSelection("volume", false); cancelDrag();
   if (seekDrag?.kind === "pointer" && seekDrag.pointerId === event.pointerId) {
     cancelSeek(); drawProgress(state?.progress);
   }
@@ -882,7 +906,7 @@ function applyHistory(result, guild = selected, epoch = generation) {
     $("history-list").replaceChildren();
     const entries = recentHistory = (result.history || []).slice(0, 50);
     renderRecommendations();
-    $("history-status").textContent = entries.length ? "播放時間以台灣時間顯示。" : "還沒有播放紀錄，先點一首喜歡的歌。";
+    $("history-status").textContent = entries.length ? "" : "還沒有播放紀錄，先點一首喜歡的歌。";
     for (const song of entries) {
       const row = document.createElement("li"), info = document.createElement("div");
       info.className = "history-info";
@@ -1101,7 +1125,7 @@ function startEvents(reset = true) {
     if (epoch !== eventEpoch || guild !== selected || view !== generation) return;
     const delay = eventFailures >= 4 ? 60000 : Math.min(30000, 1000 * 2 ** (eventFailures - 1));
     nextStreamTry = Date.now() + delay;
-    $("connection").textContent = eventFailures >= 4 ? "一般更新・即時連線重試中" : "即時連線重試中";
+    connectionStatus(eventFailures >= 4 ? "一般更新・即時連線重試中" : "即時連線重試中");
     eventTimer = window.setTimeout(() => {
       if (epoch === eventEpoch && guild === selected && view === generation) startEvents(false);
     }, delay);
@@ -1115,7 +1139,7 @@ function startEvents(reset = true) {
       window.clearTimeout(eventWatchdog);
       render(bundle.state);
       if (bundle.history) applyHistory(bundle.history, guild, view);
-      $("connection").textContent = "即時連線";
+      connectionStatus("即時連線");
       nextStreamTry = 0;
     } catch { failed(); }
   });
@@ -1152,3 +1176,5 @@ document.addEventListener("visibilitychange", async () => {
 });
 
 initialize().finally(() => { window.setTimeout(poll, 1000); window.setTimeout(localTick, 1000); });
+
+window.addEventListener?.("blur", () => { cancelDrag(); cancelSeek(); noSelection("volume", false); });
