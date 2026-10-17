@@ -121,3 +121,56 @@ html{overflow-y:scroll;scrollbar-gutter:stable}
 .library-import form{display:flex;gap:8px;flex-wrap:wrap}
 .library-import input{flex:1;min-width:0}
 @media(max-width:760px){.library-import input{flex-basis:100%}}
+
+/* Liquid Glass: bounded large surfaces, shared contrast-safe dark/light tokens. */
+:root{
+  color-scheme:dark;--bg:#070d1c;--text:#f8fafc;--muted:#c2ccdd;
+  --green:#a5ddff;--line:rgba(205,224,255,.24);--raised:rgba(255,255,255,.08);
+  --surface:rgba(11,18,35,.62);--opaque:#111b30;--error:#ffccc5;
+  --glass:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.025) 50%,rgba(255,255,255,.065)),var(--surface);
+  --glass-shadow:inset 0 1px 0 rgba(255,255,255,.44),inset 0 -1px 0 rgba(255,255,255,.035),0 18px 48px -22px rgba(0,0,0,.65)
+}
+body::before{background:radial-gradient(ellipse at 8% 5%,rgba(76,119,255,.58),transparent 55%),radial-gradient(ellipse at 95% 32%,rgba(191,81,226,.42),transparent 58%),radial-gradient(ellipse at 38% 100%,rgba(31,163,182,.28),transparent 60%),var(--bg)}
+.sidebar,.card,.login-card,.playback-bar,dialog,.notice{
+  background:var(--glass);border:1px solid var(--line);border-top-color:rgba(235,245,255,.5);
+  box-shadow:var(--glass-shadow);backdrop-filter:blur(22px) saturate(155%);
+  -webkit-backdrop-filter:blur(22px) saturate(155%);color:var(--text)
+}
+.card{border-radius:28px}.sidebar{border-radius:0 28px 28px 0}
+.playback-bar{border-radius:26px 26px 0 0}.notice,dialog,.login-card{border-radius:26px}
+dialog::backdrop{background:rgba(3,8,19,.65)}
+button,input,select{border-color:var(--line)}
+input,select{background:var(--raised)}
+input::placeholder{color:var(--muted);opacity:1}
+select option{background:var(--opaque);color:var(--text)}
+.primary,.login-button.primary{background:linear-gradient(180deg,rgba(255,255,255,.16),transparent 70%),#07509f;color:#fff}
+.badge,.notice,.source-link,.queue-estimate,.preview-item a,.queue-filters button[aria-pressed=true],.page-tabs button[aria-pressed=true]{color:var(--green)}
+.notice.error,.preview-item .reason,.login-card .error{color:var(--error)}
+.empty,.plain-lyrics{color:var(--text)}.number,footer{color:var(--muted)}
+.library-track,.admin-apl-list li,.permission-row{border-color:var(--line)}
+.auth form,.lyrics-content{background:var(--raised)}
+@media(prefers-color-scheme:light){
+  :root{color-scheme:light;--bg:#edf2fc;--text:#142137;--muted:#435471;--green:#064c85;
+    --line:rgba(40,59,100,.25);--raised:rgba(255,255,255,.58);--surface:rgba(255,255,255,.62);
+    --opaque:#f4f7fd;--error:#a22b38;
+    --glass:linear-gradient(145deg,rgba(255,255,255,.7),rgba(255,255,255,.08) 55%,rgba(255,255,255,.28)),var(--surface);
+    --glass-shadow:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(73,95,141,.1),0 18px 48px -22px rgba(41,65,110,.32)}
+  body::before{background:radial-gradient(ellipse at 8% 5%,rgba(76,119,255,.28),transparent 55%),radial-gradient(ellipse at 95% 32%,rgba(191,81,226,.22),transparent 58%),radial-gradient(ellipse at 38% 100%,rgba(31,163,182,.18),transparent 60%),var(--bg)}
+  .sidebar,.card,.login-card,.playback-bar,dialog,.notice{border-top-color:rgba(255,255,255,.95)}
+  button:hover:enabled{background:rgba(38,82,143,.1)}
+  .primary:hover:enabled{background:#07509f}
+  .duplicate-note,.duplicate-tag{color:#754000}
+  #queue>li.dragging{background:var(--opaque);color:var(--text)}
+}
+@media(max-width:760px){
+  /* Cards share the softly colored wallpaper without a separate blur per card. */
+  .card{backdrop-filter:none;-webkit-backdrop-filter:none;border-radius:24px}
+  .sidebar{border-radius:0 0 26px 26px}
+  .sidebar,.playback-bar{backdrop-filter:blur(14px) saturate(145%);-webkit-backdrop-filter:blur(14px) saturate(145%)}
+}
+@supports not (backdrop-filter:blur(1px)){
+  .sidebar,.card,.login-card,.playback-bar,dialog,.notice{background:var(--opaque);backdrop-filter:none;-webkit-backdrop-filter:none}
+}
+@media(prefers-reduced-transparency:reduce){
+  .sidebar,.card,.login-card,.playback-bar,dialog,.notice{background:var(--opaque);backdrop-filter:none;-webkit-backdrop-filter:none}
+}
