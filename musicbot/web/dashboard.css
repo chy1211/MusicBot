@@ -102,3 +102,9 @@ select option{background:#1c1c22}
 .duplicate-tag{display:inline-block;flex-shrink:0;color:#ffd994;border:1px solid #ffd99455;border-radius:12px;padding:2px 8px;font-size:11px}
 .playlist-selection label{flex-wrap:wrap}.playlist-selection label>span{flex:1;min-width:100px}
 @media(max-width:760px){.duplicate-note{grid-column:2;max-width:none}}
+
+/* Center the complete brand, including the note, on both navigation layouts. */
+.sidebar .brand{display:flex;align-items:center;justify-content:center;gap:8px;text-align:center;line-height:1.25;min-height:56px}
+.brand .brand-icon{display:block;line-height:1;color:var(--green);font-size:28px}
+.brand .brand-label{display:block;color:var(--text);font-size:inherit;line-height:1.25}
+@media(max-width:760px){.sidebar .brand{grid-column:1/-1;grid-row:1;min-height:48px}.sidebar .auth,.sidebar .auth[open]{grid-column:1/-1;grid-row:4}}
