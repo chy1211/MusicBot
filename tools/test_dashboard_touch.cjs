@@ -34,6 +34,13 @@ async function ready(p){
   if(await p.locator("#discord-login").isVisible()) await tap(p,"#discord-login");
   await p.waitForFunction(()=>!document.querySelector("#progress").disabled&&document.querySelector("#queue > li"));
   await p.waitForFunction(()=>window.touchSnapshots?.length>0);
+  await p.evaluate(async()=>{
+    const headers={"X-MusicBot-Dashboard":"1","Content-Type":"application/json"};
+    const current=await (await fetch("/api/guilds/1/state",{headers})).json();
+    const response=await fetch("/api/guilds/1/seek",{method:"POST",headers,body:JSON.stringify({position:37,track_token:current.current.track_token})});
+    if(!response.ok)throw Error(await response.text());
+  });
+  await p.waitForFunction(()=>Math.abs(Number(document.querySelector("#progress").value)-37)<3);
   await p.waitForTimeout(350);
 }
 async function positionQueue(p){
@@ -46,7 +53,7 @@ async function audit(p,label){
     const entries=[...document.querySelectorAll("button,a[href],input,select,summary,[role=button],[tabindex='0']")].filter(e=>
       e.checkVisibility({checkVisibilityCSS:true,checkOpacity:true})&&!e.closest("[hidden]")&&
       !e.closest("details:not([open]) :not(summary):not(summary *)"));
-    return entries.map(e=>{const target=e.matches("input[type=checkbox],input[type=radio]")?e.closest("label")||e:e;
+    return entries.map(e=>{const target=e.matches("input[type=checkbox],input[type=radio]")?e.closest("label")||e.labels?.[0]||e:e;
       const r=target.getBoundingClientRect();return {element:e.id?"#"+e.id:e.tagName.toLowerCase()+(e.className?"."+String(e.className).trim().split(/\s+/).join("."):""),width:+r.width.toFixed(2),height:+r.height.toFixed(2)};})
       .filter(e=>e.width<43.9||e.height<43.9);
   });
@@ -62,7 +69,8 @@ async function audit(p,label){
   await context.exposeBinding("__touchAudit",(_,event)=>pointerAudit.push(event));
   // Keep real EventSource; record server snapshots and trusted pointer types.
   await context.addInitScript(()=>{
-    window.touchSnapshots=[];window.touchPointers=[];
+    window.touchSnapshots=[];
+    for(const key of Object.keys(localStorage))if(key.startsWith("musicbot-lyrics:"))localStorage.removeItem(key);
     const Native=window.EventSource;
     window.EventSource=class extends Native{constructor(...args){super(...args);this.addEventListener("snapshot",e=>window.touchSnapshots.push(JSON.parse(e.data).state.progress));}};
     document.addEventListener("pointerdown",e=>window.__touchAudit({type:e.pointerType,trusted:e.isTrusted}),true);
@@ -72,12 +80,14 @@ async function audit(p,label){
   const p=await context.newPage(),cdp=await context.newCDPSession(p),requests=[];
   p.on("request",r=>{if(r.method()==="POST"&&r.url().includes("/api/"))requests.push({url:new URL(r.url()).pathname,body:r.postDataJSON()});});
   const run=async(name,fn)=>{
+    if(option("--only","")&&option("--only","")!==name)return;
     const row={device:device.name,scenario:name};
     try{await ready(p);requests.length=0;row.evidence=await fn();row.status="PASS";}
     catch(e){row.status="FAIL";row.error=e.message;await screenshot(p,"failure-"+name.replace(/[^a-z0-9-]/g,"-"),device);}
     finally{await touch(cdp,"touchCancel").catch(()=>{});}
     results.push(row);console.log(JSON.stringify(row));
   };
+  if(!args.includes("--extras-only")){
   await run("baseline",async()=>{
     await screenshot(p,"home",device);
     assert.deepEqual(await p.evaluate(()=>({touch:navigator.maxTouchPoints>0,dpr:devicePixelRatio,width:innerWidth})),{touch:true,dpr:3,width:device.width});
@@ -168,8 +178,114 @@ async function audit(p,label){
     finally{await context.setOffline(false);}
     return {display:manifest.display,icons:[192,512,180],serviceWorker:sw.active,offlineStatus:200};
   });
+
+  }
+  if(!core){
+  await run("tabs-and-pills",async()=>{
+    for(const key of ["library","popular","admin","play"]){
+      await tap(p,"#nav-"+key);await sleep(450);
+      assert.equal(await p.locator("#nav-"+key).getAttribute("aria-pressed"),"true");
+      assert.equal(await p.locator(key==="play"?"#play-view":"#"+key+"-panel").isVisible(),true);
+      const box=await p.locator(".page-tabs").evaluate(e=>{
+        const s=getComputedStyle(e),b=e.querySelector('[aria-pressed=true]'),pseudo=getComputedStyle(e,"::before"),m=new DOMMatrix(pseudo.transform);
+        return {x:m.m41,y:m.m42,w:parseFloat(pseudo.width),h:parseFloat(pseudo.height),width:e.clientWidth,height:e.clientHeight,padding:parseFloat(s.paddingLeft),buttonX:b.offsetLeft,buttonW:b.offsetWidth};
+      });
+      assert.ok(box.x>=box.padding-.5&&box.y>=box.padding-.5&&box.x+box.w<=box.width-box.padding+.5&&box.y+box.h<=box.height-box.padding+.5,JSON.stringify(box));
+      assert.ok(Math.abs(box.x-box.buttonX)<2.1&&Math.abs(box.w-box.buttonW)<2.1,JSON.stringify(box));
+    }
+    await tap(p,"#queue-mine");assert.equal(await p.locator("#queue-mine").getAttribute("aria-pressed"),"true");
+    await tap(p,"#queue-all");assert.equal(await p.locator("#queue-all").getAttribute("aria-pressed"),"true");
+    await positionQueue(p);await swipe(cdp,{x:70,y:460},{x:70,y:260});await sleep(450);
+    assert.equal(await p.locator(".page-tabs").evaluate(e=>e.classList.contains("nav-compact")),true);
+    const compact=await p.locator(".page-tabs").evaluate(e=>{const s=getComputedStyle(e);return [...e.querySelectorAll("button:not([hidden])")].map(b=>({height:b.offsetHeight,bottom:b.offsetTop+b.offsetHeight,limit:e.clientHeight-parseFloat(s.paddingBottom)}));});
+    assert.ok(compact.every(b=>b.height>=44&&b.bottom<=b.limit),JSON.stringify(compact));
+    await tap(p,"#nav-library");assert.equal(await p.locator("#library-panel").isVisible(),true);
+    await screenshot(p,"tabs",device);
+    return {pages:4,queueFilters:2,compactTouch:true};
+  });
+  await run("lyrics-center-and-scroll",async()=>{
+    await tap(p,"#lyrics-toggle");
+    await p.waitForSelector("#lyrics-content .current-line");await sleep(900);
+    const geometry=await p.locator("#lyrics-content").evaluate(e=>{
+      const r=e.getBoundingClientRect(),line=e.querySelector(".current-line").getBoundingClientRect(),panel=e.closest("#lyrics-panel").getBoundingClientRect();
+      return {centerError:Math.abs(line.y+line.height/2-r.y-r.height/2),panelCenterError:Math.abs(panel.x+panel.width/2-innerWidth/2),scroll:e.scrollTop,page:scrollY};
+    });
+    assert.ok(geometry.centerError<5,JSON.stringify(geometry));assert.ok(geometry.panelCenterError<1);
+    await screenshot(p,"lyrics",device);
+    const r=await rect(p,"#lyrics-content");
+    await swipe(cdp,{x:r.x+r.width-15,y:r.y+r.height-8},{x:r.x+r.width-15,y:r.y+8});
+    await sleep(350);
+    const scrolled=await p.locator("#lyrics-content").evaluate(e=>({scroll:e.scrollTop,page:scrollY}));
+    assert.ok(scrolled.scroll>geometry.scroll+10,JSON.stringify({geometry,scrolled}));
+    assert.ok(Math.abs(scrolled.page-geometry.page)<2,"lyrics should not scroll the document");
+    await sleep(500);
+    assert.ok(await p.locator("#lyrics-content").evaluate((e,top)=>e.scrollTop>=top-2,scrolled.scroll),"manual scroll must not snap back");
+    await tap(p,"#lyrics-close");assert.equal(await p.locator("#lyrics-panel").isVisible(),false);
+    await tap(p,"#lyrics-toggle");assert.equal(await p.locator("#lyrics-panel").isVisible(),true);
+    return {...geometry,manualScroll:scrolled.scroll};
+  });
+  await run("song-chooser-touch-close",async()=>{
+    await tap(p,"#bar-title");assert.equal(await p.locator("#song-choices").isVisible(),true);
+    assert.ok(await p.locator("#source-link").getAttribute("href"));
+    assert.ok(await p.locator("#song-spotify").getAttribute("href"));
+    await screenshot(p,"chooser",device);
+    await tap(p,"#bar-title");assert.equal(await p.locator("#song-choices").isVisible(),false);
+    await tap(p,"#bar-title");await p.touchscreen.tap(8,300);
+    assert.equal(await p.locator("#song-choices").isVisible(),false);
+    await tap(p,"#lyrics-toggle");await tap(p,"#bar-title");
+    assert.equal(await p.locator("#lyrics-panel").isVisible(),false);
+    await p.touchscreen.tap(8,300);assert.equal(await p.locator("#lyrics-panel").isVisible(),true);
+    return {closeByTitle:true,closeByOutsideTouch:true,lyricsRestored:true};
+  });
+  await run("targets-44px",async()=>{
+    const bad=[];
+    bad.push(...await audit(p,"play"));
+    await positionQueue(p);await screenshot(p,"queue",device);await swipe(cdp,{x:70,y:460},{x:70,y:260});await sleep(450);
+    bad.push(...await audit(p,"compact"));
+    await tap(p,"#bar-title");bad.push(...await audit(p,"chooser"));await tap(p,"#bar-title");
+    await tap(p,"#lyrics-toggle");await p.waitForSelector("#lyrics-content .current-line");bad.push(...await audit(p,"lyrics"));
+    await tap(p,"#lyrics-close");
+    for(const key of ["library","popular","admin"]){await tap(p,"#nav-"+key);await sleep(450);bad.push(...await audit(p,key));await screenshot(p,key,device);}
+    const unique=[...new Map(bad.map(e=>[JSON.stringify(e),e])).values()];
+    await fs.writeFile(path.join(output,phase+"-targets-"+device.name+".json"),JSON.stringify(unique,null,2)+"\n");
+    assert.deepEqual(unique,[],"Touch targets below 44 CSS px: "+JSON.stringify(unique));
+    return {minimum:"44x44 CSS px",views:7,nonconforming:[]};
+  });
+  await run("no-horizontal-scroll",async()=>{
+    const widths=[];
+    for(const key of ["play","library","popular","admin"]){
+      await tap(p,"#nav-"+key);await sleep(200);
+      const w=await p.evaluate(()=>({viewport:innerWidth,root:document.documentElement.scrollWidth,body:document.body.scrollWidth}));
+      widths.push({view:key,...w});assert.ok(w.root<=w.viewport&&w.body<=w.viewport,JSON.stringify(widths));
+    }
+    return widths;
+  });
+  await run("safe-area-playback",async()=>{
+    await cdp.send("Emulation.setSafeAreaInsetsOverride",{insets:{top:47,bottom:34,left:24,right:24}});
+    try{
+      await sleep(450);
+      const evidence=await p.evaluate(()=>{
+        const probe=document.createElement("div");probe.style.cssText="position:fixed;height:env(safe-area-inset-bottom);width:env(safe-area-inset-left)";document.body.append(probe);
+        const applied=[probe.offsetWidth,probe.offsetHeight];probe.remove();
+        const bar=document.querySelector("#playback-bar").getBoundingClientRect(),nav=document.querySelector(".page-tabs").getBoundingClientRect();
+        const controls=[...document.querySelectorAll("#playback-bar button,#playback-bar input")].filter(e=>e.checkVisibility({checkVisibilityCSS:true})).map(e=>{
+          const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+          return {id:e.id,left:r.left,right:r.right,top:r.top,bottom:r.bottom,hit:e===hit||e.contains(hit)};
+        });
+        return {applied,bar:{left:bar.left,right:bar.right,top:bar.top,bottom:bar.bottom},navTop:nav.top,controls,width:innerWidth,height:innerHeight};
+      });
+      assert.deepEqual(evidence.applied,[24,34],"CDP must really set CSS env insets");
+      assert.ok(evidence.bar.left>=24&&evidence.bar.right<=device.width-24,JSON.stringify(evidence));
+      assert.ok(evidence.bar.bottom<=evidence.navTop&&evidence.bar.top>=47);
+      for(const e of evidence.controls)assert.ok(e.hit&&e.top>=evidence.bar.top&&e.bottom<=evidence.bar.bottom&&e.left>=evidence.bar.left&&e.right<=evidence.bar.right,JSON.stringify(e));
+      await screenshot(p,"safe-area",device);
+      return evidence;
+    }finally{await cdp.send("Emulation.setSafeAreaInsetsOverride",{insets:{top:0,bottom:0,left:0,right:0}});}
+  });
+  }
+
   const pointers=pointerAudit;
-  assert.ok(pointers.length>5,"must observe trusted touch gestures");
+  assert.ok(pointers.length>0,"must observe trusted touch gestures");
   // Native touches were used throughout; no injected PointerEvent/MouseEvent.
   assert.ok(pointers.every(e=>e.type==="touch"&&e.trusted));
   await context.close();
