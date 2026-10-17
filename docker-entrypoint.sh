@@ -1,15 +1,16 @@
 #!/bin/sh
-
-if [ ! -f "/musicbot/config/example_options.ini" ] ; then
-    cp -r /musicbot/sample_config/* /musicbot/config
+set -eu
+umask 077
+cd /musicbot
+python3 -m tools.container_config
+if [ "${YTDLP_AUTO_UPDATE:-false}" = "true" ]; then
+    echo "Updating yt-dlp and its provider plugin in the writable data volume..."
+    if python3 -m pip install --disable-pip-version-check --no-cache-dir --upgrade \
+        --target /musicbot/data/runtime-packages "yt-dlp[default]" bgutil-ytdlp-pot-provider >/dev/null 2>&1; then
+        export PYTHONPATH="/musicbot/data/runtime-packages${PYTHONPATH:+:$PYTHONPATH}"
+        echo "yt-dlp update completed."
+    else
+        echo "yt-dlp update failed; using the packages bundled in this image."
+    fi
 fi
-
-# Pre-compile zh_TW .mo with our working po2mo.py before run.py's JIT
-# (upstream's JIT uses polib which may produce empty .mo from our custom .po)
-if [ -f "/musicbot/tools/po2mo.py" ]; then
-    for po in /musicbot/i18n/zh_TW/LC_MESSAGES/*.po /musicbot/i18n/zh_CN/LC_MESSAGES/*.po; do
-        [ -f "$po" ] && python3 /musicbot/tools/po2mo.py "$po" 2>/dev/null
-    done
-fi
-
-exec python3 run.py "$@"
+exec python3 run.py --no-checks --no-install-deps "$@"

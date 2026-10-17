@@ -26,6 +26,8 @@ config/playlists/
 media/
 i18n/*/LC_MESSAGES/*.mo
 
-docker-compose.yml
+.env
+.env.*
+!.env.example
 
 /env*/

@@ -154,7 +154,7 @@ class Downloader:
         }
         ytdl_format_options["extractor_args"] = {
             "youtubepot-bgutilhttp": {
-                "base_url": ["http://bgutil-provider:4416"]
+                "base_url": [os.environ.get("BGUTIL_PROVIDER_URL", "http://bgutil-provider:4416")]
             }
         }
 

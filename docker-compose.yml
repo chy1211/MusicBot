@@ -1,0 +1,68 @@
+# Docker Compose v2.20+. Required credentials are checked once by config-init.
+x-musicbot: &musicbot
+  image: ${MUSICBOT_IMAGE:-ghcr.io/chy1211/musicbot:latest}
+  # To build locally, uncomment this line, then: docker compose build
+  # build: .
+  env_file: .env
+  volumes:
+    - ./config:/musicbot/config
+    - ./data:/musicbot/data
+    - ./audio_cache:/musicbot/audio_cache
+    - ./logs:/musicbot/logs
+
+services:
+  config-init:
+    <<: *musicbot
+    user: "0:0"
+    entrypoint: ["python3", "-m", "tools.container_config", "--prepare"]
+    restart: "no"
+    network_mode: none
+
+  musicbot:
+    <<: *musicbot
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    init: true
+    depends_on:
+      config-init:
+        condition: service_completed_successfully
+      bgutil-provider:
+        condition: service_started
+    environment:
+      BGUTIL_PROVIDER_URL: http://bgutil-provider:4416
+    # Keep this loopback-only. Use a reverse proxy for public access.
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "python3", "-m", "tools.container_healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    restart: unless-stopped
+    init: true
+    # Internal port 4416 only. This unauthenticated service must not be public.
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      musicbot:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

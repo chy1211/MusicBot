@@ -1,0 +1,5 @@
+# DASHBOARD_PUBLIC_URL must be your HTTPS origin, e.g. https://music.example.com.
+# Point the domain's DNS to this server before enabling the caddy profile.
+{$DASHBOARD_PUBLIC_URL} {
+    reverse_proxy musicbot:8080
+}
