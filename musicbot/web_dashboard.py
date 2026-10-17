@@ -1051,6 +1051,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 valid = False
             if not valid:
                 raise APIError(400, "跳轉位置必須是大於或等於 0 的有限秒數。")
+            # Normalize once before permissions, queue mutation and reporting.
+            # Non-negative values use conventional half-up rather than bankers rounding.
+            data["position"] = math.floor(float(position) + 0.5)
             # Capture before the guild lock: native Discord playback is not
             # serialized by this lock, and context() may await a voice lookup.
             seek_player = self.bot.get_player_in(guild)
@@ -1065,6 +1068,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
 
         async with self.locks[guild.id]:
             request[ACTIVITY_KEY] = capture(self, guild, owner, action, "web")
+            if action == "seek" and request[ACTIVITY_KEY] is not None:
+                request[ACTIVITY_KEY].target_position = data["position"]
             if self.discord_auth:
                 # Requests can queue behind another command; re-check current membership/session.
                 self.authenticate(request)
@@ -1149,11 +1154,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     raise APIError(409, "目前沒有播放中的歌曲。")
                 if not self.is_seekable(player.current_entry):
                     raise APIError(400, "直播或長度未知的歌曲無法跳轉。")
-                if data["position"] > player.current_entry.duration:
+                if position > player.current_entry.duration or data["position"] > player.current_entry.duration:
                     raise APIError(400, "跳轉位置超過歌曲長度。")
                 response = await self.bot.cmd_seek(
                     ssd_=ssd, guild=guild, player=player, leftover_args=[],
-                    seek_time=format(float(data["position"]), ".6f"))
+                    seek_time=str(data["position"]))
+                # Native seek intentionally accepts fractional Discord arguments;
+                # dashboard reporting shares the activity log integer format.
+                response = Response(f"\u8df3\u8f49\uff1a{data['position']} \u79d2")
             elif action in ("pause", "resume"):
                 response = await getattr(self.bot, "cmd_" + action)(ssd, player)
             elif action == "skip":
