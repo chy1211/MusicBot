@@ -647,7 +647,21 @@ async function act(action, data = {}, method = "POST") {
   let result;
   try {
     result = await api("api/guilds/" + guild + "/" + action, method, data);
-    if (epoch === generation) { render(result.state, true); notice(result.message, result.added === 0 && result.skipped > 0); }
+    if (epoch === generation) {
+      render(result.state, true); notice(result.message, result.added === 0 && result.skipped > 0);
+      if (result.undo_token) {
+        const version = toastVersion;
+        window.clearTimeout(toastTimer);
+        const undo = document.createElement("button"); undo.type = "button"; undo.textContent = "復原";
+        undo.addEventListener("click", async () => {
+          if (undo.disabled || epoch !== generation) return;
+          undo.disabled = true; buttonBusy(undo, true);
+          await act("queue/undo", {undo_token:result.undo_token});
+        });
+        $("notice").append(undo);
+        toastTimer = window.setTimeout(() => { if (version === toastVersion) notice(""); }, 10000);
+      }
+    }
   } catch (error) {
     if (epoch === generation) {
       if (error.body?.results) renderPreviewResults(error.body.results);
