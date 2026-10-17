@@ -14,6 +14,7 @@ class Element {
     this.attributes = {}; this.dataset = {}; this.value = "";
     this.textContent = ""; this.disabled = false; this.hidden = false;
     this.classes = new Set(); this.style = {}; this.animations = [];
+    this.scrollTop = 0; this.clientTop = 0; this.clientHeight = 150; this.scrollCalls = [];
     this.classList = {toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name)};
   }
   append(...items) {
@@ -43,7 +44,7 @@ class Element {
     return this.tag === "li" ? this : this.parent?.closest(selector);
   }
   getBoundingClientRect() {
-    if (!this.layout) return {height: 110};
+    if (!this.layout) return {top: 0, bottom: 110, height: 110};
     const index = this.parent?.children.indexOf(this) || 0;
     const shift = parseFloat((this.style.transform || "").replace("translateY(", "")) || 0;
     return {height: 74, top: 200 + index * 74 + shift, bottom: 274 + index * 74 + shift};
@@ -52,6 +53,7 @@ class Element {
   showModal() { this.open = true; }
   close() { this.open = false; }
   scrollIntoView(options) { this.scrolled = options; }
+  scrollTo(options) { this.scrolled = options; this.scrollCalls.push(options); this.scrollTop = options.top; }
   focus() { this.focused = true; }
   animate(frames, options) { this.animations.push({frames, options}); }
   set src(value) { this.attributes.src = value; }
@@ -1050,7 +1052,7 @@ test("synced lyrics highlight and scroll the current line as playback advances",
   const rows = app.element("lyrics-content").children;
   assert.equal(rows[1].textContent, "<script>第一句</script>");
   assert.equal(rows[1].getAttribute("aria-current"), "true");
-  assert.equal(rows[1].scrolled.behavior, "smooth");
+  assert.equal(app.element("lyrics-content").scrolled.behavior, "smooth");
   app.states[1].progress = 50; await app.run("refresh()");
   assert.equal(rows[1].getAttribute("aria-current"), null);
   assert.equal(rows[2].getAttribute("aria-current"), "true");
@@ -1064,7 +1066,7 @@ test("lyrics are not fetched every poll or on reopen and reduced motion scrolls 
   app.element("lyrics-close").listeners.click();
   await app.element("lyrics-toggle").listeners.click();
   assert.equal(app.requests.filter((request) => request.url.endsWith("/lyrics")).length, 1);
-  assert.equal(app.element("lyrics-content").children[1].scrolled.behavior, "auto");
+  assert.equal(app.element("lyrics-content").scrolled.behavior, "auto");
 });
 
 test("plain lyrics render as safe text and missing lyrics expose a same-origin manual search", async () => {
@@ -2026,13 +2028,14 @@ test("round12 manual scroll pauses centering five seconds then seek realigns",as
  app.hook(url=>url.endsWith("/lyrics")?lyricsResponse(syncedLyrics):null);
  await app.element("lyrics-toggle").listeners.click();
  const rows=app.element("lyrics-content").children;
+ const before=app.element("lyrics-content").scrollCalls.length;
  app.element("lyrics-content").listeners.wheel();
  app.states[1].progress=50;await app.run("refresh()");
  assert.equal(rows[2].getAttribute("aria-current"),"true");
- assert.equal(rows[2].scrolled,undefined);
+ assert.equal(app.element("lyrics-content").scrollCalls.length,before);
  assert.ok(app.run("lyricsUserScrollUntil-Date.now()")>4900);
  app.run("lyricsUserScrollUntil=0;syncLyrics()");
- assert.equal(rows[2].scrolled.block,"center");
+ assert.equal(app.element("lyrics-content").scrollCalls.length,before+1);
  app.states[1].progress=10;await app.run("refresh()");
  assert.equal(rows[0].getAttribute("aria-current"),"true");
 });
@@ -2058,4 +2061,131 @@ test("round12 offset controls send small deltas and two-click sync position with
  app.element("lyrics-close").listeners.click();
  const count=app.requests.length;await app.run("pollLyricsOffset()");
  assert.equal(app.requests.length,count);
+});
+
+
+// A layout-aware lyric viewport: offsetTop can use either offset parent,
+// while rectangles include borders, existing scroll and active-font reflow.
+async function lyricScrollApp({height=150, positioned=true, reducedMotion=false}={}) {
+  const app=await setup({reducedMotion}),box=app.element("lyrics-content");
+  app.states[1].status="paused";app.states[1].progress=35;
+  await app.run("refresh()");
+  box.clientHeight=height;box.clientTop=3;box.offsetTop=310;box.scrollTop=97;
+  box.viewportTop=420;
+  box.getBoundingClientRect=()=>({top:box.viewportTop,height:height+6,bottom:box.viewportTop+height+6});
+  const rowHeight=row=>row.classes.has("current-line")?(box.children.indexOf(row)===7?78:44):30;
+  const contentTop=row=>12+box.children.slice(0,box.children.indexOf(row)).reduce((n,r)=>n+rowHeight(r)+14,0);
+  const append=box.append.bind(box);
+  box.append=(...rows)=>{
+    append(...rows);
+    for(const row of rows) {
+      Object.defineProperty(row,"offsetTop",{get:()=>contentTop(row)+(positioned?0:box.offsetTop)});
+      Object.defineProperty(row,"offsetHeight",{get:()=>rowHeight(row)});
+      row.getBoundingClientRect=()=>{
+        const top=box.viewportTop+box.clientTop+contentTop(row)-box.scrollTop;
+        return {top,height:rowHeight(row),bottom:top+rowHeight(row)};
+      };
+    }
+  };
+  box.scrollTo=options=>{
+    box.scrolled=options;box.scrollCalls.push(options);
+    const last=box.children.at(-1),max=last?contentTop(last)+rowHeight(last)+12-height:0;
+    box.scrollTop=Math.max(0,Math.min(options.top,max));
+  };
+  app.hook(url=>url.endsWith("/lyrics")?lyricsResponse({
+    status:"synced",title:"First",video_id:"abcdefghijk",offset:0,
+    lines:Array.from({length:14},(_,i)=>({time:i*10,text:"Line "+i}))
+  }):url.endsWith("/lyrics/offset")?lyricsResponse({offset:20,offset_source:"manual"}):null);
+  await app.element("lyrics-toggle").listeners.click();
+  return {...app,box};
+}
+function visibleLyric(app,index,centered=true) {
+  const row=app.box.children[index],rect=row.getBoundingClientRect(),top=app.box.viewportTop+app.box.clientTop;
+  assert.equal(row.getAttribute("aria-current"),"true");
+  assert.ok(rect.top>=top-.01,JSON.stringify({rect,top}));
+  assert.ok(rect.bottom<=top+app.box.clientHeight+.01,JSON.stringify({rect,top,height:app.box.clientHeight}));
+  if(centered)assert.ok(Math.abs((rect.top+rect.bottom)/2-top-app.box.clientHeight/2)<.01);
+  assert.equal(row.scrolled,undefined,"never scroll an ancestor through scrollIntoView");
+  assert.equal(app.scrolls.length,0);
+}
+for(const height of [150,90]) {
+  test("round14 rectangle centering ignores offsetParent with viewport height "+height,async()=>{
+    for(const positioned of [true,false]) {
+      const app=await lyricScrollApp({height,positioned});
+      visibleLyric(app,3);
+      const target=app.box.scrollTop;
+      app.box.viewportTop+=217;app.box.offsetTop+=93;
+      app.run("lyricsActive=-2;syncLyrics()");
+      visibleLyric(app,3);
+      assert.equal(app.box.scrollTop,target,"existing scroll is not applied twice");
+      app.states[1].progress=75;await app.run("refresh()");
+      visibleLyric(app,7); // Wrapped line grows after current-line is applied.
+      app.states[1].progress=0;await app.run("refresh()");visibleLyric(app,0,false);
+      app.states[1].progress=135;await app.run("refresh()");visibleLyric(app,13,false);
+    }
+  });
+}
+test("round14 reopening cached lyrics centers even if the active index is unchanged",async()=>{
+  const app=await lyricScrollApp();
+  app.element("lyrics-close").listeners.click();app.box.scrollTop=0;
+  await app.element("lyrics-toggle").listeners.click();
+  visibleLyric(app,3);
+  app.element("lyrics-close").listeners.click();
+  app.states[1].progress=95;await app.run("refresh()");
+  await app.element("lyrics-toggle").listeners.click();
+  visibleLyric(app,9);
+  assert.equal(app.requests.filter(r=>r.url.endsWith("/lyrics")).length,1);
+});
+test("round14 manual scrolling pauses centering and resumes on the same current line",async()=>{
+  const app=await lyricScrollApp();
+  for(const event of ["wheel","touchstart","pointerdown","keydown","scroll"]) {
+    app.run("lyricsAutoScrollUntil=0");
+    app.box.listeners[event]();app.box.scrollTop=0;
+    const count=app.box.scrollCalls.length;
+    app.run("syncLyrics()");
+    assert.equal(app.box.scrollCalls.length,count);
+    assert.equal(app.box.scrollTop,0);
+    assert.equal(app.run("lyricsCenterPending"),true);
+    app.run("lyricsUserScrollUntil=Date.now()-1;syncLyrics()");
+    visibleLyric(app,3);
+  }
+  app.box.listeners.scroll();
+  assert.ok(app.run("lyricsUserScrollUntil<Date.now()"),"programmatic scroll must not pause following");
+});
+test("round14 drag previews and committed forward/backward seeks center lyrics",async()=>{
+  const app=await lyricScrollApp({height:90}),slider=app.element("progress");
+  for(const position of [75,25]) {
+    slider.listeners.pointerdown(pointer());slider.value=String(position);slider.listeners.input();
+    app.run("syncLyrics()");visibleLyric(app,Math.floor(position/10));
+    await app.document.listeners.pointerup(pointer());
+    visibleLyric(app,Math.floor(position/10));
+  }
+  assert.deepEqual(app.requests.filter(r=>r.url.endsWith("/seek")).map(r=>r.data.position),[75,25]);
+});
+test("round14 offset changes recenter the newly highlighted line",async()=>{
+  const app=await lyricScrollApp({height:90});
+  await app.element("lyrics-plus").listeners.click();visibleLyric(app,1);
+  app.run('applyLyricsOffset({offset:-40,offset_source:"manual"})');visibleLyric(app,7);
+});
+test("round14 changing tracks reloads and centers the new active line",async()=>{
+  const app=await lyricScrollApp({height:90});
+  app.states[1].current.title="Replacement";app.states[1].progress=95;
+  await app.run("refresh()");await flush();visibleLyric(app,9);
+  assert.equal(app.requests.filter(r=>r.url.endsWith("/lyrics")).length,2);
+});
+test("round14 hidden layout keeps a pending center until the lyric viewport is visible",async()=>{
+  const app=await lyricScrollApp(),count=app.box.scrollCalls.length;
+  app.box.clientHeight=0;app.states[1].progress=75;
+  await app.run("refresh()");
+  assert.equal(app.box.scrollCalls.length,count);assert.equal(app.run("lyricsCenterPending"),true);
+  app.box.clientHeight=150;app.run("syncLyrics()");visibleLyric(app,7);
+});
+test("round14 missing scrollTo falls back to the lyric box scrollTop only",async()=>{
+  const app=await lyricScrollApp();
+  app.box.scrollTo=undefined;app.box.scrollTop=0;app.run("lyricsActive=-2;syncLyrics()");
+  visibleLyric(app,3);assert.equal(app.run("lyricsCenterPending"),false);
+});
+test("round14 reduced motion centers without smooth scrolling",async()=>{
+  const app=await lyricScrollApp({reducedMotion:true,height:90});
+  visibleLyric(app,3);assert.equal(app.box.scrolled.behavior,"auto");
 });
