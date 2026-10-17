@@ -102,7 +102,7 @@ async function setup(options = {}) {
     }
     let body, status = 200;
     if (url === "/auth/session") body = clone(session);
-    else if (url === "/auth/logout") { session.authenticated = false; session.user = null; body = {message: "signed out"}; }
+    else if (["/auth/logout","/auth/logout-all"].includes(url)) { session.authenticated = false; session.user = null; body = {message: "signed out"}; }
     else if (url.endsWith("/admin/empty-queue")) body = {empty_queue:"autoplaylist",radio_min_seconds:0,radio_max_seconds:0};
     else if (url.endsWith("/admin/maintenance")) body = {cookie:{status:"unused"},host_status:{status:"missing"},viewers:1};
     else if (url === "api/guilds") body = {guilds: [{id: "1", name: "First Guild"}, {id: "2", name: "Second Guild"}]};
@@ -1981,4 +1981,11 @@ test("round11 touch sheet downward swipe closes without leaving selection lock",
  handle.listeners.pointerdown({pointerType:"touch",pointerId:1,clientX:80,clientY:10,target,currentTarget:handle});
  handle.listeners.pointerup({pointerId:1,clientX:90,clientY:130});
  assert.equal(app.element("player-dialog").open,false);
+});
+
+test("round11 logout all uses protected endpoint and clears private state",async()=>{
+ const app=await setup({session:{auth_mode:"discord",authenticated:true,user:{id:"43",name:"Friend",avatar:""}}});
+ await app.element("logout-all").listeners.click();
+ assert.ok(app.requests.some(r=>r.url==="/auth/logout-all"&&r.method==="POST"));
+ assert.equal(app.element("dashboard").hidden,true);
 });

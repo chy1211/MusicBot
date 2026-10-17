@@ -302,6 +302,7 @@ class DemoDashboard(Dashboard):
         bot.config.spotify_enabled = True
         bot.spotify = NS(make_api_req=self.fake_spotify_search)
         self.demo_temp = tempfile.TemporaryDirectory(prefix="musicbot-webtest-demo-")
+        self.session_store_root = Path(self.demo_temp.name) / "sessions"
         super().__init__(bot, config)
         # Replace the provider boundary before any request can run.
         self.popularity_store.root = Path(self.demo_temp.name) / "stats"
@@ -499,7 +500,7 @@ class DemoDashboard(Dashboard):
         uid, name = FAKE_USERS[key]
         response = web.HTTPFound(location="/")
         self.set_cookie(response, self.session_cookie,
-                        self.new_session({"id": str(uid), "name": name, "avatar": ""}), 3600)
+                        self.new_session({"id": str(uid), "name": name, "avatar": ""}), self.SESSION_TTL)
         raise response
 
     async def auth_login(self, request):

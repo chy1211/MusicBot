@@ -54,7 +54,7 @@ class DashboardConfig:
     discord_client_id: str = ""
     discord_client_secret: str = field(default="", repr=False)
     session_secret: str = field(default="", repr=False)
-    session_hours: float = 168
+    session_hours: float = 720
 
     @classmethod
     def load(cls, path: Path) -> DashboardConfig:
@@ -206,6 +206,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.init_auth()
         self.app = web.Application(
             middlewares=[self.guard], client_max_size=16 * 1024)
+        if self.discord_auth: self.app.cleanup_ctx.append(self.auth_lifecycle)
         self.init_events()
         self.init_library()
         self.init_admin()
@@ -231,6 +232,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.app.router.add_get("/auth/login", self.auth_login)
         self.app.router.add_get("/auth/callback", self.auth_callback)
         self.app.router.add_post("/auth/logout", self.auth_logout)
+        self.app.router.add_post("/auth/logout-all", self.auth_logout)
         self.app.router.add_get("/dashboard.css", self.asset)
         self.app.router.add_get("/dashboard.js", self.asset)
         self.app.router.add_get("/library.js", self.asset)
@@ -280,7 +282,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     @web.middleware
     async def guard(self, request, handler):
         api = request.path.startswith("/api/")
-        logout = request.path == "/auth/logout"
+        logout = request.path in ("/auth/logout", "/auth/logout-all")
         events = request.method == "GET" and request.match_info.route.name == "dashboard_events"
         try:
             if self.discord_auth and (api or logout):
@@ -369,6 +371,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 finish(value, response.status < 400)
             except Exception as exc:
                 log.warning("Dashboard activity failed (%s)", type(exc).__name__)
+        self.renew_session(request, response)
         response.headers.update({
             "Cache-Control": "no-cache" if events and response.prepared else "no-store",
             "X-Content-Type-Options": "nosniff",
@@ -414,6 +417,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         uid = int(request[USER_KEY]["id"]) if self.discord_auth else self.bot.config.owner_id
         owner = guild.get_member(uid)
         if owner is None:
+            if self.discord_auth: self.revoke_session(request)
             raise APIError(403, "你不是這個伺服器的成員。" if self.discord_auth
                            else "OwnerID 本人不在這個伺服器。")
         self.check_blocked(owner)

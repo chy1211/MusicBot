@@ -13,6 +13,8 @@ from urllib.parse import urlencode, urlsplit
 
 import aiohttp
 from aiohttp import web
+from . import write_path
+from .web_dashboard_sessions import SessionStore
 
 USER_KEY = web.RequestKey("dashboard_user", dict)
 SESSION_KEY = web.RequestKey("session_nonce", str)
@@ -26,6 +28,9 @@ class DashboardAuth:
     STATE_TTL = 300
     AUTH_LIMIT = 1024
     OAUTH_TIMEOUT = 10
+    SESSION_TTL = 30 * 86400
+    SESSION_RENEW_INTERVAL = 86400
+    SESSIONS_PER_USER = 10
 
     def init_auth(self):
         from .web_dashboard import APIError
@@ -33,8 +38,8 @@ class DashboardAuth:
         self.sessions = {}
         self.oauth_states = {}
         self.login_attempts = []
-        self.session_key = (self.config.session_secret.encode()
-                            if self.config.session_secret else secrets.token_bytes(32))
+        self.session_store = None
+        self.session_cleanup_at = 0
         if self.config.auth_mode not in ("owner", "discord"):
             raise ValueError("Invalid AuthMode")
         if not self.discord_auth:
@@ -58,6 +63,10 @@ class DashboardAuth:
             raise ValueError("DiscordClientID or bot application ID is required")
         if not math.isfinite(self.config.session_hours) or self.config.session_hours <= 0:
             raise ValueError("SessionHours must be positive and finite")
+        self.session_store = SessionStore(getattr(self, "session_store_root", write_path("data/web_dashboard/sessions")))
+        self.sessions = self.session_store.read()
+        self.prune_sessions(force=True)
+
 
     @property
     def discord_auth(self):
@@ -86,39 +95,119 @@ class DashboardAuth:
     def clear_cookie(self, response, name):
         self.set_cookie(response, name, "", 0)
 
+    async def auth_lifecycle(self, _app):
+        async def cleanup():
+            while True:
+                await asyncio.sleep(86400)
+                try: self.prune_sessions(force=True)
+                except self.auth_error: pass
+        task = asyncio.create_task(cleanup())
+        try: yield
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    @staticmethod
+    def session_digest(token):
+        return hashlib.sha256(token.encode("ascii")).hexdigest()
+
+    def save_sessions(self):
+        try:
+            self.session_store.write(self.sessions)
+        except OSError:
+            raise self.auth_error(503, "登入資料暫時無法儲存，請稍後再試。") from None
+
+    def prune_sessions(self, force=False):
+        now = time.time()
+        if not force and now < self.session_cleanup_at: return
+        self.session_cleanup_at = now + 86400
+        expired = [key for key, item in self.sessions.items() if item["expires"] <= now]
+        # Enforce caps even for an otherwise valid pre-existing file.
+        users = {}
+        for key, item in self.sessions.items():
+            users.setdefault(item["user"]["id"], []).append(key)
+        for keys in users.values():
+            keys.sort(key=lambda key:self.sessions[key]["created"])
+            expired.extend(keys[:-self.SESSIONS_PER_USER])
+        for key in set(expired): self.sessions.pop(key, None)
+        if expired: self.save_sessions()
+
     def prune_auth(self):
         now = time.monotonic()
-        for records in (self.sessions, self.oauth_states):
-            for key in list(records):
-                if records[key]["expires"] <= now:
-                    del records[key]
+        for key in list(self.oauth_states):
+            if self.oauth_states[key]["expires"] <= now: self.oauth_states.pop(key)
+        if self.discord_auth: self.prune_sessions()
 
     def new_session(self, user):
         self.prune_auth()
+        uid = str(user["id"])
+        owned = sorted((key for key, item in self.sessions.items() if item["user"]["id"] == uid),
+                       key=lambda key:self.sessions[key]["created"])
+        for key in owned[:max(0, len(owned) - self.SESSIONS_PER_USER + 1)]:
+            self.sessions.pop(key)
         if len(self.sessions) >= self.AUTH_LIMIT:
             raise self.auth_error(503, "登入人數已達上限，請稍後再試。")
-        nonce = secrets.token_urlsafe(32)
-        signature = hmac.new(self.session_key, nonce.encode(), hashlib.sha256).hexdigest()
-        self.sessions[nonce] = {"user": dict(user),
-                                "expires": time.monotonic() + self.config.session_hours * 3600}
-        return nonce + "." + signature
+        token = secrets.token_urlsafe(32)
+        now = time.time()
+        self.sessions[self.session_digest(token)] = {
+            "user": {"id":uid, "name":str(user["name"])[:128], "avatar":str(user.get("avatar",""))[:512]},
+            "created":now, "last_seen":now, "expires":now+self.SESSION_TTL}
+        self.save_sessions()
+        return token
+
+    def revoke_session(self, request, all_devices=False):
+        digest = request.get(SESSION_KEY)
+        session = self.sessions.get(digest)
+        if not session: return
+        uid = session["user"]["id"]
+        keys = [key for key, item in self.sessions.items()
+                if key == digest or (all_devices and item["user"]["id"] == uid)]
+        for key in keys: self.sessions.pop(key, None)
+        self.save_sessions()
 
     def session_user(self, request):
-        cookie = request.cookies.get(self.session_cookie, "")
-        if len(cookie) > 160 or "." not in cookie:
-            return None
-        nonce, signature = cookie.rsplit(".", 1)
-        expected = hmac.new(self.session_key, nonce.encode(), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(signature.encode(), expected.encode()):
-            return None
-        session = self.sessions.get(nonce)
-        if not session:
-            return None
-        if session["expires"] <= time.monotonic():
-            self.sessions.pop(nonce, None)
-            return None
-        request[SESSION_KEY] = nonce
+        self.prune_auth()
+        token = request.cookies.get(self.session_cookie, "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43}", token): return None
+        digest = self.session_digest(token)
+        session = self.sessions.get(digest)
+        if not session: return None
+        if session["expires"] <= time.time():
+            self.sessions.pop(digest, None); self.save_sessions(); return None
+        request[SESSION_KEY] = digest
+        uid = int(session["user"]["id"])
+        members = [guild.get_member(uid) for guild in self.bot.guilds]
+        try:
+            for member in members:
+                if member is not None: self.check_blocked(member)
+            if not any(member is not None for member in members) and not any(
+                    getattr(guild, "unavailable",False) for guild in self.bot.guilds):
+                raise self.auth_error(403, "你目前不是機器人所在伺服器的成員。")
+        except self.auth_error:
+            self.revoke_session(request)
+            if request.path == "/auth/session": return None
+            raise
         return session["user"]
+
+    def renew_session(self, request, response):
+        # Renew only successful, same-origin responses, at most once per day.
+        if (not self.discord_auth or response.prepared or response.status >= 400
+                or request.path in ("/auth/logout","/auth/logout-all")
+                or request.host.lower() != urlsplit(self.public_origin).netloc.lower()
+                or request.headers.get("Origin") not in (None,self.public_origin)
+                or request.headers.get("Sec-Fetch-Site") not in (None,"same-origin","none")):
+            return
+        session = self.sessions.get(request.get(SESSION_KEY))
+        if session is None or session["last_seen"] > time.time()-self.SESSION_RENEW_INTERVAL:
+            return
+        now = time.time()
+        previous = session["last_seen"], session["expires"]
+        session["last_seen"], session["expires"] = now, now + self.SESSION_TTL
+        try: self.save_sessions()
+        except self.auth_error:
+            session["last_seen"], session["expires"] = previous
+            return
+        self.set_cookie(response,self.session_cookie,request.cookies[self.session_cookie],self.SESSION_TTL)
 
     async def auth_session(self, request):
         if not self.discord_auth:
@@ -211,10 +300,10 @@ class DashboardAuth:
         user = await self.oauth_identity(code)
         old_nonce = request.get(SESSION_KEY)
         if old_nonce:
-            self.sessions.pop(old_nonce, None)
+            self.revoke_session(request)
         response = web.HTTPFound(location="/")
         self.set_cookie(response, self.session_cookie, self.new_session(user),
-                        int(self.config.session_hours * 3600))
+                        self.SESSION_TTL)
         self.clear_cookie(response, self.state_cookie)
         request[USER_KEY] = user
         raise response
@@ -222,13 +311,11 @@ class DashboardAuth:
     async def auth_logout(self, request):
         if not self.discord_auth:
             raise self.auth_error(404, "未啟用 Discord 登入。")
-        nonce = request.get(SESSION_KEY)
-        if nonce:
-            self.sessions.pop(nonce, None)
+        self.revoke_session(request, all_devices=request.path == "/auth/logout-all")
         # Invalidate pending login from this browser as well.
         state = request.cookies.get(self.state_cookie, "")
         self.oauth_states.pop(state, None)
-        response = web.json_response({"message": "已登出。"})
+        response = web.json_response({"message": "已登出所有裝置。" if request.path == "/auth/logout-all" else "已登出。"})
         self.clear_cookie(response, self.session_cookie)
         self.clear_cookie(response, self.state_cookie)
         return response

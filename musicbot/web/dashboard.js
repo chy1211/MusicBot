@@ -131,10 +131,10 @@ async function initialize() {
     $("login-status").classList.toggle("error", true);
   }
 }
-async function logout() {
+async function logout(allDevices = false) {
   if (authMode !== "discord" || !authenticated || busy) return;
   busy = true; controls();
-  try { await api("/auth/logout", "POST", {}); signedOut("已登出。"); }
+  try { await api(allDevices ? "/auth/logout-all" : "/auth/logout", "POST", {}); signedOut(allDevices ? "已登出所有裝置。" : "已登出。"); }
   catch (error) { if (authenticated) notice(error.message, true); }
   finally { busy = false; controls(); }
 }
@@ -190,7 +190,7 @@ function controls() {
   document.querySelectorAll("#recommendation-list button").forEach((button) => { button.disabled = !usable || resolving; });
   $("shuffle").disabled = !hasPlayer || !state.queue.length || queueFiltered();
   $("guild").disabled = busy;
-  $("logout").disabled = busy;
+  $("logout").disabled = busy; $("logout-all").disabled = busy;
   document.querySelectorAll("#queue button").forEach((button) => {
     button.disabled = !hasPlayer || button.dataset.boundary === "1";
   });
@@ -761,7 +761,13 @@ async function connect() {
     controls();
   }
 }
+let sessionCheckedAt = Date.now();
 async function poll() {
+  if (!document.hidden && authMode === "discord" && authenticated && Date.now()-sessionCheckedAt >= 86400000) {
+    sessionCheckedAt = Date.now();
+    try { const profile = await api("/auth/session"); if (!profile.authenticated) signedOut(); }
+    catch (error) { notice(error.message, true); }
+  }
   if (!document.hidden && fallbackPolling && (authMode === "owner" || authenticated) && !busy && !loading) {
     if (selected) await refresh();
     else await connect();
@@ -842,7 +848,8 @@ for (const id of ["volume"]) {
     input.addEventListener(type, () => noSelection("volume", false));
 }
 $("shuffle").addEventListener("click", () => { if (!$("shuffle").disabled && !queueFiltered()) return act("queue/shuffle", {revision: state.revision}); });
-$("logout").addEventListener("click", logout);
+$("logout").addEventListener("click", () => logout());
+$("logout-all").addEventListener("click", () => logout(true));
 $("user-avatar").addEventListener("error", () => { $("user-avatar").hidden = true; });
 
 // Seek previews are separate from server state: polling can update other controls.

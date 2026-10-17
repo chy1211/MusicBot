@@ -95,6 +95,7 @@ class DashboardEvents:
         async def write(data):
             await asyncio.wait_for(response.write(data.encode("utf-8")), self.WRITE_TIMEOUT)
         try:
+            self.renew_session(request, response)
             await response.prepare(request)
             last_key, last_state, last_at = None, None, 0
             heartbeat = time.monotonic()
