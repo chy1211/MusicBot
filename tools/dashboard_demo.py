@@ -114,7 +114,7 @@ class DemoBot:
             self.guilds.append(guild)
             self.server_data[gid] = None
             self.players[gid] = NS(
-                current_entry=self.song(gid - 1),
+                current_entry=self.song(gid - 1, url=f"https://www.youtube.com/watch?v=demo{gid-1:07d}"),
                 playlist=DemoPlaylist([self.song(i) for i in range(1, 5)]),
                 voice_client=NS(channel=channel), progress=37., volume=.35,
                 is_playing=True, is_paused=False, is_stopped=False,
@@ -282,11 +282,13 @@ class FakeLyricsClient:
                 {"time": 60, "text": "等微風吹過，明天再出發"},
                 {"time": 90, "text": "讓這一刻陪我們慢慢唱"}]
             return {"status": "synced", "title": TITLES[0], "artist": "示範樂團",
-                    "plain_lyrics": "\n".join(line["text"] for line in lines), "lines": lines}
+                    "plain_lyrics": "\n".join(line["text"] for line in lines), "lines": lines, "duration": max(1,duration-7)}
         if TITLES[1] in subject:
             return {"status": "plain", "title": TITLES[1], "artist": "示範樂團",
                     "plain_lyrics": "窗邊的午後，留一盞光\n把遠方的問候，寫成一行\n咖啡的香氣，陪風一起晃",
                     "lines": []}
+        if TITLES[3] in subject:
+            return {"status":"instrumental","title":subject,"artist":"示範樂團","duration":duration,"plain_lyrics":"","lines":[]}
         return {"status": "not_found", "title": subject, "artist": "",
                 "plain_lyrics": "", "lines": []}
 
@@ -319,6 +321,10 @@ class DemoDashboard(Dashboard):
 
         self.lyrics_client = FakeLyricsClient()
         self.lyrics_store.root = Path(self.demo_temp.name) / "lyrics"
+        async def fake_alignment(*_args):
+            await asyncio.sleep(.02)
+            return {"offset":7.0,"source":"matched","confidence":.98,"download_bytes":0,"cpu_seconds":0}
+        self.lyrics_alignment.run_worker = fake_alignment
         from musicbot.web_dashboard_library import PlaylistStore, song
         self.playlist_store = PlaylistStore(Path(self.demo_temp.name) / "user_playlists")
         async def cleanup_demo(_app):
@@ -435,6 +441,19 @@ class DemoDashboard(Dashboard):
 
     async def index(self, request):
         # Demo-only switches; no production API or configuration is involved.
+        scenario = request.query.get("demo-lyrics")
+        if scenario in ("synced","plain","instrumental","missing"):
+            player = self.bot.players[1]
+            index = {"synced":0,"plain":1,"instrumental":3,"missing":4}[scenario]
+            player.current_entry = self.bot.song(index,url=f"https://www.youtube.com/watch?v=demo{index:07d}")
+            player.current_entry.author = self.bot.members[1][42]
+            player.current_entry.channel = self.bot.guilds[0].system_channel
+            player.progress = 37;player.tick = time.monotonic()
+        art = request.query.get("demo-art")
+        if art in ("0","1","2","3","4"):
+            for player in self.bot.players.values():
+                if player.current_entry:
+                    player.current_entry.info["thumbnail"] = f"{self.bot.origin}/demo-cover/{art}.svg"
         mode = request.query.get("demo-queue")
         if mode in ("empty", "filled", "live"):
             self.demo_queue_mode = mode
@@ -533,6 +552,10 @@ async def cover(request):
     palettes = [("#080b20", "#352748"), ("#ffffff", "#dcecff"), ("#ff1a83", "#00d9df"),
                 ("#a08cab", "#2d234b"), ("#d2ac67", "#514529")]
     a, b = palettes[int(request.match_info["index"]) % len(palettes)]
+    tone = request.query.get("tone")
+    if tone in ("white","black","vivid"):
+        color = {"white":"#ffffff","black":"#000000","vivid":"#ff0088"}[tone]
+        return web.Response(text=f'<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"><rect width="500" height="500" fill="{color}"/></svg>', content_type="image/svg+xml")
     # Locally served vector artwork; no remote fonts, images, scripts or CDN.
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500">
     <defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="{a}"/><stop offset="1" stop-color="{b}"/></linearGradient></defs>

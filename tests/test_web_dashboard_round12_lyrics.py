@@ -110,3 +110,28 @@ class LyricsPolicyTests(unittest.IsolatedAsyncioTestCase):
         self.dashboard.lyrics_store=LyricsStore(self.temp.name)
         await self.call(BASE+"lyrics",method="GET")
         self.dashboard.lyrics_client.lookup.assert_awaited_once()
+
+    async def test_shared_manual_adjust_sync_reset_range_and_stale_identity(self):
+        entry=self.bot.player.current_entry
+        entry.url="https://www.youtube.com/watch?v="+KEY
+        token=self.dashboard.track_token(self.bot.player)
+        await self.dashboard.lyrics_store.put(KEY,
+            {"status":"synced","lines":[{"time":0,"text":""},{"time":5,"text":"First"}]},86400)
+        await self.dashboard.lyrics_store.put(KEY,{"offset":13,"source":"matched"},86400,"analysis")
+        url=BASE+"lyrics/offset"
+        value=await self.call(url,{"action":"set","offset":7,"track_token":token})
+        self.assertEqual(value["offset"],7);self.assertEqual(value["offset_source"],"manual")
+        self.login_as(42)
+        self.assertEqual((await self.call(url,method="GET"))["offset"],7)
+        self.login_as(43)
+        value=await self.call(url,{"action":"adjust","delta":.5,"track_token":token})
+        self.assertEqual(value["offset"],7.5)
+        value=await self.call(url,{"action":"sync","position":12.25,"track_token":token})
+        self.assertEqual(value["offset"],7.25)
+        value=await self.call(url,{"action":"reset","track_token":token})
+        self.assertEqual(value["offset"],13);self.assertEqual(value["offset_source"],"matched")
+        for value in (-31,61,True,"7",float("nan"),None):
+            await self.call(url,{"action":"set","offset":value,"track_token":token},status=400)
+        await self.call(url,{"action":"set","offset":7,"track_token":"old"},status=409)
+        records=self.dashboard.activity_snapshot(self.bot.guild)["activity"]
+        self.assertTrue(any("調整歌詞位移" in row["detail"] for row in records))

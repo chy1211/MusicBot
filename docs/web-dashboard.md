@@ -1650,7 +1650,7 @@ Escape, outside click and focus departure dismiss this small choice;
 Escape and link activation restore title focus. Other song titles retain links.
 The web UI no longer offers any add-to-autoplaylist entrance. Its backend API
 and native Discord commands are unchanged; owner read/delete management remains.
-Lyrics is temporarily hidden until the Round 12 opt-in implementation.
+Lyrics is opt-in per signed-in viewer and is closed by default.
 
 ### Round 11 offline demo and verification
 Use the temporary image/context workflow above with a new musicbot-webtest-r11
@@ -1711,8 +1711,11 @@ pointer highlights are disabled for touch/reduced motion.
 Preferences are per browser in localStorage musicbot-glass, standard by default.
 Reduced transparency, increased contrast, unsupported backdrop filters and the
 opaque preference use solid backgrounds. Motion reduction uses opacity only.
-SVG displacement is intentionally not enabled: this CSS implementation uses
-the portable blur fallback and does not claim native Apple optical refraction.
+Chromium progressively enables a 5px SVG displacement only on an 8px outer rim
+of the player/mobile tabs; the center stays undistorted. Safari/Firefox use blur.
+Reduced transparency/contrast and fewer than four logical CPUs disable it.
+A brief rAF sample drops it if p95 exceeds 34ms; this is a CSS approximation,
+not the native Apple renderer.
 Offline layout test composites white, black and saturated fabricated covers for
 both content and glass, all three preferences and both color schemes (AA 4.5:1).
 Browser matrix captures and measurements are held in the temporary test directory.
@@ -1766,3 +1769,95 @@ default true. Disabled servers reject lyric lookup before contacting providers.
 All routes keep existing session/member/blocklist/header/same-origin guards.
 Offset documents live in lyrics/offsets/<guild_id>/<video_id>.json, with only a
 nullable numeric offset (-30..+60 seconds), never the identity of its editor.
+
+
+## Round 12: lyric alignment and controls
+Each signed-in viewer defaults off. localStorage musicbot-lyrics:<viewer> stores
+only on/off. While off, no lyric or offset request occurs. Owner disabling also
+hides the button and prevents lookup. Nothing is sent to Discord.
+Synced lines follow server progress with local interpolation, pause/seek/track
+changes re-anchor immediately. Only the lyric viewport scrolls, centered on the
+active line; wheel/touch/scrollbar/keyboard input pauses centering for five seconds.
+Plain lyrics remain a stationary scrollable full text; instrumental says 純音樂.
+The phone viewport is limited to about three lines. Calibration controls are
+inline, never in a menu. Reduced motion uses immediate positioning/fades.
+
+Auto alignment runs only after an enabled viewer requests synced lyrics:
+1. Video/LRCLIB duration delta <=2s: zero, no audio analysis/download.
+2. Otherwise ytsearch5 for an official audio reference, preferring a - Topic
+   channel (or a verified Official Audio channel), with title >=.94, artist >=.90
+   and duration delta <=2s. Compare the first 90s of MV and first 60s of reference.
+   ffmpeg converts local files to 8kHz mono PCM. A pure-Python 20Hz log-energy
+   envelope uses normalized Pearson cross-correlation at 50ms steps, -30..+60s.
+   Require at least 20s overlap, peak >=.82, margin >=.12 over other peaks
+   >=.75s away, and >=.30 above the median correlation. Otherwise reject.
+3. Missing/uncertain reference: ffmpeg silencedetect (-40dB, .25s) on the first
+   30s, accepting only a region starting within .15s of zero and ending <=30s.
+   Dialogue/noise is handled by layer 2, never assumed to be silence.
+
+MV input prefers entry.filename only when its resolved file is within the
+configured audio cache; it is read-only. A fresh Python child snapshots the
+existing downloader's serializable settings and already-loaded cookie jar over
+stdin. It never rereads/saves a cookie file and inherits the configured exit.
+The child creates a private yt-dlp instance, local temporary output, no provider
+logs or metadata dumps; source downloader params are unchanged.
+At most one reference 60s section and, if cache is unavailable, one MV 90s section
+are downloaded (20MiB cap per file). No large dependency is added.
+A single analysis lock and at most four pending video jobs bound concurrency.
+Each active job has a 60s total wall timeout; cancellation kills its process group
+including ffmpeg/yt-dlp and deletes the temporary directory. Results, including
+uncertainty, cache seven days by video ID under lyrics/analysis/.
+Synthetic reference +7s dialogue-like noise measured 7.00s, correlation 1.000,
+Python CPU about .20s for conversion orchestration/envelope/correlation; mock
+download volume zero. Actual network/download duration is unmeasured offline.
+Worker metadata records download_bytes and total self/ffmpeg CPU for future
+diagnostics. This does not measure or change active playback.
+Uncertain results use zero and show the manual correction hint. Sources display
+automatic match, silence detection, duration-equal or manual.
+
+Manual offsets always win and are shared among members of the same guild.
+Two-click 對時 shows the first nonblank lyric; the second click sends the local
+playback position and the server subtracts that line's timestamp. +/-0.5 adjusts
+the effective shared offset; reset removes manual priority and restores auto.
+Calibrations are atomic numeric-only files in offsets/<guild>/<video>.json,
+range -30..+60s. An activity entry says 調整歌詞位移, without storing its editor
+in the calibration file. Open viewers poll the offset every five seconds.
+Playback repetition now cycles directly 關閉 -> 單曲 -> 佇列 -> 關閉 with one
+button; there is no select/menu on the player. Opening source choices temporarily
+hides the lyric glass plane to avoid stacked glass and restores it on dismissal.
+
+### New API details
+Existing authentication, membership/blocklist, X-MusicBot-Dashboard: 1 and same-origin
+checks apply. Errors are Chinese and never expose provider exceptions or paths.
+
+* GET /api/guilds/{guild_id}/lyrics: member, existing 12/min limit.
+  Returns status/title/artist/duration/plain_lyrics/lines plus track_key,
+  video_id and track_token. Synced YouTube responses add offset/offset_source/
+  analysis_pending. Lookup and alignment start only on this opt-in endpoint.
+* GET /api/guilds/{guild_id}/lyrics/offset: member, 60/min polling+write limit.
+  Returns video_id, track_token, offset, offset_source, analysis_pending.
+  Reads cached state only; never starts lookup, search, download or analysis.
+* POST same /lyrics/offset: member; additionally 12/min mutation/lookup limit.
+  Body is exactly {action,track_token,...}. Actions: set adds offset (number),
+  adjust adds delta (-.5 or +.5), sync adds position (0..video duration),
+  reset has no extra field. Stale track token is 409; bad/range data is 400.
+  Response is the same as GET; manual calibration takes priority.
+* GET/POST /api/guilds/{guild_id}/admin/lyrics: Owner only;
+  POST exactly {enabled:boolean}; response {enabled:boolean}, default true.
+* Existing Owner GET /admin/empty-queue adds seed_titles and seed_count;
+  POST settings shape and permissions are unchanged.
+
+### Offline demo
+Run tools.dashboard_demo with the established isolated --network none container
+and loopback relay. All stores, settings, sessions and fake provider results use
+its TemporaryDirectory. No real config/data/cookie or external provider is used.
+Use /?demo-queue=filled&demo-lyrics=synced&demo-art=2 after fake Owner login.
+demo-lyrics=plain/instrumental/missing selects other original fake LRCLIB states.
+demo-art=0/1/2 chooses fabricated dark/light/vivid album artwork.
+/demo-cover/0.svg?tone=white and tone=black/vivid are pure
+worst-case fabricated covers used by the contrast sweep.
+Open Lyrics, wait up to five seconds for the fake +7s match, try +/-0.5 and
+two-click calibration/reset; another signed-in viewer shares the server offset.
+Management shows three fabricated radio seeds and can disable lyrics.
+Check source/Spotify choice focus, direct repeat cycling, seek, volume,
+favorite toggle, library list/detail, More menu and opaque preference.

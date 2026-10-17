@@ -31,6 +31,14 @@ def clean_metadata(title, artist=""):
         parts = re.split(r"\s+[-–—]\s+", title, maxsplit=1)
         if len(parts) == 2:
             artist, title = parts
+    if artist:
+        norm = lambda value: re.sub(r"[\W_]", "", str(value).casefold())
+        parts = re.split(r"\s+[-–—]\s+", title, maxsplit=1)
+        if len(parts) == 2 and norm(parts[0]) and norm(parts[0]) == norm(artist):
+            title = parts[1]
+        labeled = re.fullmatch(r"\s*(.+?)[【「『](.+)[】」』]\s*", title)
+        if labeled and norm(labeled[1]) == norm(artist):
+            title = labeled[2]
     title = re.sub(r"\s*[\(（]?\s*\b(?:feat|ft|featuring)\b\.?\s+.*$", "", title, flags=re.I)
     artist = re.sub(r"\s*\b(?:feat|ft|featuring)\b\.?\s+.*$", "", artist, flags=re.I)
     return (re.sub(r"\s+", " ", title).strip(" -–—|｜")[:200],
@@ -204,7 +212,8 @@ class LyricsClient:
         choices.sort(key=lambda pair: pair[0], reverse=True)
         if len(choices) > 1 and choices[0][0]-choices[1][0] < .025:
             first, second = choices[0][1], choices[1][1]
-            if (norm(first.get("trackName")), norm(first.get("artistName")), round(float(first["duration"]))) != (
-                    norm(second.get("trackName")), norm(second.get("artistName")), round(float(second["duration"]))):
+            same_recording = (norm(first.get("trackName")), norm(first.get("artistName"))) == (
+                    norm(second.get("trackName")), norm(second.get("artistName")))
+            if not same_recording or abs(float(first["duration"])-float(second["duration"])) > 2:
                 return None
         return choices[0][1] if choices else None
