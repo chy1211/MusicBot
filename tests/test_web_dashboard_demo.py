@@ -194,3 +194,34 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(preview["results"][0]["allowed"])
         urls = {entry["url"] for entry in preview["results"][0]["entries"]}
         self.assertIn(before["queue"][0]["url"], urls)
+
+class Round9DemoTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = DemoTests.asyncSetUp
+    asyncTearDown = DemoTests.asyncTearDown
+    login = DemoTests.login
+    call = DemoTests.call
+
+    async def test_fake_public_import_resync_and_large_preview_without_provider_access(self):
+        await self.login("owner")
+        for url in ("https://open.spotify.com/playlist/DemoRound9",
+                    "https://music.youtube.com/playlist?list=DemoRound9"):
+            preview = await self.call(BASE+"library/import/preview",{"url":url})
+            value = await self.call("/api/library/import",{"preview_id":preview["preview_id"],
+                "revision":preview["revision"],"name":"demo"})
+            pid = value["playlists"][-1]["id"]
+            sync = await self.call(BASE+"library/"+pid+"/sync/preview",{"revision":value["revision"]})
+            self.assertEqual(sync["diff"],{"added":2,"removed":1})
+        large = await self.call(BASE+"library/import/preview",
+            {"url":"https://music.youtube.com/playlist?list=DemoLarge"})
+        self.assertTrue(large["truncated"]); self.assertEqual(large["import_count"],200)
+        self.assertTrue(str(self.dashboard.popularity_store.root).startswith(self.dashboard.demo_temp.name))
+
+    async def test_fake_popular_and_discord_seek_enqueue_preview(self):
+        await self.login("owner")
+        popular = await self.call(BASE+"popular?period=7",method="GET")
+        self.assertEqual(len(popular["tracks"]),5)
+        await self.call(BASE+"seek",{"position":83.456})
+        self.assertTrue(self.bot.discord_messages[-1]["response"]["description"].startswith("跳轉：83 秒"))
+        await self.call(BASE+"play",{"query":"https://example.test/track/2"})
+        self.assertIn("來自網頁控制台",self.bot.discord_messages[-1]["response"]["description"])
+        self.assertEqual(self.bot.discord_messages[-1]["channel"],"點歌文字頻道")

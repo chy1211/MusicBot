@@ -298,6 +298,9 @@ class DemoDashboard(Dashboard):
     """Fake login exists only in this explicit demo executable, never production."""
     def __init__(self, bot, config, fake_login=None):
         self.fake_login = fake_login
+        self.demo_source_versions = {}
+        bot.config.spotify_enabled = True
+        bot.spotify = NS()
         self.demo_temp = tempfile.TemporaryDirectory(prefix="musicbot-webtest-demo-")
         super().__init__(bot, config)
         # Replace the provider boundary before any request can run.
@@ -367,6 +370,23 @@ class DemoDashboard(Dashboard):
         self.demo_step = 0
         self.app.cleanup_ctx.append(self.demo_updates)
         self.app.router.add_post("/demo-login/{user}", self.fake_callback)
+
+
+    async def import_source(self, url, kind):
+        # Both public-provider boundaries are fake; never call Spotify or yt-dlp.
+        self.demo_source_versions[url] = version = self.demo_source_versions.get(url, 0) + 1
+        large = "DemoLarge" in url
+        count = 205 if large else (6 if version == 1 else 7)
+        first = 0 if version == 1 else 1
+        tracks = []
+        for index in range(first, first + min(count, 200)):
+            track_url = (f"https://open.spotify.com/track/Demo{index:06d}" if kind == "spotify"
+                         else f"https://www.youtube.com/watch?v=demo{index:07d}")
+            tracks.append({"title": "示範樂團 - " + TITLES[index % 5] + f" {index+1}",
+                           "url": track_url, "duration": 180 + index % 30})
+        return {"title": "Spotify 示範歌單" if kind == "spotify" else "YouTube Music 示範歌單",
+                "tracks": tracks, "count": count, "truncated": count > 200,
+                "source_url": url, "source_type": kind}
 
     async def index(self, request):
         # Demo-only switches; no production API or configuration is involved.
