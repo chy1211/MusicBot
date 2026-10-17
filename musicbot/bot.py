@@ -2379,7 +2379,14 @@ class MusicBot(commands.Bot):
         Disconnect all voice clients and signal MusicBot to close it's connections to discord.
         """
         log.noise("Logout has been called.")  # type: ignore[attr-defined]
-        await self.update_now_playing_status(set_offline=True)
+        try:
+            await self.update_now_playing_status(set_offline=True)
+        except (RuntimeError, ConnectionResetError) as exc:
+            # Setting offline is best-effort only on this logout path. Do not
+            # let the known closed-transport race abort voice/client cleanup.
+            if str(exc).lower() != "cannot write to closing transport":
+                raise
+            log.debug("Skipping offline presence update on a closing websocket.")
 
         self.logout_called = True
         await self.disconnect_all_voice_clients()

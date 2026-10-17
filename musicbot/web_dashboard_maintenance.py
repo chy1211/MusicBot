@@ -125,26 +125,74 @@ def host_status(path):
         return {"status": "unavailable"}
 
 
+def _normal_stop(tail):
+    """Conservative ordered rules; every traceback needs positive attribution."""
+    if any(word in tail for word in
+           ("error starting bot", "critical", "start up failed")):
+        return False
+    signals = list(re.finditer(
+        r"caught a signal from the os:\s*sig(?:term|int|hup)\b", tail))
+    headers = list(re.finditer(
+        r"(?m)^traceback \(most recent call last\):[ \t]*$", tail))
+    # Incomplete/truncated tracebacks remain abnormal.
+    if tail.count("traceback") != len(headers):
+        return False
+    approved = set()
+    for index, header in enumerate(headers):
+        end = headers[index+1].start() if index+1 < len(headers) else len(tail)
+        block = tail[header.end():end]
+        terminal = re.search(
+            r"(?m)^([a-z_][\w.]*(?:error|exception)|keyboardinterrupt|systemexit)(?::[^\n]*)?$",
+            block)
+        if terminal is None:
+            return False
+        block = block[:terminal.end()]
+        # This is the precise logout -> offline presence -> closing websocket
+        # failure. An unrelated error during SIGTERM is still a real failure.
+        known = (
+            any(signal.end() < header.start() for signal in signals)
+            and all(marker in block for marker in
+                    ("in on_os_signal", "in logout",
+                     "in update_now_playing_status", "set_offline=true",
+                     "in change_presence", "discord/gateway.py", "aiohttp/"))
+            and re.search(r"(?m)^(?:runtimeerror|(?:aiohttp\.[\w.]+\.)?clientconnectionreseterror|connectionreseterror): cannot write to closing transport$",
+                          terminal.group(0)) is not None
+        )
+        if not known:
+            return False
+        approved.add(header.start())
+    # The upstream signal handler logs this message immediately before its
+    # traceback. Approve it only together with that exact, attributed traceback.
+    for message in re.finditer(r"(?m)^.*exception thrown[^\n]*$", tail):
+        next_trace = next((h for h in headers if h.start() > message.end()), None)
+        if (not message.group(0).endswith("exception thrown while handling interrupt signal!")
+                or next_trace is None or next_trace.start() not in approved
+                or tail[message.end():next_trace.start()].strip()):
+            return False
+    return any(marker in tail for marker in
+               ("now doing shutdown steps", "disconnecting and closing down musicbot",
+                "doing a full process restart", "caught a signal from the os"))
+
+
 def last_stop(root):
     try:
-        # Rotation filenames identify ended runs. mtime avoids the legacy
-        # filename formatter's month/minute ambiguity and uses a real UTC time.
+        # Bounded suffix, retaining more than the final 40 lines so an ordinary
+        # shutdown traceback cannot hide its preceding signal/context.
         paths = (p for p in Path(root).glob("musicbot.ended-*.log") if p.is_file())
         latest = max(paths, key=lambda p: p.stat().st_mtime, default=None)
         if latest is None:
             return None
         with latest.open("rb") as stream:
-            stream.seek(max(0, latest.stat().st_size-16384))
-            tail = b"\n".join(stream.read(16384).splitlines()[-40:]).lower()
-        # A generic "All done" also follows startup failures; it is not proof
-        # of a normal exit. Prefer explicit errors over clean-shutdown markers.
-        abnormal = any(word in tail for word in
-                       (b"traceback", b"error starting bot", b"critical", b"start up failed", b"exception thrown"))
-        normal = any(word in tail for word in
-                     (b"now doing shutdown steps", b"disconnecting and closing down musicbot",
-                      b"doing a full process restart", b"caught a signal from the os"))
+            start = max(0, latest.stat().st_size-65536)
+            stream.seek(start)
+            raw = stream.read(65536)
+        if start:
+            raw = raw.partition(b"\n")[2]  # discard the partial first record
+        if not raw.strip():
+            return None
+        tail = raw.decode("utf-8", errors="replace").lower()
         return {"time": timestamp(latest.stat().st_mtime),
-                "classification": _web_text('m0556') if normal and not abnormal else _web_text('m0557')}
+                "classification": _web_text('m0556') if _normal_stop(tail) else _web_text('m0557')}
     except OSError:
         return None
 
