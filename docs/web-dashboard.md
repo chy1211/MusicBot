@@ -1,12 +1,15 @@
-# Web dashboard: round 10 (development only)
+# Web dashboard
 
-Optional aiohttp dashboard inside the bot event loop, without another Discord
-client or dependency. The round-10 branch starts at dev 896fe4f (round 9). This feature branch is not deployed. The public production
-dashboard already uses Discord login. Each caller acts with their own guild
-membership, permissions and voice state. Default AuthMode=owner preserves legacy
-OwnerID behavior when the key is missing; owner mode requires external SSO.
-This branch changes no production configuration, container, release tag, proxy,
-firewall or system service.
+For a new Docker installation, follow [Install MusicBot](install.md) or
+[繁體中文安裝](install.zh-TW.md). Language and time-zone configuration is documented
+in [Dashboard languages](dashboard-languages.md). The sections below describe
+the dashboard API and existing features.
+
+The optional aiohttp dashboard runs inside the bot event loop. Discord mode
+authenticates members individually and keeps existing permission and voice-channel
+checks. The new Docker installer starts the login page before Discord connects;
+protected APIs remain unavailable until the bot is ready. Owner mode remains
+available for existing installations with external authentication.
 
 ## Configuration and Discord Developer Portal
 

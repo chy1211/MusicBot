@@ -264,6 +264,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 log.warning("Dashboard popularity final flush failed")
         self.app.on_cleanup.append(cleanup_popularity)
 
+        self.app.router.add_get("/healthz", self.healthz)
         self.app.router.add_get("/ui-config", self.ui_config)
         self.app.router.add_get("/i18n/{locale}.json", self.language_catalog)
         self.app.router.add_get("/i18n.js", self.asset)
@@ -440,6 +441,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     async def favicon(self, _request):
         return web.Response(text=(STATIC / "favicon.svg").read_text(encoding="utf-8"),
                             content_type="image/svg+xml")
+
+    async def healthz(self, _request):
+        return web.json_response({"status":"ok"})
 
     async def ui_config(self, _request):
         return web.json_response({"default_language": self.config.default_language,

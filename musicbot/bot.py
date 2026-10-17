@@ -2254,7 +2254,17 @@ class MusicBot(commands.Bot):
         # handle start up and teardown.
         try:
             log.info("MusicBot is now doing start up steps...")
-            await self.start(*self.config.auth)
+            if os.environ.get("DASHBOARD_EARLY_START", "").lower() == "true":
+                await self._start_web_dashboard()
+            while True:
+                try:
+                    await self.start(*self.config.auth)
+                    break
+                except (aiohttp.ClientError, OSError):
+                    if os.environ.get("DASHBOARD_EARLY_START", "").lower() != "true":
+                        raise
+                    log.warning("Cannot reach Discord. Check connectivity and credentials. Retrying in 30 seconds; dashboard remains available.")
+                    await asyncio.sleep(30)
             log.info("MusicBot is now doing shutdown steps...")
             if self.exit_signal is None:
                 self.exit_signal = exceptions.TerminateSignal()
@@ -2340,6 +2350,8 @@ class MusicBot(commands.Bot):
                 raise self.exit_signal
 
     async def _start_web_dashboard(self) -> None:
+        if self._web_dashboard is not None:
+            return
         # Keep imports and startup failures outside the bot's failure path.
         try:
             from .web_dashboard import start_dashboard
