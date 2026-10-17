@@ -1428,3 +1428,55 @@ null/unknown. Missing host file hides that section; malformed/oversize data show
 a read-only unavailable state. The dashboard creates no host script or timer.
 The demo uses a self-generated fake cookie in TemporaryDirectory, never the
 real config/data/logs. Test fixtures also create only temporary fake files.
+
+## Round 10: per-guild empty-queue behavior / radio
+
+GET and POST /api/guilds/{guild_id}/admin/empty-queue are OwnerID-only,
+with existing session/member/blocklist/header/origin checks. GET returns:
+~~~json
+{"empty_queue":"autoplaylist","radio_min_seconds":0,"radio_max_seconds":0,
+ "radio_failures":0,"radio_suspended_seconds":0}
+~~~
+POST takes exactly the first three fields. empty_queue is autoplaylist (default),
+radio or off. Seconds are integers >= 0, max 31536000; max=0 means unlimited,
+otherwise min <= max. Writes use the shared fsync+atomic-replace helper and a
+store lock at data/web_dashboard/settings/{guild_id}.json, preserving existing
+ownership/mode. Missing or invalid files use the legacy autoplaylist default;
+corrupt files are not overwritten by reads. Responses contain no server/user IDs.
+
+The native bot's on_player_finished_playing wrapper loads the policy and
+delegates to the original body (now _on_player_finished_playing). Default mode
+uses that original path with no radio fetch and no change to AutoPlaylist flags.
+For radio/off only, a per-guild lock covers the entire finished event, radio lookup,
+original fallback and play scheduling. Concurrent finished events are coalesced.
+The actual fill hook is directly before the original empty-queue/autoplay block.
+All observation/lookup hooks have try/except; unexpected failures allow the old
+path. off skips automatic filling, without changing the global AutoPlaylist flag
+or preventing manually requested songs. Radio works even when the global list
+is disabled; fallback still respects the original global switch.
+
+Playback-start observation retains the most recent 50 played URLs and the last
+YouTube seed in memory, independently of browser polling/dashboard enablement.
+Repeated seek events for the same entry do not add history. Radio asks the
+existing credential-free flat playlist extractor for
+https://www.youtube.com/watch?v=<ID>&list=RD<ID>, timeout 20 seconds. Up to 200
+flat candidates are considered; add up to three known, positive-duration
+YouTube tracks outside the recent 50 and within the server's radio min/max,
+checking the native blocklist against title and canonical URL. Native autoplay
+has no duration range of its own: both new radio limits default to 0 (no extra
+bound), and the Owner may set them per server without changing native lists.
+Live/unknown durations are skipped. Policy/voice/user queue are checked again
+after extraction; a user request or off policy takes precedence.
+
+Entries have author=None/channel=None (native autoplay semantics), plus a radio
+metadata marker. The dashboard shows 電台 in current/queue/history; popularity
+ignores these entries. No available tracks, no seed or provider error logs a
+generic fallback warning and uses the old AutoPlaylist path. Partial success
+does not also fill from that list. Three consecutive failures pause radio for
+600 seconds, using native fallback during cooldown; a new attempt after cooldown
+may recover. State/history/cooldown reset on restart; policy persists on disk.
+
+Offline tests cover default/off, native fallback, the shared fallback lock,
+recent-50 boundary, blocklist/length filters, stats exclusion, timeout and
+three-failure cooldown, using only mock YouTube Mixes. The browser demo stores
+policy only in its TemporaryDirectory.

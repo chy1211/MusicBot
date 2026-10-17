@@ -1084,6 +1084,11 @@ class MusicBot(commands.Bot):
         Event called by MusicPlayer when playback of an entry is started.
         """
         log.debug("Running on_player_play")
+        try:
+            from .web_dashboard_radio import radio_for
+            radio_for(self).remember(player.voice_client.channel.guild, entry)
+        except Exception as exc:
+            log.warning("Radio history observation failed (%s)", type(exc).__name__)
         # Optional web metadata history observes the actual playback event.
         # It must never interrupt Discord playback if its own serialization fails.
         dashboard = getattr(self, "_web_dashboard", None)
@@ -1305,7 +1310,26 @@ class MusicBot(commands.Bot):
             self.handle_player_inactivity(player), name="MB_HandleInactivePlayer"
         )
 
-    async def on_player_finished_playing(self, player: MusicPlayer, **_: Any) -> None:
+    async def on_player_finished_playing(self, player: MusicPlayer, **kwargs: Any) -> None:
+        # Optional per-guild policy. Default delegates to the unchanged legacy
+        # flow; opting in locks the entire radio + legacy fallback transaction.
+        service = settings = None
+        try:
+            from .web_dashboard_radio import radio_for
+            service = radio_for(self)
+            settings = await service.store.get(player.voice_client.guild)
+        except Exception as exc:
+            log.warning("Empty-queue policy unavailable (%s)", type(exc).__name__)
+        if settings and settings["empty_queue"] != "autoplaylist":
+            lock = service.locks[player.voice_client.guild.id]
+            if lock.locked():
+                return  # Coalesce concurrent finished events, including fallback.
+            async with lock:
+                await MusicBot._on_player_finished_playing(self, player, _idle_settings=settings)
+        else:
+            await MusicBot._on_player_finished_playing(self, player)
+
+    async def _on_player_finished_playing(self, player: MusicPlayer, _idle_settings=None, **_: Any) -> None:
         """
         Event called by MusicPlayer when playback has finished without error.
         """
@@ -1398,11 +1422,25 @@ class MusicBot(commands.Bot):
             else:
                 break
 
+        # The only radio insertion point is the existing empty-queue path.
+        allow_autoplay = True
+        if _idle_settings is not None and not player.playlist.entries and not player.current_entry:
+            try:
+                from .web_dashboard_radio import radio_for
+                service = radio_for(self)
+                allow_autoplay = not await service.fill(player, _idle_settings)
+                if (await service.store.get(guild))["empty_queue"] == "off":
+                    allow_autoplay = False
+            except Exception as exc:
+                log.warning("Radio hook failed; using legacy autoplay (%s)", type(exc).__name__)
+                allow_autoplay = True
+
         # manage auto playlist playback.
         if (
             not player.playlist.entries
             and not player.current_entry
             and self.config.auto_playlist
+            and allow_autoplay
         ):
             # NOTE:  self.server_data[].autoplaylist will only contain links loaded from the file.
             #  while player.autoplaylist may contain links expanded from playlists.

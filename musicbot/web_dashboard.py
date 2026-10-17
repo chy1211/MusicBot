@@ -115,6 +115,8 @@ def public_url(value) -> str:
 
 
 def requester(entry, guild=None):
+    if is_radio(entry):
+        return {"name": "電台", "avatar": ""}
     meta = getattr(entry, "meta", None) or {}
     author = (getattr(entry, "author", None) or getattr(entry, "member", None)
               or meta.get("author") or meta.get("member"))
@@ -181,8 +183,9 @@ def revision(player) -> str:
 from .web_dashboard_undo import DashboardUndo
 from .web_dashboard_spotify import DashboardSpotify
 from .web_dashboard_maintenance import DashboardMaintenance
+from .web_dashboard_radio import DashboardRadio, is_radio
 
-class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin, DashboardUndo, DashboardSpotify, DashboardMaintenance):
+class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin, DashboardUndo, DashboardSpotify, DashboardMaintenance, DashboardRadio):
     def __init__(self, bot, config: DashboardConfig):
         self.bot = bot
         self.config = config
@@ -209,6 +212,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.init_undo()
         self.init_spotify_lookup()
         self.init_maintenance()
+        self.init_radio()
         self.popularity_store = PopularityStore(write_path("data/web_dashboard/stats"))
         async def cleanup_popularity(_app):
             try:
@@ -483,6 +487,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         item.pop("requester", None)
         item["requester_id"] = getattr(author, "id", None)
         item["requested"] = bool(author or getattr(entry, "channel", None))
+        item["radio"] = bool(is_radio(entry))
         item["played_at"] = moment
         self.recent_history[guild.id].appendleft(item)
 
@@ -498,6 +503,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             person = guild.get_member(item["requester_id"]) if item["requester_id"] else None
             public["requester"] = requester(SimpleNamespace(
                 author=person, channel=True if item["requested"] else None), guild)
+            if item.get("radio"):
+                public["requester"] = {"name": "電台", "avatar": ""}
             rows.append(public)
         source = "dashboard_memory"
         config = self.bot.config

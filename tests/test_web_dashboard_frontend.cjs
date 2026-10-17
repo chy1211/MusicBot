@@ -103,6 +103,7 @@ async function setup(options = {}) {
     let body, status = 200;
     if (url === "/auth/session") body = clone(session);
     else if (url === "/auth/logout") { session.authenticated = false; session.user = null; body = {message: "signed out"}; }
+    else if (url.endsWith("/admin/empty-queue")) body = {empty_queue:"autoplaylist",radio_min_seconds:0,radio_max_seconds:0};
     else if (url.endsWith("/admin/maintenance")) body = {cookie:{status:"unused"},host_status:{status:"missing"},viewers:1};
     else if (url === "api/guilds") body = {guilds: [{id: "1", name: "First Guild"}, {id: "2", name: "Second Guild"}]};
     else {
@@ -1928,4 +1929,20 @@ test("maintenance renders owner metadata safely and discards stale replies", asy
   assert.ok(rows.some(row=>row.textContent==="2 人（最近 45 秒）"));
   app.run('adminClear()');
   assert.equal(app.element("maintenance-details").children.length,0);
+});
+
+test("owner empty-queue settings use guild-scoped JSON and validate ranges",async()=>{
+  const app=await setup({round7:true});
+  app.run('adminOwner=true');
+  await app.run('adminEmptyQueueLoad()');
+  assert.equal(app.element("empty-queue-mode").value,"autoplaylist");
+  app.element("empty-queue-mode").value="radio";
+  app.element("radio-min-seconds").value="60";app.element("radio-max-seconds").value="600";
+  await app.element("empty-queue-form").listeners.submit({preventDefault(){}});
+  const request=app.requests.find(r=>r.url.endsWith("/admin/empty-queue")&&r.method==="POST");
+  assert.deepEqual(request.data,{empty_queue:"radio",radio_min_seconds:60,radio_max_seconds:600});
+  const count=app.requests.length;
+  app.element("radio-min-seconds").value="-1";
+  await app.element("empty-queue-form").listeners.submit({preventDefault(){}});
+  assert.equal(app.requests.length,count);
 });

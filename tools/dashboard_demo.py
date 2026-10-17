@@ -343,6 +343,7 @@ class DemoDashboard(Dashboard):
         self.maintenance_logs = Path(self.demo_temp.name) / "logs"
         self.maintenance_root.mkdir()
         self.maintenance_logs.mkdir()
+        self.radio_service.store.root = Path(self.demo_temp.name) / "settings"
         expiry = int(time.time()) + 5*86400
         (self.maintenance_root / "cookies.txt").write_text(
             f"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t{expiry}\tSAPISID\tFAKE-DEMO-VALUE\n")
