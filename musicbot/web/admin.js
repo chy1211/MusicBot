@@ -5,6 +5,10 @@ function adminClear() {
   $("nav-admin").hidden = true; $("admin-panel").hidden = true;
   $("admin-apl-list").replaceChildren();
   $("admin-permissions")?.replaceChildren();
+  $("admin-vote-skip-enabled").checked = true;
+  $("admin-vote-skip-enabled").disabled = true;
+  $("admin-vote-skip-save").disabled = true;
+  $("admin-vote-skip-status").textContent = "";
   $("empty-queue-status").textContent = ""; $("radio-seeds").textContent = "";
   $("empty-queue-mode").value = "autoplaylist";
   $("admin-lyrics-status").textContent="";

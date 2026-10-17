@@ -149,6 +149,7 @@ async function setup(options = {}) {
     else if (url.endsWith("/admin/empty-queue")) body = {empty_queue:"autoplaylist",radio_min_seconds:0,radio_max_seconds:0};
     else if (url.endsWith("/admin/notification-channel")) body = {channel_id:null,channels:[],unavailable:false};
     else if (url.endsWith("/admin/lyrics")) body = {enabled:true};
+    else if (url.endsWith("/admin/vote-skip")) body = {enabled:true};
     else if (url.endsWith("/admin/maintenance")) body = {cookie:{status:"unused"},host_status:{status:"missing"},viewers:1};
     else if (url === "api/guilds") body = {guilds: [{id: "1", name: "First Guild"}, {id: "2", name: "Second Guild"}]};
     else {
@@ -2409,4 +2410,100 @@ test("opening management loads guild notification options with a translated form
   assert.match(html,/<label for="admin-notify-channel"><span data-i18n="notify.label">/);
   assert.match(html,/<option value="" data-i18n="notify.default">/);
   assert.match(html,/id="admin-notify-warning"[^>]+role="status"/);
+});
+
+
+// Round18 controls use fictional guilds and the actual permissions script.
+test("vote skip management load restores server setting and accessible switch", async () => {
+  const fixture=libraryFixture(true),app=await setup({round7:true,hook:fixture.hook});
+  await flush();
+  app.hook((url,options)=>url.endsWith("/admin/vote-skip")?notifyReply({enabled:false}):fixture.hook(url,options));
+  await app.element("nav-admin").listeners.click();
+  assert.equal(app.element("admin-vote-skip-enabled").checked,false);
+  assert.equal(app.element("admin-vote-skip-enabled").disabled,false);
+  const html=fs.readFileSync(path.join(__dirname,"../musicbot/web/index.html"),"utf8");
+  assert.match(html,/id="admin-vote-skip-enabled"[^>]+role="switch"/);
+  assert.match(html,/aria-describedby="admin-vote-skip-help"/);
+  assert.match(html,/data-i18n="vote_skip.help"/);
+  assert.ok(html.indexOf('id="admin-vote-skip-form"') < html.indexOf('id="admin-permissions"'));
+});
+test("vote skip save sends one boolean to selected server and can re-enable", async () => {
+  const app=await setup({round7:true});
+  app.run("adminOwner=true");
+  await app.run("adminVoteSkipLoad()");
+  app.hook((url,options)=>url.endsWith("/admin/vote-skip")?notifyReply(JSON.parse(options.body)):null);
+  for(const enabled of [false,true]){
+    app.element("admin-vote-skip-enabled").checked=enabled;
+    await app.element("admin-vote-skip-form").listeners.submit({preventDefault(){}});
+    const request=app.requests.filter(r=>r.url.endsWith("/admin/vote-skip")&&r.method==="POST").at(-1);
+    assert.equal(request.url,"/api/guilds/1/admin/vote-skip");
+    assert.deepEqual(request.data,{enabled});
+    assert.equal(app.element("admin-vote-skip-status").textContent,t("vote_skip.saved"));
+  }
+});
+test("vote skip settings load independently after server switch", async () => {
+  const app=await setup({round7:true});
+  app.run("adminOwner=true");
+  app.hook(url=>url.endsWith("/admin/vote-skip")?notifyReply({enabled:!url.includes("/1/")}):null);
+  await app.run("adminVoteSkipLoad()");
+  assert.equal(app.element("admin-vote-skip-enabled").checked,false);
+  app.run('selected="2";generation++;adminOwner=true');
+  await app.run("adminVoteSkipLoad()");
+  assert.equal(app.element("admin-vote-skip-enabled").checked,true);
+});
+test("vote skip controls never call API for nonowner or before a successful read", async () => {
+  const app=await setup({round7:true});
+  app.run("adminClear()");
+  const before=app.requests.length;
+  await app.run("adminVoteSkipLoad()");
+  await app.element("admin-vote-skip-form").listeners.submit({preventDefault(){}});
+  assert.equal(app.requests.length,before);
+  app.run("adminOwner=true");
+  await app.element("admin-vote-skip-form").listeners.submit({preventDefault(){}});
+  assert.equal(app.requests.length,before);
+  assert.equal(app.element("admin-vote-skip-enabled").disabled,true);
+});
+test("vote skip late load cannot restore old server or logged-out state", async () => {
+  for (const change of ['selected="2";generation++',"adminClear()"]) {
+    const app=await setup({round7:true});app.run("adminOwner=true");
+    let release;
+    app.hook(url=>url.endsWith("/admin/vote-skip")?new Promise(resolve=>release=resolve):null);
+    const pending=app.run("adminVoteSkipLoad()");
+    await flush();app.run(change);
+    release(await notifyReply({enabled:false}));await pending;
+    assert.notEqual(app.element("admin-vote-skip-enabled").checked,false);
+    assert.equal(app.element("admin-vote-skip-enabled").disabled,true);
+  }
+});
+test("vote skip late save cannot overwrite new guild or logout controls", async () => {
+  for(const change of ['selected="2";generation++;adminClear()',"adminClear()"]){
+    const app=await setup({round7:true});app.run("adminOwner=true");
+    await app.run("adminVoteSkipLoad()");
+    app.element("admin-vote-skip-enabled").checked=false;
+    let release;
+    app.hook(url=>url.endsWith("/admin/vote-skip")?new Promise(resolve=>release=resolve):null);
+    const pending=app.element("admin-vote-skip-form").listeners.submit({preventDefault(){}});
+    await flush();app.run(change);
+    release(await notifyReply({enabled:false}));await pending;
+    assert.equal(app.element("admin-vote-skip-enabled").checked,true);
+    assert.equal(app.element("admin-vote-skip-status").textContent,"");
+  }
+});
+test("vote skip load error keeps switch disabled and save error shows no success", async () => {
+  const app=await setup({round7:true});app.run("adminOwner=true");
+  app.hook(url=>url.endsWith("/admin/vote-skip")?Promise.resolve({ok:false,status:503,json:async()=>({error:"fixture"})}):null);
+  await assert.rejects(()=>app.run("adminVoteSkipLoad()"));
+  assert.equal(app.element("admin-vote-skip-enabled").disabled,true);
+  app.hook(null);await app.run("adminVoteSkipLoad()");
+  app.hook(url=>url.endsWith("/admin/vote-skip")?Promise.resolve({ok:false,status:503,json:async()=>({error:"fixture"})}):null);
+  await app.element("admin-vote-skip-form").listeners.submit({preventDefault(){}});
+  assert.equal(app.element("admin-vote-skip-status").textContent,"");
+});
+test("vote skip catalogs explain immediate skipping and have English equivalents", () => {
+  const en=require("../musicbot/web/i18n/en.json"),zh=require("../musicbot/web/i18n/zh-TW.json");
+  for(const key of ["heading","label","save","help","saved","invalid","save_failed"]){
+    assert.ok(en["vote_skip."+key]);assert.ok(zh["vote_skip."+key]);
+  }
+  assert.match(en["vote_skip.help"],/Skip permission.*immediately/);
+  assert.match(zh["vote_skip.help"],/\u95dc\u9589\u5f8c.*\u53ef\u76f4\u63a5\u8df3\u904e/);
 });

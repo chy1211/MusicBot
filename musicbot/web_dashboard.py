@@ -335,6 +335,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         "/api/guilds/{guild_id}/admin/notification-channel": "admin_notification_channel",
         "/api/guilds/{guild_id}/admin/autoplaylist": "admin_autoplaylist",
         "/api/guilds/{guild_id}/admin/permissions": "admin_permissions",
+        "/api/guilds/{guild_id}/admin/vote-skip": "admin_vote_skip",
         "/api/guilds/{guild_id}/admin/maintenance": "admin_maintenance",
         "/api/guilds/{guild_id}/admin/empty-queue": "admin_empty_queue",
         "/api/guilds/{guild_id}/queue/shuffle": "shuffle",

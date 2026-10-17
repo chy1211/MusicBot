@@ -2,9 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import logging
-from pathlib import Path
 
 from aiohttp import web
 from discord import ChannelType
@@ -12,9 +9,7 @@ from discord import ChannelType
 from . import write_path
 from .web_dashboard_i18n import message as _web_text
 from .web_dashboard_library import fail
-from .web_dashboard_stats import atomic_write
-
-log = logging.getLogger(__name__)
+from .web_dashboard_guild_settings import GuildSettingsStore
 
 
 def validate_notification(data):
@@ -28,36 +23,9 @@ def validate_notification(data):
     return {"channel_id": cid}
 
 
-class NotificationChannelStore:
+class NotificationChannelStore(GuildSettingsStore):
     def __init__(self, root):
-        self.root = Path(root)
-        self.lock = asyncio.Lock()
-
-    def path(self, guild):
-        gid = getattr(guild, "id", guild)
-        if type(gid) is not int or gid <= 0:
-            raise ValueError()
-        return self.root / (str(gid) + ".json")
-
-    def read(self, guild):
-        # Small bounded reads also let direct atomic file edits take effect.
-        try:
-            with self.path(guild).open("rb") as stream:
-                raw = stream.read(4097)
-            if len(raw) > 4096:
-                raise ValueError()
-            return validate_notification(json.loads(raw))
-        except FileNotFoundError:
-            return {"channel_id": None}
-        except (ValueError, TypeError, OSError):
-            log.warning("Notification channel settings unavailable; using default destinations")
-            return {"channel_id": None}
-
-    async def put(self, guild, data):
-        value = validate_notification(data)
-        async with self.lock:
-            await asyncio.to_thread(atomic_write, self.path(guild), value)
-        return value
+        super().__init__(root, validate_notification, {"channel_id": None})
 
 
 class DashboardNotifications:

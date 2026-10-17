@@ -597,5 +597,12 @@
   "notify.unavailable": "已指定的頻道（無法使用）",
   "notify.saved": "已儲存通知頻道。",
   "notify.invalid": "請選擇此伺服器中機器人能看見且能發言的文字頻道，或清除設定。",
-  "notify.save_failed": "無法儲存通知頻道，請稍後再試。"
+  "notify.save_failed": "無法儲存通知頻道，請稍後再試。",
+  "vote_skip.heading": "伺服器權限",
+  "vote_skip.label": "投票跳過",
+  "vote_skip.save": "儲存跳過設定",
+  "vote_skip.help": "僅套用於此伺服器。關閉後，有跳過權限的人可直接跳過。",
+  "vote_skip.saved": "已儲存跳過設定。",
+  "vote_skip.invalid": "跳過設定格式不正確。",
+  "vote_skip.save_failed": "無法儲存跳過設定，請稍後再試。"
 }
