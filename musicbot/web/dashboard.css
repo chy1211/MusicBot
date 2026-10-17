@@ -250,3 +250,32 @@ a.song-title:focus-visible{outline:2px solid var(--green);outline-offset:3px;tex
  .library-track .song-length{font-size:10px}
  #library-panel>.section-top{flex-wrap:wrap}
 }
+
+/* A persistent compact player opens one modal details panel. */
+.playback-bar{grid-template-columns:minmax(190px,1fr) minmax(320px,1.4fr)}
+.bar-copy{flex:1;min-width:0}.bar-track small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#player-expand{font-size:12px;padding:8px 12px;flex-shrink:0}
+.player-panel{inset:0 0 0 auto;margin:0;width:min(540px,100%);max-width:100%;height:100dvh;max-height:100dvh;border-radius:24px 0 0 24px;padding:22px;overflow:auto;background:var(--glass);backdrop-filter:blur(30px) saturate(155%);color:var(--text)}
+.player-panel::backdrop{background:rgba(0,0,0,.35);backdrop-filter:blur(4px)}
+.player-panel-heading{position:sticky;top:-22px;z-index:2;padding:10px 0;background:var(--opaque)}
+.player-panel .now-playing{display:flex;flex-direction:column;align-items:stretch;border:0;box-shadow:none;padding:12px 0;background:transparent;backdrop-filter:none}
+.player-panel .hero-art{width:min(100%,300px);align-self:center;margin:8px 0 20px}
+.player-panel .track-info h2{font-size:26px}
+.player-panel .panel-volume{display:flex;justify-content:flex-start;gap:12px;margin:20px 0}
+.player-panel .panel-volume input{flex:1;width:auto;max-width:300px}
+#panel-transport{margin-top:20px}
+body.player-open{overflow:hidden}
+#player-sheet-handle{touch-action:pan-x;user-select:none;-webkit-user-select:none}
+.playback-bar.is-empty .progress-row{visibility:hidden}
+.playback-bar.is-empty .bar-center{opacity:.45}
+@media(max-width:760px){
+ .playback-bar{grid-template-columns:1fr;--bar:152px}
+ .bar-track small{display:block;font-size:10px}
+ .bar-track{min-height:36px}.bar-copy p{line-height:18px}
+ .player-panel{inset:0;width:100%;height:100dvh;margin:0;border-radius:0;padding:18px 20px max(24px,env(safe-area-inset-bottom));animation:player-rise .2s ease-out}
+ .player-panel-heading{top:-18px}
+ .player-panel .hero-art{width:min(70vw,280px)}
+}
+@keyframes player-rise{from{transform:translateY(12%);opacity:.3}to{transform:translateY(0);opacity:1}}
+@media(prefers-reduced-motion:reduce){.player-panel{animation:none}}
+@media(prefers-reduced-transparency:reduce){.player-panel{background:var(--opaque);backdrop-filter:none}}

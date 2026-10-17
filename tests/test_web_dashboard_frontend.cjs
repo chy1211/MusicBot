@@ -1835,7 +1835,7 @@ test("round10 mobile volume, selection locks and connection states", async () =>
   app.run('connectionStatus("即時連線重試中")');
   assert.equal(app.element("connection").textContent,"連線狀態");
   assert.equal(app.element("connection").dataset.state,"reconnecting");
-  await app.element("hero-volume").listeners.pointerdown({});
+  await app.element("volume").listeners.pointerdown({});
   assert.ok(app.document.body.classes.has("no-selection"));
   app.document.listeners.pointercancel({pointerId:99});
   assert.ok(!app.document.body.classes.has("no-selection"));
@@ -1961,4 +1961,24 @@ test("round11 mix defaults only seed and can save without sync source",async()=>
  const card=app.element("preview-results").children[0],list=card.children[1].children.find(e=>e.tag==="ol");
  assert.equal(list.children[0].children[0].children[0].checked,true);
  assert.equal(list.children[1].children[0].children[0].checked,false);
+});
+
+test("round11 full player moves the existing transport and restores focus",async()=>{
+ const app=await setup();
+ await app.element("player-expand").listeners.click();
+ assert.equal(app.element("player-dialog").open,true);
+ assert.equal(app.element("player-transport").parent,app.element("panel-transport"));
+ assert.equal(app.element("player-collapse").focused,true);
+ let prevented=false;
+ app.element("player-dialog").listeners.cancel({preventDefault(){prevented=true}});
+ assert.equal(prevented,true);assert.equal(app.element("player-dialog").open,false);
+ assert.equal(app.element("player-transport").parent,app.element("bar-transport-slot"));
+ assert.equal(app.element("player-expand").focused,true);
+});
+test("round11 touch sheet downward swipe closes without leaving selection lock",async()=>{
+ const app=await setup();app.element("player-expand").listeners.click();
+ const handle=app.element("player-sheet-handle"), target={closest:()=>null};
+ handle.listeners.pointerdown({pointerType:"touch",pointerId:1,clientX:80,clientY:10,target,currentTarget:handle});
+ handle.listeners.pointerup({pointerId:1,clientX:90,clientY:130});
+ assert.equal(app.element("player-dialog").open,false);
 });
