@@ -171,7 +171,8 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
                 self.assertEqual(response.headers["Cache-Control"], "no-store")
         page = await (await self.client.get("/")).text()
-        self.assertIn('lang="zh-Hant-TW"', page)
+        self.assertIn('lang="en"', page)
+        self.assertIn('data-i18n="m0223"', page)
         self.assertNotIn("cdn", page.lower())
 
     async def test_guilds_and_state(self):
@@ -428,7 +429,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_error_translation_failure_is_also_contained(self):
         self.bot.cmd_pause = AsyncMock(side_effect=PermissionsError("Denied"))
-        with patch("musicbot.web_dashboard._D", side_effect=RuntimeError("translation")), self.assertLogs(
+        with patch("musicbot.web_dashboard.denial_text", side_effect=RuntimeError("translation")), self.assertLogs(
                 "musicbot.web_dashboard", level="ERROR"):
             await self.call(BASE + "pause", {}, status=500)
         await self.call(BASE + "state", method="GET")

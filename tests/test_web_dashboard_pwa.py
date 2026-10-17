@@ -14,7 +14,7 @@ class PWATests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         self.assertIn("application/manifest+json", response.headers["Content-Type"])
         value = await response.json(content_type=None)
-        self.assertEqual(value["name"], "音樂控制台")
+        self.assertEqual(value["name"], "Music dashboard")
         self.assertEqual((value["start_url"], value["scope"], value["display"]), ("/", "/", "standalone"))
         self.assertEqual({icon["sizes"] for icon in value["icons"]}, {"any", "192x192", "512x512"})
 
@@ -35,5 +35,5 @@ class PWATests(unittest.IsolatedAsyncioTestCase):
         for path in ("/sw.js", "/pwa.js", "/offline.html", "/library.js", "/admin.js", "/permissions.js"):
             response = await self.client.get(path)
             self.assertEqual(response.status, 200)
-        self.assertIn("目前離線", await (await self.client.get("/offline.html")).text())
+        self.assertIn("You are offline", await (await self.client.get("/offline.html")).text())
         self.assertEqual((await self.client.get("/secret.png")).status, 404)

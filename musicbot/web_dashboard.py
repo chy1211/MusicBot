@@ -1618,7 +1618,11 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 await self.bot.serialize_queue(guild)
             if preview:
                 preview["status"] = "done"
-            message = _web_text("m0451", p0=summary["added"], p1=summary["skipped"]) if summary else _web_text("m0462")
+            message = _web_text("m0451", p0=summary["added"], p1=summary["skipped"]) if summary and "added" in summary else _web_text("m0462")
+            if action == "skip":
+                message = _web_text("message.skip")
+            elif action == "repeat":
+                message = _web_text("m0117") + _web_text({"off":"m0118","song":"m0115","all":"m0119"}[data["mode"]])
             if response is not None and (not summary or action == "remove"):
                 if action == "remove":
                     message = _web_text("message.removed", p0=str(removed.title))

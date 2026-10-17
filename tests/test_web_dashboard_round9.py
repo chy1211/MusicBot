@@ -157,7 +157,7 @@ class NativeNotificationTests(unittest.IsolatedAsyncioTestCase):
         self.bot.safe_send_message.assert_awaited_once()
         channel, sent = self.bot.safe_send_message.call_args.args
         self.assertIs(channel, self.bot.channel)
-        self.assertEqual(sent.content, "-# Friend 透過網頁控制台點歌\n" + expected)
+        self.assertEqual(sent.content, "-# Friend requested music via the web dashboard\n" + expected)
         self.assertEqual(sent.description, sent.content)
         self.assertIsNone(sent.title)
         self.assertTrue(sent.force_text)
@@ -169,7 +169,7 @@ class NativeNotificationTests(unittest.IsolatedAsyncioTestCase):
         seek_entry(self.bot)
         await self.call(BASE + "seek", {"position": 82.5})
         sent = self.bot.safe_send_message.call_args.args[1]
-        self.assertEqual(sent.content.split("\n")[1], "\u8df3\u8f49\uff1a83 \u79d2")
+        self.assertEqual(sent.content.split("\n")[1], "Seek: 83 seconds")
         self.assertEqual(self.dashboard.activities[1][0]["detail"], "\u8df3\u8f49\uff1a83 \u79d2")
 
     async def test_playnext_original_response_and_plain_attribution(self):
@@ -177,7 +177,7 @@ class NativeNotificationTests(unittest.IsolatedAsyncioTestCase):
         self.bot.config.embeds = False
         await self.call(BASE + "playnext", {"query": "next song"})
         sent = self.bot.safe_send_message.call_args.args[1]
-        self.assertTrue(sent.content.startswith("-# Friend 透過網頁控制台點歌\nEnqueued"))
+        self.assertTrue(sent.content.startswith("-# Friend requested music via the web dashboard\nEnqueued"))
         self.assertIn("Position in queue:", sent.content)
         self.assertEqual(self.bot.player.playlist.entries[0].title, "Added")
         self.assertNotIn("<@", sent.content)
@@ -198,7 +198,7 @@ class NativeNotificationTests(unittest.IsolatedAsyncioTestCase):
         sent = self.bot.safe_send_message.call_args.args[1]
         expected = build_play_response(None, number=2, track="",
             position="4 - estimated time until playing: `00:00`", playlist=True)
-        self.assertEqual(sent.content, "-# Friend 透過網頁控制台點歌\n" + expected.content)
+        self.assertEqual(sent.content, "-# Friend requested music via the web dashboard\n" + expected.content)
         await self.call(BASE + "play", data)
         self.bot.safe_send_message.assert_awaited_once()
 

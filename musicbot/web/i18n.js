@@ -40,7 +40,7 @@ async function initDashboardLanguage() {
   try {
     const names = [...new Set(["en", dashboardLanguage])];
     const values = await Promise.all(names.map(async name => {
-      const response = await fetch("/i18n/" + name + ".json?v=r13-i18n", {cache:"no-cache"});
+      const response = await fetch("/i18n/" + name + ".json?v=r13-tested", {cache:"no-cache"});
       if (!response.ok) throw new Error("Language catalog unavailable");
       return response.json();
     }));

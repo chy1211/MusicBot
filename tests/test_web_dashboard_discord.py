@@ -516,7 +516,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         first = await self.call(BASE + "skip", {})
         self.assertIsNotNone(self.bot.player.current_entry)
         self.assertEqual(self.bot.player.skip_state.skippers, {43})
-        self.assertIn("acknowledged", first["message"])
+        self.assertIn("acknowledged", self.bot.safe_send_message.call_args.args[1].content)
         await self.call(BASE + "skip", {})
         self.assertEqual(self.bot.player.skip_state.skippers, {43})
         self.assertIsNotNone(self.bot.player.current_entry)
@@ -524,7 +524,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         result = await self.call(BASE + "skip", {})
         self.assertIsNone(self.bot.player.current_entry)
         self.assertEqual(self.bot.player.skip_state.skippers, {43, 44})
-        self.assertIn("passed", result["message"])
+        self.assertIn("passed", self.bot.safe_send_message.call_args.args[1].content)
 
     async def test_song_author_skip_original_semantics(self):
         self.bot.player.current_entry.author = self.bot.member
@@ -665,15 +665,15 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         self.use_real_command_lists(whitelist={"repeat_all"}, blacklist={"repeat_off"}, advanced=True)
         result = await self.call(BASE + "repeat", {"mode": "off"})
         self.assertFalse(self.bot.player.loopqueue)
-        self.assertIn("no longer repeating", result["message"])
+        self.assertIn("no longer repeating", self.bot.safe_send_message.call_args.args[1].content)
         self.bot.safe_send_message.assert_awaited_once()
 
     async def test_repeat_song_off_sends_existing_response(self):
         self.bot.player.repeatsong = True
         result = await self.call(BASE + "repeat", {"mode": "off"})
         self.assertFalse(self.bot.player.repeatsong)
-        self.assertIn("no longer", result["message"])
-        self.assertTrue(self.bot.safe_send_message.call_args.args[1].description.startswith("-# Friend 透過網頁控制台操作"))
+        self.assertIn("no longer", self.bot.safe_send_message.call_args.args[1].content)
+        self.assertTrue(self.bot.safe_send_message.call_args.args[1].description.startswith("-# Friend used the web dashboard"))
 
     async def test_move_without_current_entry_does_not_mutate(self):
         self.bot.player.current_entry = None
@@ -687,9 +687,10 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         self.bot.config.embeds = False
         result = await self.call(BASE + "volume", {"volume": 30})
         response = self.bot.safe_send_message.call_args.args[1]
-        self.assertTrue(response.to_markdown().startswith("-# Friend 透過網頁控制台操作"))
+        self.assertTrue(response.to_markdown().startswith("-# Friend used the web dashboard"))
         self.assertNotIn("<@", response.to_markdown())
-        self.assertIn(result["message"], response.content)
+        self.assertEqual(result["message"], "已完成操作。")
+        self.assertIn("Updated volume", response.content)
 
     async def test_get_player_await_rechecks_voice_and_session(self):
         for change, status in (("voice", 403), ("session", 401)):

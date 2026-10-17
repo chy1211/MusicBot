@@ -82,7 +82,7 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         result = await self.call(BASE + "skip", {})
         self.assertIs(self.bot.players[1].current_entry, current)
         self.assertEqual(self.bot.players[1].skip_state.skippers, {43})
-        self.assertIn("vote", result["message"])
+        self.assertIn("跳過請求", result["message"])
 
     async def test_explicit_fake_login_and_owner_mode(self):
         self.dashboard.fake_login = "away"
@@ -221,9 +221,9 @@ class Round9DemoTests(unittest.IsolatedAsyncioTestCase):
         popular = await self.call(BASE+"popular?period=7",method="GET")
         self.assertEqual(len(popular["tracks"]),5)
         await self.call(BASE+"seek",{"position":83.456})
-        self.assertIn("跳轉：83 秒", self.bot.discord_messages[-1]["response"]["description"])
+        self.assertIn("Seek: 83 seconds", self.bot.discord_messages[-1]["response"]["description"])
         await self.call(BASE+"play",{"query":"https://example.test/track/2"})
-        self.assertIn("透過網頁控制台點歌",self.bot.discord_messages[-1]["response"]["description"])
+        self.assertIn("requested music via the web dashboard",self.bot.discord_messages[-1]["response"]["description"])
         self.assertEqual(self.bot.discord_messages[-1]["channel"],"點歌文字頻道")
 
     async def test_fake_spotify_match_no_network(self):
