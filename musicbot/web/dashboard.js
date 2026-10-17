@@ -92,6 +92,7 @@ function authDisplay() {
     : "即時更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道";
 }
 function signedOut(message = "登入後即可查看你的伺服器並點歌。") {
+  closePlayerPanel();
   stopEvents();
   if (typeof libraryClear === "function") libraryClear();
   if (typeof adminClear === "function") adminClear();
@@ -167,7 +168,7 @@ async function api(path, method = "GET", data) {
 function controls() {
   const usable = (authMode === "owner" || authenticated) && connected && !busy && !!selected;
   const hasPlayer = usable && state && state.status !== "disconnected";
-  for (const id of ["toggle", "skip", "repeat", "volume", "hero-volume"]) $(id).disabled = !hasPlayer;
+  for (const id of ["toggle", "skip", "repeat", "volume"]) $(id).disabled = !hasPlayer;
   const active = hasPlayer && !!state.current && ["playing", "paused"].includes(state.status);
   $("toggle").disabled = !active || state.capabilities?.[state.status === "playing" ? "pause" : "resume"] !== true;
   $("skip").disabled = !active || state.capabilities?.skip !== true;
@@ -618,8 +619,9 @@ function render(next, force = false) {
   if (typeof favoriteRender === "function") favoriteRender();
   $("play-status").textContent = labels[state.status] || "準備中";
   $("toggle").textContent = state.status === "playing" ? "暫停" : "繼續";
-  songTitle($("bar-title"), state.current || {title:"還沒有播放中的歌曲"});
-  $("bar-status").textContent = labels[state.status] || "準備中";
+  songTitle($("bar-title"), state.current || {title:"目前沒有播放"});
+  $("bar-status").textContent = state.current ? (labels[state.status] || "準備中") + " · 點播：" + requesterName(state.current) : "選一首喜歡的歌";
+  $("playback-bar").classList.toggle("is-empty", !state.current);
   const cover = safeURL(state.current?.thumbnail || "");
   if (cover) { $("bar-cover").src = cover; $("bar-cover").hidden = false; }
   else { $("bar-cover").hidden = true; $("bar-cover").removeAttribute("src"); }
@@ -632,7 +634,7 @@ function render(next, force = false) {
   drawProgress(seekDrag ? seekDrag.position : state.progress, total);
   if (lyricsOpen && state.current && lyricsTrack !== currentTrackKey() && !lyricsLoading) loadLyrics();
   syncLyrics();
-  for (const id of ["volume", "hero-volume"]) if ((force || document.activeElement !== $(id)) && state.volume !== null) {
+  for (const id of ["volume"]) if ((force || document.activeElement !== $(id)) && state.volume !== null) {
     $(id).value = state.volume; $(id + "-label").value = state.volume + "%";
   }
   if (force || document.activeElement !== $("repeat")) $("repeat").value = state.repeat;
@@ -766,6 +768,48 @@ async function poll() {
   }
   window.setTimeout(poll, document.hidden ? 10000 : 1000);
 }
+function openPlayerPanel() {
+  const panel = $("player-dialog");
+  if (panel.open) return;
+  $("panel-transport").append($("player-transport"));
+  panel.showModal();
+  $("player-expand").setAttribute("aria-expanded", "true");
+  document.body.classList.toggle("player-open", true);
+  $("player-collapse").focus();
+}
+function closePlayerPanel() {
+  const panel = $("player-dialog"), wasOpen = panel.open;
+  if (wasOpen) panel.close();
+  $("bar-transport-slot").append($("player-transport"));
+  $("player-expand").setAttribute("aria-expanded", "false");
+  document.body.classList.toggle("player-open", false);
+  noSelection("player-sheet", false);
+  if (wasOpen) $("player-expand").focus();
+}
+$("player-expand").addEventListener("click", openPlayerPanel);
+$("player-collapse").addEventListener("click", closePlayerPanel);
+$("player-dialog").addEventListener("cancel", event => { event.preventDefault(); closePlayerPanel(); });
+$("player-dialog").addEventListener("close", closePlayerPanel);
+$("playback-bar").addEventListener("click", event => {
+  if (event.target.closest("a,button,input,select,label")) return;
+  openPlayerPanel();
+});
+let playerSwipe = null;
+$("player-sheet-handle").addEventListener("pointerdown", event => {
+  if (event.pointerType !== "touch" || event.target.closest("button")) return;
+  playerSwipe = {x:event.clientX, y:event.clientY, id:event.pointerId};
+  noSelection("player-sheet", true);
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+});
+$("player-sheet-handle").addEventListener("pointerup", event => {
+  if (!playerSwipe || event.pointerId !== playerSwipe.id) return;
+  const dy = event.clientY - playerSwipe.y, dx = Math.abs(event.clientX - playerSwipe.x);
+  playerSwipe = null; noSelection("player-sheet", false);
+  if (dy > 80 && dy > dx * 1.5) closePlayerPanel();
+});
+$("player-sheet-handle").addEventListener("pointercancel", () => {
+  playerSwipe = null; noSelection("player-sheet", false);
+});
 $("cover").addEventListener("error", () => { $("cover").hidden = true; });
 $("guild").addEventListener("change", async () => {
   stopEvents(); fallbackPolling = true;
@@ -789,7 +833,7 @@ $("bar-cover").addEventListener("error", () => { $("bar-cover").hidden = true; }
 $("toggle").addEventListener("click", () => act(state.status === "playing" ? "pause" : "resume"));
 $("skip").addEventListener("click", () => act("skip"));
 $("repeat").addEventListener("change", () => act("repeat", {mode: $("repeat").value}));
-for (const id of ["volume", "hero-volume"]) {
+for (const id of ["volume"]) {
   const input = $(id);
   input.addEventListener("input", () => { $(id + "-label").value = input.value + "%"; });
   input.addEventListener("change", () => { noSelection("volume", false); return act("volume", {volume: Number(input.value)}); });

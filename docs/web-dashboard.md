@@ -1617,3 +1617,15 @@ Creation is collapsed; source URL and rename fields no longer consume the main
 song area. Source sync only appears for stable imported sources.
 Demo includes an empty Favorites list, long titles, unknown duration, custom and
 Spotify-source collections; all artwork is fabricated and same-origin.
+
+
+## Round 11: one player
+The homepage hero card is removed. The bottom bar remains on every page, with
+cover, linked title, requester, transport/repeat and progress. Blank-space clicks
+or Expand open a right-side desktop panel / full-screen phone sheet containing
+the larger cover, progress, volume, favorites, Spotify, source, lyrics and owner
+actions. The same transport DOM moves into the panel and back (no second set).
+Modal focus enters Collapse; Collapse, Escape and a downward touch swipe on the
+sheet header close it and restore focus to Expand. Controls/links do not trigger
+expansion. Volume lives in the full panel at all widths. The phone bar remains
+152px with no extra row. Empty playback retains a stable bar and explicit status.
