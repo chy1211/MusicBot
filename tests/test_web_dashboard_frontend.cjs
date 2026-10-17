@@ -1859,3 +1859,21 @@ test("round10 favorite toggles pressed state and normalized identities", async (
   app.element("favorite").dataset.loading="1"; app.run("controls()");
   assert.equal(app.element("favorite").disabled,true);
 });
+
+
+test("round10 song links canonicalize YouTube, reject scripts and suppress drag clicks",async()=>{
+  const app=await setup();
+  assert.equal(app.run('songLinkURL("https://youtu.be/video000001?t=3")'),"https://www.youtube.com/watch?v=video000001");
+  for(const bad of ["javascript:evil","data:text/html,x","file:///tmp/x","https://u:p@example.test/"])
+    assert.equal(app.run("songLinkURL("+JSON.stringify(bad)+")"),"");
+  app.run('state.queue[0].url="https://music.youtube.com/watch?v=video000001";queueRevision=null;renderQueue()');
+  const link=app.element("queue").children[0].children[2].children[0].children[0];
+  assert.equal(link.target,"_blank");assert.equal(link.rel,"noopener noreferrer");
+  let prevented=false;
+  app.run("suppressSongLinksUntil=Date.now()+1000");
+  link.listeners.click({preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  app.run("suppressSongLinksUntil=0");
+  prevented=false;link.listeners.click({preventDefault(){prevented=true;}});
+  assert.equal(prevented,false);
+});

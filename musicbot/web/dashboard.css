@@ -193,3 +193,7 @@ body.no-selection,body.no-selection *,.drag-handle,input[type=range]{
 }
 
 #favorite.is-favorite{color:var(--green);border-color:var(--green)}
+
+a.song-title{color:inherit;text-decoration:none;border-radius:3px}
+a.song-title:hover{text-decoration:underline}
+a.song-title:focus-visible{outline:2px solid var(--green);outline-offset:3px;text-decoration:underline}
