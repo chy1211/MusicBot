@@ -375,7 +375,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             "X-Frame-Options": "DENY",
             "Referrer-Policy": "no-referrer",
             "Content-Security-Policy": (
-                "default-src 'self'; img-src 'self' https: http:; "
+                "default-src 'self'; img-src 'self' https://i.ytimg.com https://img.youtube.com https://cdn.discordapp.com https://media.discordapp.net https://i.scdn.co https://mosaic.scdn.co; "
                 "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"),
         })
         if isinstance(response, web.HTTPException):

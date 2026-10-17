@@ -401,7 +401,8 @@ class DemoDashboard(Dashboard):
             track_url = (f"https://open.spotify.com/track/Demo{index:06d}" if kind == "spotify"
                          else f"https://www.youtube.com/watch?v=demo{index:07d}")
             tracks.append({"title": "示範樂團 - " + TITLES[index % 5] + f" {index+1}",
-                           "url": track_url, "duration": 180 + index % 30})
+                           "url": track_url, "duration": 180 + index % 30,
+                           "thumbnail": f"{self.bot.origin}/demo-cover/{index % 5}.svg"})
         return {"title": "Spotify 示範歌單" if kind == "spotify" else "YouTube Music 示範歌單",
                 "tracks": tracks, "count": count, "truncated": count > 200,
                 "source_url": url, "source_type": kind}

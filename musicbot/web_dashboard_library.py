@@ -38,8 +38,10 @@ def song(value):
         fail(400, "歌曲網址只接受 HTTP／HTTPS，最多 2000 字且不可包含空白。")
     if length is not None and (type(length) not in (int, float) or not 0 <= length <= 31536000 or not math.isfinite(length)):
         fail(400, "歌曲長度須為非負秒數，或留空表示未知。")
-    return {"title": title.strip(), "url": url, "duration": length,
-            "added_at": time.time()}
+    result = {"title": title.strip(), "url": url, "duration": length, "added_at": time.time()}
+    cover = public_url(value.get("thumbnail"))
+    if cover: result["thumbnail"] = cover
+    return result
 
 
 def name(value):
@@ -122,7 +124,7 @@ class PlaylistStore:
                 if not isinstance(item["tracks"], list) or len(item["tracks"]) > 200:
                     raise ValueError()
                 for track in item["tracks"]:
-                    if set(track) != {"title", "url", "duration", "added_at"}:
+                    if set(track) not in ({"title", "url", "duration", "added_at"}, {"title", "url", "duration", "added_at", "thumbnail"}):
                         raise ValueError()
                     song(track)
                     if type(track["added_at"]) not in (int, float) or not 0 < track["added_at"] < 10**12 or not math.isfinite(track["added_at"]):
