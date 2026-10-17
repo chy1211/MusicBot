@@ -1885,6 +1885,9 @@ class MusicBot(commands.Bot):
         msg = None
         retry_after = 0.0
         send_kws: Dict[str, Any] = {}
+        # Web responses opt in; native command response formatting is unchanged.
+        if getattr(content, "dashboard_no_mentions", False):
+            send_kws["allowed_mentions"] = discord.AllowedMentions.none()
 
         ch_name = "DM-Channel"
         if hasattr(dest, "name"):
