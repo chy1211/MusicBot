@@ -1690,3 +1690,39 @@ The final browser check found native range margins plus the new Expand target
 could grow the phone bar. Compact padding/range margins now keep its measured
 height at 152px (plus any device safe-area requirement), retaining 44px controls.
 The full panel also resets the old mobile hero-progress negative left offset.
+
+## Round 12: Liquid Glass
+References: [Apple Materials](https://developer.apple.com/design/human-interface-guidelines/materials),
+[Adopting Liquid Glass](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass),
+[Meet Liquid Glass](https://developer.apple.com/videos/play/wwdc2025/219/).
+Content cards have no backdrop filter: dark white 4%, light white 50%.
+The functional layer alone uses Regular glass (dark 28,30,40 at .28 / light
+white .32; blur 18px, saturation 180%). Clear preference reduces the tint to
+.16/.18 and blur to 14px. Clear control surfaces are .08/.10 with a highlighted
+rim; child controls share their parent blur rather than stacking backdrop filters.
+Album wallpaper uses two crossfading images, blur 72px / saturation 160%,
+with a dark .78 or light .82 protective tint. Only existing image hosts are used.
+Navigation, player, lyrics, title choice, menus, dialogs and toast are glass.
+Cards, collections and result rows stay flat. Mobile navigation floats 12px
+from the edge; player is 8px above navigation. Each keeps its own plane.
+The capsule selection moves and resizes, tabs compact on downward scrolling,
+range thumbs become 1.6x translucent lenses while dragging, and desktop
+pointer highlights are disabled for touch/reduced motion.
+Preferences are per browser in localStorage musicbot-glass, standard by default.
+Reduced transparency, increased contrast, unsupported backdrop filters and the
+opaque preference use solid backgrounds. Motion reduction uses opacity only.
+SVG displacement is intentionally not enabled: this CSS implementation uses
+the portable blur fallback and does not claim native Apple optical refraction.
+Offline layout test composites white, black and saturated fabricated covers for
+both content and glass, all three preferences and both color schemes (AA 4.5:1).
+Browser matrix captures and measurements are held in the temporary test directory.
+
+Measured minimum composited normal-text contrast: dark 5.497:1, light 6.650:1.
+Headless Chromium desktop host, 390px viewport, 119 scrolling rAF samples:
+median 6.10ms, p95 6.20ms, max 6.20ms, no frame above 33.4ms.
+This is a browser smoke measurement, not a physical phone GPU benchmark.
+18 width/theme/preference captures passed horizontal-overflow checks.
+Phone player height 112px; desktop/tablet 118px. The normal functional layer
+has two active backdrop surfaces (navigation and player), adding one per open
+lyrics area/popover. Opaque preference has none. Collapsed details descendants
+must be excluded with checkVisibility when counting actual painted surfaces.

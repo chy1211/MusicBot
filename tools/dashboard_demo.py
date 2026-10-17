@@ -526,7 +526,7 @@ class DemoDashboard(Dashboard):
 
 
 async def cover(request):
-    palettes = [("#b67557", "#352748"), ("#709b86", "#153e3a"), ("#7596b0", "#273d5c"),
+    palettes = [("#080b20", "#352748"), ("#ffffff", "#dcecff"), ("#ff1a83", "#00d9df"),
                 ("#a08cab", "#2d234b"), ("#d2ac67", "#514529")]
     a, b = palettes[int(request.match_info["index"]) % len(palettes)]
     # Locally served vector artwork; no remote fonts, images, scripts or CDN.
