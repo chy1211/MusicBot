@@ -214,6 +214,8 @@ a.song-title:focus-visible{outline:2px solid var(--green);outline-offset:3px;tex
 .song-choices{position:absolute;bottom:calc(100% + 12px);left:0;z-index:20;min-width:180px;padding:8px;display:grid;gap:4px;border-radius:20px;background:var(--opaque);border:1px solid var(--line);box-shadow:var(--glass-shadow)}
 .song-choices a{display:flex;align-items:center;min-height:44px;padding:8px 14px;color:var(--text);text-decoration:none;border-radius:99px;white-space:nowrap}
 .song-choices a:hover{background:var(--raised)}
+/* The chooser lives in the player's stacking context: lift the bar above the floating sidebar while open. */
+.playback-bar:has(#song-choices:not([hidden])){z-index:21}
 .playback-bar.is-empty .progress-row{visibility:hidden}
 .lyrics-panel{position:fixed;z-index:9;bottom:calc(var(--bar) + 12px);left:max(250px,16px);right:16px;padding:12px 18px;border-radius:24px;background:var(--glass);border:1px solid var(--line)}
 .lyrics-panel h2{font-size:14px}.lyrics-panel .section-top{margin:0}.lyrics-panel .section-top button{font-size:11px;min-height:32px;padding:4px 12px}

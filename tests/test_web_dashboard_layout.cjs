@@ -70,6 +70,8 @@ test("glass provides both themes, prefixed blur and opaque accessibility fallbac
   assert.doesNotMatch(css, /box-shadow:[^;}]*rgba\((10,132,255|100,210,255)[^;}]*\d+px[^;}]*-\d+px/);
   assert.match(css, /--bg:#0b0b0f/); assert.match(css, /--bg:#f2f2f7/);
   assert.match(css, /\.song-choices,[^{]*\{background:var\(--panel\)/);
+  // Desktop: the title chooser opens upward over the sidebar (z-index 20).
+  assert.match(css, /\.playback-bar:has\(#song-choices:not\(\[hidden\]\)\)\{z-index:21\}/);
 });
 test("clear glass foregrounds meet AA on white, black and saturated covers", () => {
  const rgb=hex=>hex.match(/[0-9a-f]{2}/gi).map(n=>parseInt(n,16)/255);
