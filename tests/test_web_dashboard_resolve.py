@@ -178,10 +178,13 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.bot.extractions)
 
     async def test_compound_link_gives_explicit_video_and_playlist_choices(self):
+        self.dashboard.import_source = AsyncMock(return_value={
+            "title":"Playlist", "tracks":[{"title":"Added","url":"https://www.youtube.com/watch?v=abc12345678","duration":120}],
+            "count":1,"truncated":False,"source_url":"https://www.youtube.com/playlist?list=PLexample","source_type":"youtube"})
         songs = await self.preview("https://www.youtube.com/watch?v=abc12345678&list=PLexample")
         self.assertEqual(len(songs), 2)
         self.assertEqual(self.bot.extractions[0][0], "https://www.youtube.com/watch?v=abc12345678")
-        self.assertEqual(self.bot.extractions[1][0], "https://www.youtube.com/playlist?list=PLexample")
+        self.dashboard.import_source.assert_awaited_once_with("https://www.youtube.com/playlist?list=PLexample", "youtube")
         self.assertNotIn("&list=", songs[0]["url"])
         self.bot._cmd_play_compound_link.assert_not_awaited()
 
@@ -202,16 +205,18 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.bot.extractions), 2)
         self.assertEqual(len(first["state"]["queue"]), len(second["state"]["queue"]))
 
-    async def test_tampered_unknown_expired_or_cross_guild_token_denied(self):
+    async def test_tampered_unknown_cross_guild_denied_and_expired_renews_same_song(self):
         song, = await self.preview()
         await self.call(BASE + "play", dict(self.confirm(song), query="https://example.test/other"), status=403)
         await self.call(BASE + "play", dict(self.confirm(song), preview_id="unknown"), status=409)
         preview = self.dashboard.previews[song["preview_id"]]
         preview["guild_id"] = 2
         await self.call(BASE + "play", self.confirm(song), status=409)
-        preview["guild_id"], preview["expires"] = 1, time.monotonic() - 1
-        await self.call(BASE + "play", self.confirm(song), status=409)
         self.bot.get_player.assert_not_awaited()
+        preview["guild_id"], preview["expires"] = 1, time.monotonic() - 1
+        await self.call(BASE + "play", self.confirm(song))
+        self.assertEqual(len(self.bot.player.playlist.entries),4)
+        self.assertEqual(len(self.bot.extractions),3)
 
     async def test_confirm_rechecks_changed_permission_and_consumes_attempt(self):
         song, = await self.preview()

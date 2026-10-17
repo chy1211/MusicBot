@@ -5,7 +5,7 @@ const code=fs.readFileSync(path.join(__dirname,"../musicbot/web/popular.js"),"ut
 class El {
  constructor(){this.children=[];this.listeners={};this.value="";this.textContent="";}
  append(...children){this.children.push(...children);}
- replaceChildren(){this.children=[];}
+ replaceChildren(...children){this.children=[];this.append(...children);}
  setAttribute(key,value){this[key]=value;}
  addEventListener(key,fn){this.listeners[key]=fn;}
 }
@@ -13,10 +13,13 @@ function setup(api) {
  const nodes=new Map(),requests=[],previews=[],views=[],saved=[];
  const node=id=>{if(!nodes.has(id))nodes.set(id,new El());return nodes.get(id);};
  const ctx=vm.createContext({generation:1,selected:"1",connected:true,$:node,
- document:{createElement:()=>new El()},api:async url=>{requests.push(url);return api?api(url):{tracks:[{title:"<img onerror=x>",url:"https://example.test/song",duration:83,count:12}]};},
+ document:{createElement:()=>new El()},
+ songLinkURL:s=>s,drag:null,suppressSongLinksUntil:0,api:async url=>{requests.push(url);return api?api(url):{tracks:[{title:"<img onerror=x>",url:"https://example.test/song",duration:83,count:12}]};},
  duration:s=>"1:23",safeURL:s=>s,libraryView:p=>views.push(p),
  previewHistorySong:(...args)=>previews.push(args),
  librarySaveButton:s=>{const el=new El();el.song=s;saved.push(s);return el;}});
+ const dashboard=fs.readFileSync(path.join(__dirname,"../musicbot/web/dashboard.js"),"utf8");
+ vm.runInContext(dashboard.slice(dashboard.indexOf("function songTitle"),dashboard.indexOf("function songIdentity")),ctx);
  vm.runInContext(code,ctx);
  return {ctx,node,requests,previews,views,saved,run:s=>vm.runInContext(s,ctx)};
 }

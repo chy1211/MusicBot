@@ -668,7 +668,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         result = await self.call(BASE + "repeat", {"mode": "off"})
         self.assertFalse(self.bot.player.repeatsong)
         self.assertIn("no longer", result["message"])
-        self.assertEqual(self.bot.safe_send_message.call_args.args[1].author.name, "Friend")
+        self.assertTrue(self.bot.safe_send_message.call_args.args[1].description.startswith("-# Friend 透過網頁控制台操作"))
 
     async def test_move_without_current_entry_does_not_mutate(self):
         self.bot.player.current_entry = None
@@ -682,7 +682,8 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         self.bot.config.embeds = False
         result = await self.call(BASE + "volume", {"volume": 30})
         response = self.bot.safe_send_message.call_args.args[1]
-        self.assertIn("<@43>", response.to_markdown())
+        self.assertTrue(response.to_markdown().startswith("-# Friend 透過網頁控制台操作"))
+        self.assertNotIn("<@", response.to_markdown())
         self.assertIn(result["message"], response.content)
 
     async def test_get_player_await_rechecks_voice_and_session(self):

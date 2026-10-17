@@ -203,3 +203,6 @@ a.song-title:focus-visible{outline:2px solid var(--green);outline-offset:3px;tex
 .maintenance-details dd {margin:0;overflow-wrap:anywhere;}
 .maintenance-warning {color:var(--warning,#d58a13);font-weight:600;}
 @media(max-width:640px){.maintenance-details{grid-template-columns:1fr;gap:.35rem;}.maintenance-details dd{margin-bottom:.65rem;}}
+
+/* Actionable toast children retain pointer access on the passive overlay. */
+.notice.visible button{pointer-events:auto;min-height:44px;margin-left:12px;}
