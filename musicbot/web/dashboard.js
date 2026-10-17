@@ -49,7 +49,7 @@ function songIdentity(value) {
   url.hash = "";
   url.pathname = url.pathname.replace(/\/+$/, "") || "/";
   for (const key of [...url.searchParams.keys()])
-    if (/^utm_/i.test(key) || /^(fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
+    if (/^utm_/i.test(key) || /^(si|feature|fbclid|gclid)$/i.test(key)) url.searchParams.delete(key);
   url.searchParams.sort();
   return url.href;
 }
@@ -157,7 +157,7 @@ function controls() {
   const seekable = active && state.capabilities?.seek === true && state.current.duration > 0 && state.current.seekable === true;
   for (const id of ["progress", "hero-progress"]) $(id).disabled = !seekable;
   $("lyrics-toggle").disabled = !hasPlayer || !state.current;
-  $("favorite").disabled = !hasPlayer || !safeURL(state?.current?.url);
+  $("favorite").disabled = !hasPlayer || !safeURL(state?.current?.url) || $("favorite").dataset.loading === "1";
   $("lyrics-search").disabled = !usable || lyricsLoading;
   $("history-refresh").disabled = !usable || historyLoading;
   document.querySelectorAll("#history-list button").forEach((button) => { button.disabled = !usable; });
@@ -589,6 +589,7 @@ function render(next, force = false) {
     $("source-link").textContent = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(source)
       ? "在 YouTube 開啟 ↗" : "在來源網站開啟 ↗";
   } else $("source-link").removeAttribute("href");
+  if (typeof favoriteRender === "function") favoriteRender();
   $("play-status").textContent = labels[state.status] || "準備中";
   $("toggle").textContent = state.status === "playing" ? "暫停" : "繼續";
   $("bar-title").textContent = state.current ? state.current.title : "還沒有播放中的歌曲";
@@ -704,6 +705,7 @@ async function connect() {
     if (!selected) { notice(authMode === "owner" ? "目前沒有 OwnerID 本人所在的可用伺服器。" : "目前沒有你與機器人共同所在的伺服器。"); return; }
     await refresh(epoch);
     if (connected && typeof adminCapability === "function") adminCapability();
+    if (connected && typeof libraryLoad === "function") libraryLoad().catch(() => {});
     if (connected) { notice("已連線，可以開始點歌。"); startEvents(); }
   } catch (error) {
     if (epoch === generation) {

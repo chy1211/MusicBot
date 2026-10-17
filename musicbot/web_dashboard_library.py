@@ -16,6 +16,7 @@ from pathlib import Path
 from aiohttp import web
 from . import write_path
 from .web_dashboard_auth import USER_KEY
+from .web_dashboard_media import media_url, dedupe_favorites
 from .web_dashboard_imports import DashboardImports, source_url
 
 log = logging.getLogger(__name__)
@@ -147,7 +148,9 @@ class PlaylistStore:
             if revision is not None and revision != self.revision(value):
                 fail(409, "歌單已更新，請重新整理後再操作。")
             if change is not None:
+                dedupe_favorites(value)
                 change(value)
+                dedupe_favorites(value)
                 atomic_write(self.path(uid), json.dumps(value, ensure_ascii=False).encode("utf-8"))
             return dict(copy.deepcopy(value), revision=self.revision(value))
 
@@ -189,7 +192,9 @@ class DashboardLibrary(DashboardImports):
         if any(key in data for key in ("user_id", "filename", "path")):
             fail(400, "請求包含不支援的欄位。")
         pid = request.match_info.get("playlist_id")
+        message = "已更新歌單。"
         def change(value):
+            nonlocal message
             if pid is None:
                 if set(data) != {"name"}:
                     fail(400, "建立歌單只接受名稱。")
@@ -205,9 +210,19 @@ class DashboardLibrary(DashboardImports):
                     fail(400, "收藏不能刪除。")
                 value["playlists"].remove(target)
             elif request.path.endswith("/tracks"):
+                candidate = song(data.get("track"))
+                if pid == "favorites" and any(media_url(t["url"]) == media_url(candidate["url"]) for t in target["tracks"]):
+                    message = "已在收藏中"
+                    return
                 if len(target["tracks"]) >= 200:
                     fail(400, "每份歌單最多 200 首歌曲。")
-                target["tracks"].append(song(data.get("track")))
+                target["tracks"].append(candidate)
+                message = "已收藏" if pid == "favorites" else message
+            elif pid == "favorites" and data.get("action") == "remove_url":
+                key = media_url(data.get("url"))
+                if not key: fail(400, "請提供有效的歌曲網址。")
+                target["tracks"][:] = [t for t in target["tracks"] if media_url(t["url"]) != key]
+                message = "已取消收藏"
             elif "name" in data:
                 if pid == "favorites":
                     fail(400, "收藏不能改名。")
@@ -229,7 +244,7 @@ class DashboardLibrary(DashboardImports):
         if pid is not None and not isinstance(data.get("revision"), str):
             fail(400, "請提供歌單版本，重新整理後再操作。")
         result = await self.playlist_store.transact(uid, change, data.get("revision"), authorize=authorize)
-        return web.json_response(dict(result, owner=owner))
+        return web.json_response(dict(result, owner=owner, message=message))
 
     async def library_play(self, request):
         uid = self.library_identity(request)
