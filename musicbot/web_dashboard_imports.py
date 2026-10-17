@@ -41,6 +41,8 @@ def source_url(value):
         ids = parse_qs(parsed.query).get("list", [])
         if len(ids) != 1 or not re.fullmatch(r"[A-Za-z0-9_-]{1,150}", ids[0]):
             fail(400, "YouTube／YouTube Music 請提供包含歌單的連結。")
+        if ids[0] in ("WL", "LL", "LM"):
+            fail(400, "私人收藏、稍後觀看與喜歡的歌不支援公開匯入。")
         # Canonical YouTube playlist prevents redirects/compound video expansion.
         return "https://www.youtube.com/playlist?list=" + ids[0], "youtube"
     fail(400, "只支援 Spotify、YouTube 與 YouTube Music 公開歌單。")
@@ -144,10 +146,12 @@ class DashboardImports:
                     tracks.append(track)
             count = max(len(rows), total if type(total) is int else 0)
         else:
-            info = await self.bot.downloader.extract_info(url, download=False, process=False)
+            info = await self.bot.downloader.extract_info(url, download=False, process=False, public_only=True)
             value = getattr(info, "data", info)
             if not isinstance(value, dict) or "entries" not in value:
                 fail(400, "來源不是可讀取的公開歌單。")
+            if value.get("availability") in ("private", "needs_auth", "premium_only", "subscriber_only"):
+                fail(403, "只支援不需登入的公開歌單。")
             rows = list(value.get("entries") or [])
             title = value.get("title") or "YouTube 歌單"
             total = value.get("playlist_count") or value.get("n_entries") or len(rows)
