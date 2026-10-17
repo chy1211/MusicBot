@@ -1382,6 +1382,17 @@ $("song-spotify").addEventListener("click", event => {
 });
 
 
+// offsetLeft/Top and client sizes share the padding-box coordinate system.
+// Clamp to padding so border, safe-area insets and fractional layout cannot spill.
+function segmentGeometry(group, active, style) {
+  const left = parseFloat(style.paddingLeft) || 0, right = parseFloat(style.paddingRight) || 0;
+  const top = parseFloat(style.paddingTop) || 0, bottom = parseFloat(style.paddingBottom) || 0;
+  const width = Math.max(0, group.clientWidth-left-right), height = Math.max(0, group.clientHeight-top-bottom);
+  const w = Math.min(active.offsetWidth,width), h = Math.min(active.offsetHeight,height);
+  return {x:Math.max(left,Math.min(active.offsetLeft,group.clientWidth-right-w)),
+    y:Math.max(top,Math.min(active.offsetTop,group.clientHeight-bottom-h)),w,h};
+}
+
 /* Progressive visual helpers are optional; no dependency on layout in VM tests. */
 function initGlass() {
   if (!document.documentElement) return;
@@ -1417,20 +1428,34 @@ function initGlass() {
     for (const group of groups) {
       const active = group.querySelector('button[aria-pressed="true"]:not([hidden])');
       if (!active) continue;
-      for (const [name,value] of Object.entries({"x":active.offsetLeft,"y":active.offsetTop,"w":active.offsetWidth,"h":active.offsetHeight}))
-        group.style.setProperty("--seg-"+name,value+"px");
+      const geometry = segmentGeometry(group,active,getComputedStyle(group));
+      if (!geometry.w || !geometry.h) continue; // Hidden on first authentication paint.
+      for (const [name,value] of Object.entries(geometry)) group.style.setProperty("--seg-"+name,value+"px");
+      if (!group.hasAttribute("data-seg-ready")) {
+        group.setAttribute("data-seg-ready","");
+        requestAnimationFrame(() => requestAnimationFrame(() => group.setAttribute("data-seg-animated","")));
+      }
     }
   };
   new MutationObserver(align).observe($("dashboard"),{subtree:true,attributes:true,attributeFilter:["aria-pressed","hidden"]});
-  new ResizeObserver(align).observe(nav);
-  window.addEventListener("resize",align);align();
+  const observer = new ResizeObserver(align);
+  for (const group of groups) {
+    observer.observe(group);
+    for (const button of group.querySelectorAll("button")) observer.observe(button);
+    group.addEventListener("transitionend",align);
+  }
+  window.addEventListener("resize",align);
+  window.addEventListener("orientationchange",align);
+  window.visualViewport?.addEventListener("resize",align);
+  document.fonts?.ready.then(align);
+  align();
   let lastY = window.scrollY, ticking = false;
   window.addEventListener("scroll", () => {
     if (ticking) return; ticking = true;
     requestAnimationFrame(() => {
       const y = window.scrollY;
       if (Math.abs(y-lastY)>6) nav.classList.toggle("nav-compact",y>lastY && y>80);
-      lastY=y;ticking=false;
+      lastY=y;ticking=false;align();
     });
   },{passive:true});
   if (window.matchMedia("(hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference)").matches)
