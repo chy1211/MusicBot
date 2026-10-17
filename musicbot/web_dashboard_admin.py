@@ -1,5 +1,6 @@
 """Owner-only dashboard administration, using existing playlist/permission objects."""
 from __future__ import annotations
+from .web_dashboard_i18n import message as _web_text
 import asyncio
 import hashlib
 import logging
@@ -56,14 +57,14 @@ class DashboardAdmin(DashboardPermissions):
         from .web_dashboard_auth import USER_KEY
         uid = int(request[USER_KEY]["id"]) if self.discord_auth else self.bot.config.owner_id
         if uid != self.bot.config.owner_id:
-            fail(403, "只有 OwnerID 本人可以使用管理功能。")
+            fail(403, _web_text('m0476'))
         return self.guild_owner(request)
 
     def current_autoplaylist(self, guild):
         ssd = self.bot.server_data.get(guild.id)
         apl = getattr(ssd, "autoplaylist", None)
         if apl is None:
-            fail(409, "目前沒有可用的自動播放清單。")
+            fail(409, _web_text('m0477'))
         return apl
 
     @staticmethod
@@ -71,12 +72,12 @@ class DashboardAdmin(DashboardPermissions):
         from .web_dashboard import public_url
         query = request.query.get("q", "").strip()
         if len(query) > 100:
-            fail(400, "搜尋最多 100 字。")
+            fail(400, _web_text('m0478'))
         raw_page = request.query.get("page", "1")
         if not raw_page.isascii() or not raw_page.isdigit() or not 1 <= int(raw_page) <= 1000000:
-            fail(400, "頁碼必須是正整數。")
+            fail(400, _web_text('m0479'))
         rows = [{"index": i, "url": public_url(url)[:2000],
-                 "title": "來源網址" if public_url(url) else "無法顯示的來源"}
+                 "title": _web_text('m0480') if public_url(url) else _web_text('m0481')}
                 for i, url in enumerate(apl)]
         # Only searchable public text, never a legacy local path.
         filtered = [row for row in rows if query.lower() in (row["url"] + row["title"]).lower()]
@@ -97,33 +98,33 @@ class DashboardAdmin(DashboardPermissions):
                 return web.json_response(self.autoplaylist_page(apl, request))
             data = await self.payload(request)
             if set(data) - {"revision", "url", "current", "index"}:
-                fail(400, "不支援這個自動播放清單操作。")
+                fail(400, _web_text('m0482'))
             if data.get("revision") != apl_revision(apl):
-                fail(409, "自動播放清單已更新，請重新整理後再操作。")
+                fail(409, _web_text('m0483'))
             if request.method == "POST":
                 if data.get("current") is True:
                     player = self.bot.get_player_in(guild)
                     url = getattr(getattr(player, "current_entry", None), "url", "")
                 else:
                     url = data.get("url")
-                url = song({"title": "來源網址", "url": url, "duration": None})["url"]
+                url = song({"title": _web_text('m0480'), "url": url, "duration": None})["url"]
                 from .exceptions import MusicbotException
                 try:
                     self.bot._do_song_blocklist_check(url)
                 except MusicbotException:
-                    fail(403, "這個來源已被封鎖清單擋下。")
+                    fail(403, _web_text('m0484'))
                 if url in apl:
-                    fail(400, "這首歌已在自動播放清單中。")
+                    fail(400, _web_text('m0485'))
             else:
                 index = data.get("index")
                 if type(index) is not int or not 0 <= index < len(apl):
-                    fail(400, "歌曲位置不正確。")
+                    fail(400, _web_text('m0486'))
                 url = apl[index]
             backup_file(apl._file, self.backup_root / "autoplaylist")
             if request.method == "POST":
                 await apl.add_track(url)
             else:
-                await apl.remove_track(url, ex=UserWarning("由音樂控制台管理頁移除"), delete_from_ap=True)
+                await apl.remove_track(url, ex=UserWarning(_web_text('m0487')), delete_from_ap=True)
             # Native methods deliberately log and swallow disk errors. Never
             # report success when memory and persisted content disagree.
             try:
@@ -132,5 +133,5 @@ class DashboardAdmin(DashboardPermissions):
                     raise OSError()
             except OSError:
                 await apl.load(force=True)
-                fail(500, "自動播放清單寫入失敗；已重新讀取檔案，請檢查備份。")
-            return web.json_response(dict(self.autoplaylist_page(apl, request), message="已更新自動播放清單。"))
+                fail(500, _web_text('m0488'))
+            return web.json_response(dict(self.autoplaylist_page(apl, request), message=_web_text('m0006')))

@@ -1,5 +1,6 @@
 """Discord identify-only login. All credentials stay out of responses and logs."""
 from __future__ import annotations
+from .web_dashboard_i18n import message as _web_text
 
 import asyncio
 import hashlib
@@ -115,7 +116,7 @@ class DashboardAuth:
         try:
             self.session_store.write(self.sessions)
         except OSError:
-            raise self.auth_error(503, "登入資料暫時無法儲存，請稍後再試。") from None
+            raise self.auth_error(503, _web_text('m0489')) from None
 
     def prune_sessions(self, force=False):
         now = time.time()
@@ -146,7 +147,7 @@ class DashboardAuth:
         for key in owned[:max(0, len(owned) - self.SESSIONS_PER_USER + 1)]:
             self.sessions.pop(key)
         if len(self.sessions) >= self.AUTH_LIMIT:
-            raise self.auth_error(503, "登入人數已達上限，請稍後再試。")
+            raise self.auth_error(503, _web_text('m0490'))
         token = secrets.token_urlsafe(32)
         now = time.time()
         self.sessions[self.session_digest(token)] = {
@@ -182,7 +183,7 @@ class DashboardAuth:
                 if member is not None: self.check_blocked(member)
             if not any(member is not None for member in members) and not any(
                     getattr(guild, "unavailable",False) for guild in self.bot.guilds):
-                raise self.auth_error(403, "你目前不是機器人所在伺服器的成員。")
+                raise self.auth_error(403, _web_text('m0491'))
         except self.auth_error:
             self.revoke_session(request)
             if request.path == "/auth/session": return None
@@ -218,13 +219,13 @@ class DashboardAuth:
 
     async def auth_login(self, request):
         if not self.discord_auth:
-            raise self.auth_error(404, "未啟用 Discord 登入。")
+            raise self.auth_error(404, _web_text('m0492'))
         self.prune_auth()
         now = time.monotonic()
         self.login_attempts = [t for t in self.login_attempts if t > now - 60]
         # Fixed memory and OAuth admission bounds, also before authentication.
         if len(self.oauth_states) >= self.AUTH_LIMIT or len(self.login_attempts) >= 60:
-            raise self.auth_error(429, "登入請求過於頻繁，請稍後再試。")
+            raise self.auth_error(429, _web_text('m0493'))
         self.login_attempts.append(now)
         state = secrets.token_urlsafe(32)
         self.oauth_states[state] = {"expires": now + self.STATE_TTL}
@@ -280,23 +281,23 @@ class DashboardAuth:
                 avatar = f"https://cdn.discordapp.com/avatars/{uid}/{avatar_hash}.png?size=64"
             return {"id": uid, "name": name[:128], "avatar": avatar}
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, KeyError):
-            raise self.auth_error(502, "Discord 登入失敗，請重新登入或稍後再試。") from None
+            raise self.auth_error(502, _web_text('m0494')) from None
 
     async def auth_callback(self, request):
         if not self.discord_auth:
-            raise self.auth_error(404, "未啟用 Discord 登入。")
+            raise self.auth_error(404, _web_text('m0492'))
         state = request.query.get("state", "")
         cookie = request.cookies.get(self.state_cookie, "")
         self.prune_auth()
         if (not state or len(state) > 128 or not cookie
                 or not hmac.compare_digest(state.encode(), cookie.encode())
                 or state not in self.oauth_states):
-            raise self.auth_error(403, "登入驗證已失效，請重新登入。")
+            raise self.auth_error(403, _web_text('m0495'))
         # Consume before any await, including failed exchanges; no replay.
         self.oauth_states.pop(state)
         code = request.query.get("code", "")
         if request.query.get("error") or not code or len(code) > 2048:
-            raise self.auth_error(400, "Discord 登入未完成，請重新登入。")
+            raise self.auth_error(400, _web_text('m0496'))
         user = await self.oauth_identity(code)
         old_nonce = request.get(SESSION_KEY)
         if old_nonce:
@@ -310,12 +311,12 @@ class DashboardAuth:
 
     async def auth_logout(self, request):
         if not self.discord_auth:
-            raise self.auth_error(404, "未啟用 Discord 登入。")
+            raise self.auth_error(404, _web_text('m0492'))
         self.revoke_session(request, all_devices=request.path == "/auth/logout-all")
         # Invalidate pending login from this browser as well.
         state = request.cookies.get(self.state_cookie, "")
         self.oauth_states.pop(state, None)
-        response = web.json_response({"message": "已登出所有裝置。" if request.path == "/auth/logout-all" else "已登出。"})
+        response = web.json_response({"message": _web_text('m0052') if request.path == "/auth/logout-all" else _web_text('m0053')})
         self.clear_cookie(response, self.session_cookie)
         self.clear_cookie(response, self.state_cookie)
         return response

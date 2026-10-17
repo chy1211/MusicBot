@@ -67,7 +67,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
             auth_mode="discord", public_url="http://127.0.0.1",
             discord_client_id="123", discord_client_secret=SECRET,
             session_secret="FAKE-ONLY-SESSION-SECRET", session_hours=168))
-        self.client = TestClient(TestServer(self.dashboard.app),
+        self.client = TestClient(TestServer(self.dashboard.app), headers={"Accept-Language":"zh-TW"},
                                  cookie_jar=CookieJar(unsafe=True))
         await self.client.start_server()
         self.origin = str(self.client.make_url("/")).rstrip("/")

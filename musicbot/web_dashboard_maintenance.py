@@ -1,5 +1,6 @@
 """Owner-only maintenance metadata. Never deserialize cookie values or log tails."""
 from __future__ import annotations
+from .web_dashboard_i18n import message as _web_text
 
 import asyncio
 import importlib
@@ -143,7 +144,7 @@ def last_stop(root):
                      (b"now doing shutdown steps", b"disconnecting and closing down musicbot",
                       b"doing a full process restart", b"caught a signal from the os"))
         return {"time": timestamp(latest.stat().st_mtime),
-                "classification": "正常" if normal and not abnormal else "異常"}
+                "classification": _web_text('m0556') if normal and not abnormal else _web_text('m0557')}
     except OSError:
         return None
 

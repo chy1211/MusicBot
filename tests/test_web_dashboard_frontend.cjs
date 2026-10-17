@@ -1,3 +1,4 @@
+const {t,dashboardLocale,dashboardTimeZone,dashboardI18nReady}=require("./dashboard_i18n_fixture.cjs");
 "use strict";
 // Frontend behavior tests in Node's VM. No browser, network, or new dependencies.
 const {test} = require("node:test");
@@ -138,7 +139,7 @@ async function setup(options = {}) {
     close() { this.closed = true; }
     emit(name, data) { return this.listeners[name]?.({data: JSON.stringify(data)}); }
   }
-  const context = vm.createContext({document, fetch, URL, AbortController,
+  const context = vm.createContext({t,dashboardLocale,dashboardTimeZone,dashboardI18nReady,document, fetch, URL, AbortController,
     EventSource: options.events ? FakeEventSource : undefined, window: {localStorage:options.storage, setTimeout: (...args) => timers.push(args), clearTimeout() {},
     requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
     matchMedia: (query) => ({matches: query.includes("reduced-motion") ? !!options.reducedMotion : !options.mobile}),

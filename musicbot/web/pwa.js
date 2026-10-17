@@ -8,7 +8,7 @@ if ("serviceWorker" in navigator) {
       registration.update().catch(() => {});
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         if (!hadController) return;
-        notice("控制台已更新，重新整理後使用新版。");
+        notice(t("m0222"));
         $("pwa-refresh").hidden = false;
       });
     }).catch(() => {});

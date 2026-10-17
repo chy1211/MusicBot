@@ -1,192 +1,197 @@
 <!doctype html>
-<html lang="zh-Hant-TW">
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#05060d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="音樂控制台">
+  <meta name="apple-mobile-web-app-title" content="Music dashboard" data-i18n-content="m0223">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <title>音樂控制台</title>
+  <title data-i18n="m0223">Music dashboard</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r13-phone">
-  <script src="/dashboard.js?v=r13-phone" defer></script>
-  <script src="/library.js?v=r13-phone" defer></script>
-  <script src="/popular.js?v=r13-phone" defer></script>
-  <script src="/admin.js?v=r13-phone" defer></script>
-  <script src="/permissions.js?v=r13-phone" defer></script>
-  <script src="/pwa.js?v=r13-phone" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r13-i18n">
+  <script src="/i18n.js?v=r13-i18n" defer></script>
+  <script src="/dashboard.js?v=r13-i18n" defer></script>
+  <script src="/library.js?v=r13-i18n" defer></script>
+  <script src="/popular.js?v=r13-i18n" defer></script>
+  <script src="/admin.js?v=r13-i18n" defer></script>
+  <script src="/permissions.js?v=r13-i18n" defer></script>
+  <script src="/pwa.js?v=r13-i18n" defer></script>
 </head>
 <body>
+<div class="language-preference"><label for="dashboard-language" data-i18n="language">Language</label>
+<select id="dashboard-language" aria-label="Language" data-i18n-aria-label="language">
+<option value="en" data-i18n="language.en">English</option><option value="zh-TW" data-i18n="language.zh-TW">Traditional Chinese</option>
+</select></div>
 <svg class="glass-filter-defs" aria-hidden="true" width="0" height="0">
 <defs><filter id="glass-edge" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
-<feMorphology in="SourceAlpha" operator="erode" radius="8" result="inside"/>
-<feComposite in="SourceAlpha" in2="inside" operator="xor" result="edge"/>
-<feTurbulence type="fractalNoise" baseFrequency=".025" numOctaves="1" seed="7" result="noise"/>
-<feDisplacementMap in="SourceGraphic" in2="noise" scale="5" xChannelSelector="R" yChannelSelector="G" result="bent"/>
-<feComposite in="bent" in2="edge" operator="in" result="rim"/>
-<feComposite in="SourceGraphic" in2="edge" operator="out" result="center"/>
-<feMerge><feMergeNode in="center"/><feMergeNode in="rim"/></feMerge>
+<femorphology in="SourceAlpha" operator="erode" radius="8" result="inside"></femorphology>
+<fecomposite in="SourceAlpha" in2="inside" operator="xor" result="edge"></fecomposite>
+<feturbulence type="fractalNoise" basefrequency=".025" numoctaves="1" seed="7" result="noise"></feturbulence>
+<fedisplacementmap in="SourceGraphic" in2="noise" scale="5" xchannelselector="R" ychannelselector="G" result="bent"></fedisplacementmap>
+<fecomposite in="bent" in2="edge" operator="in" result="rim"></fecomposite>
+<fecomposite in="SourceGraphic" in2="edge" operator="out" result="center"></fecomposite>
+<femerge><femergenode in="center"></femergenode><femergenode in="rim"></femergenode></femerge>
 </filter></defs></svg>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
     <div class="login-card"><span class="login-icon" aria-hidden="true">&#9835;</span>
-      <h1 id="login-heading">一起聽音樂</h1>
-      <p>用你的 Discord 身分，選一首喜歡的歌。</p>
-      <p id="login-status" class="hint" role="status" aria-live="polite">正在確認登入狀態…</p>
-      <a id="discord-login" class="primary login-button" href="/auth/login" hidden>用 Discord 登入</a>
+      <h1 id="login-heading"><span data-i18n="m0224">Listen together</span></h1>
+      <p><span data-i18n="m0225">Sign in with Discord and pick a song.</span></p>
+      <p id="login-status" class="hint" role="status" aria-live="polite"><span data-i18n="m0226">Checking your login…</span></p>
+      <a id="discord-login" class="primary login-button" href="/auth/login" hidden><span data-i18n="m0227">Sign in with Discord</span></a>
     </div>
   </section>
   <div id="dashboard" hidden>
   <aside class="sidebar">
-    <a class="brand" href="/" aria-label="音樂控制台首頁"><span class="brand-icon" aria-hidden="true">♫</span><span class="brand-label">音樂控制台</span></a>
-    <label for="guild">切換伺服器</label><select id="guild" aria-label="切換伺服器"></select>
-    <nav class="page-tabs" aria-label="頁面"><button id="nav-play" type="button" aria-pressed="true">播放</button><button id="nav-library" type="button">我的歌單</button><button id="nav-popular" type="button">熱門點播</button><button id="nav-admin" type="button" hidden>管理</button></nav>
-    <button id="shortcuts-help" class="desktop-shortcuts subtle" type="button">鍵盤快捷鍵 ?</button>
-    <button id="pwa-refresh" type="button" hidden>重新整理更新</button>
-    <span id="connection" class="badge" role="status">連線中</span>
+    <a class="brand" href="/" aria-label="Music dashboard home" data-i18n-aria-label="m0228"><span class="brand-icon" aria-hidden="true">♫</span><span class="brand-label"><span data-i18n="m0223">Music dashboard</span></span></a>
+    <label for="guild"><span data-i18n="m0229">Switch server</span></label><select id="guild" aria-label="Switch server" data-i18n-aria-label="m0229"></select>
+    <nav class="page-tabs" aria-label="Pages" data-i18n-aria-label="m0230"><button id="nav-play" type="button" aria-pressed="true"><span data-i18n="m0231">Play</span></button><button id="nav-library" type="button"><span data-i18n="m0232">My playlists</span></button><button id="nav-popular" type="button"><span data-i18n="m0233">Popular</span></button><button id="nav-admin" type="button" hidden><span data-i18n="m0234">Admin</span></button></nav>
+    <button id="shortcuts-help" class="desktop-shortcuts subtle" type="button"><span data-i18n="m0235">Keyboard shortcuts ?</span></button>
+    <button id="pwa-refresh" type="button" hidden><span data-i18n="m0236">Refresh to update</span></button>
+    <span id="connection" class="badge" role="status"><span data-i18n="m0125">Connecting</span></span>
     <details id="auth" class="auth">
-      <summary>連線設定</summary>
-      <form id="auth-form"><label for="secret">共享密鑰</label>
+      <summary><span data-i18n="m0237">Connection settings</span></summary>
+      <form id="auth-form"><label for="secret"><span data-i18n="m0238">Shared secret</span></label>
         <input id="secret" type="password" autocomplete="off" maxlength="1024">
-        <button type="submit">重新連線</button><button id="forget" type="button" class="subtle">清除</button>
-        <p class="hint">只保留在分頁記憶體。</p>
+        <button type="submit"><span data-i18n="m0239">Reconnect</span></button><button id="forget" type="button" class="subtle"><span data-i18n="m0240">Clear</span></button>
+        <p class="hint"><span data-i18n="m0241">Kept only in this browser tab&#x27;s memory.</span></p>
       </form>
     </details>
   </aside>
   <main>
-    <header class="page-heading"><div><h1>一起聽音樂</h1></div>
+    <header class="page-heading"><div><h1><span data-i18n="m0224">Listen together</span></h1></div>
       <div id="user-profile" class="user-profile" hidden><img id="user-avatar" alt="" referrerpolicy="no-referrer" hidden>
-        <span id="user-name"></span><details class="account-actions"><summary>帳號</summary><div><button id="logout" type="button" class="subtle">登出</button><button id="logout-all" type="button" class="subtle">登出所有裝置</button></div></details></div></header>
+        <span id="user-name"></span><details class="account-actions"><summary><span data-i18n="m0242">Account</span></summary><div><button id="logout" type="button" class="subtle"><span data-i18n="m0243">Sign out</span></button><button id="logout-all" type="button" class="subtle"><span data-i18n="m0244">Sign out on all devices</span></button></div></details></div></header>
     <p id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true"></p>
     <div id="play-view">
     <section class="card request" aria-labelledby="request-heading">
-      <h2 id="request-heading">下一首，想聽什麼？</h2>
+      <h2 id="request-heading"><span data-i18n="m0245">What would you like to hear next?</span></h2>
       <form id="play-form">
-        <label class="sr-only" for="query">歌曲連結或搜尋關鍵字</label>
-        <div class="input-row"><input id="query" type="text" maxlength="2000" placeholder="貼上歌曲／播放清單連結，或輸入歌名" required>
-          <button id="enqueue" class="primary" type="submit" disabled>查詢</button></div>
-        <div class="request-mode"><label for="request-action">查詢用途</label><select id="request-action"><option value="play">加入佇列</option><option value="playnext">下一首播放（單曲）</option></select></div>
+        <label class="sr-only" for="query"><span data-i18n="m0246">Song URL or search terms</span></label>
+        <div class="input-row"><input id="query" type="text" maxlength="2000" placeholder="Paste a track / playlist URL or enter a song name" required data-i18n-placeholder="m0247">
+          <button id="enqueue" class="primary" type="submit" disabled><span data-i18n="m0248">Search</span></button></div>
+        <div class="request-mode"><label for="request-action"><span data-i18n="m0249">Add as</span></label><select id="request-action"><option value="play" data-i18n="m0090">Add to queue</option><option value="playnext" data-i18n="m0250">Play next (single track)</option></select></div>
       </form>
-      <section id="preview-panel" hidden aria-label="點歌預覽">
-        <div class="section-top"><h3>確認你的選擇</h3><button id="preview-close" class="subtle" type="button">清除預覽</button></div>
+      <section id="preview-panel" hidden aria-label="Request preview" data-i18n-aria-label="m0251">
+        <div class="section-top"><h3><span data-i18n="m0252">Review your selection</span></h3><button id="preview-close" class="subtle" type="button"><span data-i18n="m0253">Clear preview</span></button></div>
         <div id="preview-results"></div>
       </section>
     </section>
     <section class="card queue" aria-labelledby="queue-heading">
-      <div class="section-top"><div><h2 id="queue-heading">接下來 <span id="queue-count">0</span> 首・<span id="queue-total">共 0 小時 0 分</span></h2></div>
-        <div class="queue-tools"><label for="queue-search">搜尋佇列<input id="queue-search" type="search" maxlength="200" placeholder="歌名或點播者"></label>
-        <button id="shuffle" class="subtle" type="button" disabled>⇄ 洗牌</button></div></div>
-      <div class="queue-filters" role="group" aria-label="篩選點播者"><button id="queue-all" type="button" aria-pressed="true">全部</button><button id="queue-mine" type="button" aria-pressed="false">我的點歌</button></div>
+      <div class="section-top"><div><h2 id="queue-heading"><span data-i18n="m0254">Up next </span><span id="queue-count">0</span><span data-i18n="m0255"> tracks · </span><span id="queue-total"><span data-i18n="m0256">Total 0 hr 0 min</span></span></h2></div>
+        <div class="queue-tools"><label for="queue-search"><span data-i18n="m0257">Search queue</span><input id="queue-search" type="search" maxlength="200" placeholder="Track or requester" data-i18n-placeholder="m0258"></label>
+        <button id="shuffle" class="subtle" type="button" disabled><span data-i18n="m0259">⇄ Shuffle</span></button></div></div>
+      <div class="queue-filters" role="group" aria-label="Filter requests" data-i18n-aria-label="m0260"><button id="queue-all" type="button" aria-pressed="true"><span data-i18n="m0261">All</span></button><button id="queue-mine" type="button" aria-pressed="false"><span data-i18n="m0170">My requests</span></button></div>
       <p id="queue-match-count" class="hint" role="status" aria-live="polite"></p>
       <p id="queue-timing-note" class="hint"></p>
-      <p id="drag-help" class="sr-only">拖曳 ⋮⋮ 調整順序；手機請長按把手。也可用 ↑ ↓ 按鈕，按 Esc 取消拖曳。</p>
-      <div class="queue-head" aria-hidden="true"><span>＃</span><span>歌曲</span><span>長度</span></div>
+      <p id="drag-help" class="sr-only"><span data-i18n="m0173">Drag ⋮⋮ to reorder; hold the handle on mobile. You can also use ↑ ↓. Press Esc to cancel.</span></p>
+      <div class="queue-head" aria-hidden="true"><span>＃</span><span><span data-i18n="m0262">Track</span></span><span><span data-i18n="m0263">Duration</span></span></div>
       <ol id="queue" aria-describedby="drag-help"></ol>
       <section id="queue-recommendations" aria-labelledby="recommendation-heading" hidden>
-        <h3 id="recommendation-heading">最近播過</h3><ol id="recommendation-list" class="history-list"></ol>
+        <h3 id="recommendation-heading"><span data-i18n="m0264">Recently played</span></h3><ol id="recommendation-list" class="history-list"></ol>
       </section>
-      <p id="queue-empty" class="empty">下一首的空位，留給你。<br><span>查詢上方歌曲，確認後加入佇列。</span></p>
+      <p id="queue-empty" class="empty"><span data-i18n="m0265">The next song is up to you.</span><br><span><span data-i18n="m0266">Search above, review the preview and add it to the queue.</span></span></p>
     </section>
     <section class="card listeners" aria-labelledby="listeners-heading">
-      <h2 id="listeners-heading">誰在聽</h2>
-      <p id="listeners-status" class="hint" role="status">機器人目前不在語音頻道</p>
+      <h2 id="listeners-heading"><span data-i18n="m0267">Who&#x27;s listening</span></h2>
+      <p id="listeners-status" class="hint" role="status"><span data-i18n="m0178">The bot is not in a voice channel</span></p>
       <div id="listeners-list" class="listeners-list"></div>
     </section>
     <section class="card activity" aria-labelledby="activity-heading">
-      <h2 id="activity-heading">操作紀錄</h2><p id="activity-status" class="hint">尚無操作紀錄。</p>
+      <h2 id="activity-heading"><span data-i18n="m0268">Activity</span></h2><p id="activity-status" class="hint"><span data-i18n="m0181">No activity yet.</span></p>
       <ol id="activity-list" class="activity-list"></ol>
     </section>
     <section class="card history" aria-labelledby="history-heading">
-      <div class="section-top"><div><h2 id="history-heading">最近播過</h2></div><button id="history-refresh" class="subtle" type="button" disabled>重新整理</button></div>
-      <p class="hint">這個伺服器最近播放的 50 首歌曲。</p>
-      <p id="history-status" class="hint" role="status">尚無播放紀錄。</p>
+      <div class="section-top"><div><h2 id="history-heading"><span data-i18n="m0264">Recently played</span></h2></div><button id="history-refresh" class="subtle" type="button" disabled><span data-i18n="m0269">Refresh</span></button></div>
+      <p class="hint"><span data-i18n="m0270">The last 50 tracks played in this server.</span></p>
+      <p id="history-status" class="hint" role="status"><span data-i18n="m0133">No listening history yet.</span></p>
       <ol id="history-list" class="history-list"></ol>
     </section>
     </div>
 <section id="popular-panel" class="card" hidden aria-labelledby="popular-heading">
-<div class="section-top"><h2 id="popular-heading">熱門點播</h2><button id="popular-refresh" type="button">重新整理</button></div>
-<div class="request-mode"><label for="popular-period">統計期間</label><select id="popular-period"><option value="7">近 7 天</option><option value="30">近 30 天</option><option value="all">全部（180 天內）</option></select></div>
-<p id="popular-status" class="hint" role="status" aria-live="polite">選擇伺服器後查看熱門點播。</p><ol id="popular-list" class="history-list popular-list"></ol>
+<div class="section-top"><h2 id="popular-heading"><span data-i18n="m0233">Popular</span></h2><button id="popular-refresh" type="button"><span data-i18n="m0269">Refresh</span></button></div>
+<div class="request-mode"><label for="popular-period"><span data-i18n="m0271">Period</span></label><select id="popular-period"><option value="7" data-i18n="m0272">Last 7 days</option><option value="30" data-i18n="m0273">Last 30 days</option><option value="all" data-i18n="m0274">All (within 180 days)</option></select></div>
+<p id="popular-status" class="hint" role="status" aria-live="polite"><span data-i18n="m0216">Select a server to view popular requests.</span></p><ol id="popular-list" class="history-list popular-list"></ol>
 </section>
 <section id="library-panel" class="card" hidden aria-labelledby="library-heading">
-<div class="section-top"><h2 id="library-heading">我的歌單</h2><button id="library-refresh" type="button">重新整理</button></div>
+<div class="section-top"><h2 id="library-heading"><span data-i18n="m0232">My playlists</span></h2><button id="library-refresh" type="button"><span data-i18n="m0269">Refresh</span></button></div>
 <div class="library-workspace">
-<aside class="library-sidebar" aria-label="個人歌單列表">
-<details class="library-create-menu"><summary>新增歌單</summary>
-<form id="library-create"><label for="library-new-name">歌單名稱</label><input id="library-new-name" maxlength="60" required><button id="library-create-button" type="submit">建立</button></form></details>
+<aside class="library-sidebar" aria-label="Your playlists" data-i18n-aria-label="m0275">
+<details class="library-create-menu"><summary><span data-i18n="m0276">New playlist</span></summary>
+<form id="library-create"><label for="library-new-name"><span data-i18n="m0277">Playlist name</span></label><input id="library-new-name" maxlength="60" required><button id="library-create-button" type="submit"><span data-i18n="m0278">Create</span></button></form></details>
 <div id="library-import-hint"></div><ul id="library-playlists" class="library-playlists"></ul>
 </aside>
 <section id="library-detail" class="library-detail" aria-labelledby="library-detail-heading">
-<button id="library-back" type="button" class="subtle">返回歌單列表</button>
+<button id="library-back" type="button" class="subtle"><span data-i18n="m0279">Back to playlists</span></button>
 <h3 id="library-detail-heading" tabindex="-1"></h3><p id="library-meta" class="hint"></p>
 <div class="library-toolbar">
-<button id="library-play-all" class="primary" type="button">播放全部</button>
-<button id="library-play-selected" type="button" disabled>加入勾選歌曲</button>
-<details id="library-actions" class="library-actions"><summary aria-label="歌單更多動作">⋯</summary>
-<div class="library-menu"><button id="library-enqueue-all" type="button">整份加入佇列</button>
-<div id="library-rename-form"><label for="library-name">名稱</label><input id="library-name" maxlength="60"><button id="library-rename" type="button">改名</button></div>
-<div id="library-sync-slot"></div><button id="library-delete" class="danger" type="button">刪除歌單</button></div>
+<button id="library-play-all" class="primary" type="button"><span data-i18n="m0280">Play all</span></button>
+<button id="library-play-selected" type="button" disabled><span data-i18n="m0281">Add selected tracks</span></button>
+<details id="library-actions" class="library-actions"><summary aria-label="More playlist actions" data-i18n-aria-label="m0282">⋯</summary>
+<div class="library-menu"><button id="library-enqueue-all" type="button"><span data-i18n="m0283">Queue entire playlist</span></button>
+<div id="library-rename-form"><label for="library-name"><span data-i18n="m0284">Name</span></label><input id="library-name" maxlength="60"><button id="library-rename" type="button"><span data-i18n="m0285">Rename</span></button></div>
+<div id="library-sync-slot"></div><button id="library-delete" class="danger" type="button"><span data-i18n="m0286">Delete playlist</span></button></div>
 </details></div>
-<p id="library-empty" class="hint">歌單目前沒有歌曲。可從搜尋結果或播放器加入。</p><ol id="library-list" class="library-list"></ol>
+<p id="library-empty" class="hint"><span data-i18n="m0287">This playlist is empty. Add songs from search results or the player.</span></p><ol id="library-list" class="library-list"></ol>
 </section></div>
 </section>
 <dialog id="shortcuts-dialog" aria-labelledby="shortcuts-heading">
-  <div class="section-top"><h2 id="shortcuts-heading">鍵盤快捷鍵</h2><button id="shortcuts-close" type="button" aria-label="關閉快捷鍵說明">關閉 ×</button></div>
-  <dl class="shortcut-list"><dt><kbd>空白鍵</kbd></dt><dd>暫停／繼續</dd><dt><kbd>N</kbd></dt><dd>跳過／投票跳過</dd><dt><kbd>←</kbd>／<kbd>→</kbd></dt><dd>倒退／快轉 10 秒</dd><dt><kbd>/</kbd></dt><dd>聚焦點歌輸入框</dd><dt><kbd>?</kbd></dt><dd>顯示快捷鍵說明</dd><dt><kbd>Esc</kbd></dt><dd>關閉說明</dd></dl>
-  <p class="hint">輸入文字、操作選單或開啟對話框時停用；須有操作權限。</p>
+  <div class="section-top"><h2 id="shortcuts-heading"><span data-i18n="m0288">Keyboard shortcuts</span></h2><button id="shortcuts-close" type="button" aria-label="Close keyboard shortcuts" data-i18n-aria-label="m0289"><span data-i18n="m0290">Close ×</span></button></div>
+  <dl class="shortcut-list"><dt><kbd><span data-i18n="m0291">Space</span></kbd></dt><dd><span data-i18n="m0292">Pause / resume</span></dd><dt><kbd>N</kbd></dt><dd><span data-i18n="m0293">Skip / vote to skip</span></dd><dt><kbd>←</kbd>／<kbd>→</kbd></dt><dd><span data-i18n="m0294">Back / forward 10 seconds</span></dd><dt><kbd>/</kbd></dt><dd><span data-i18n="m0295">Focus the request box</span></dd><dt><kbd>?</kbd></dt><dd><span data-i18n="m0296">Show keyboard shortcuts</span></dd><dt><kbd>Esc</kbd></dt><dd><span data-i18n="m0297">Close help</span></dd></dl>
+  <p class="hint"><span data-i18n="m0298">Disabled while typing, using menus or viewing a dialog. Requires permission.</span></p>
 </dialog>
-<dialog id="library-save-dialog"><h2>加到歌單</h2><label for="playlist-picker">選擇歌單</label><select id="playlist-picker"></select><div class="selection-tools"><button id="library-save-confirm" type="button">加入歌單</button><button id="library-save-cancel" type="button">取消</button></div></dialog>
+<dialog id="library-save-dialog"><h2><span data-i18n="m0299">Add to playlist</span></h2><label for="playlist-picker"><span data-i18n="m0300">Choose playlist</span></label><select id="playlist-picker"></select><div class="selection-tools"><button id="library-save-confirm" type="button"><span data-i18n="m0301">Add to playlist</span></button><button id="library-save-cancel" type="button"><span data-i18n="m0302">Cancel</span></button></div></dialog>
 <section id="admin-panel" class="card" hidden aria-labelledby="admin-heading">
-<h2 id="admin-heading">管理</h2>
+<h2 id="admin-heading"><span data-i18n="m0234">Admin</span></h2>
 <section aria-labelledby="maintenance-heading">
-<div class="section-top"><h3 id="maintenance-heading">維護狀態</h3><button id="maintenance-refresh" type="button">重新整理</button></div>
+<div class="section-top"><h3 id="maintenance-heading"><span data-i18n="m0303">Maintenance</span></h3><button id="maintenance-refresh" type="button"><span data-i18n="m0269">Refresh</span></button></div>
 <p id="maintenance-status" role="status" aria-live="polite"></p>
 <dl id="maintenance-details" class="maintenance-details"></dl>
 </section>
-<form id="admin-lyrics-form" class="selection-tools"><label for="admin-lyrics-enabled">伺服器歌詞功能</label><select id="admin-lyrics-enabled"><option value="true">允許（每人預設關閉）</option><option value="false">停用</option></select><button id="admin-lyrics-save" type="submit">儲存歌詞設定</button><p id="admin-lyrics-status" class="hint"></p></form>
+<form id="admin-lyrics-form" class="selection-tools"><label for="admin-lyrics-enabled"><span data-i18n="m0304">Server lyrics</span></label><select id="admin-lyrics-enabled"><option value="true" data-i18n="m0305">Allow (off by default for everyone)</option><option value="false" data-i18n="m0306">Disable</option></select><button id="admin-lyrics-save" type="submit"><span data-i18n="m0307">Save lyrics settings</span></button><p id="admin-lyrics-status" class="hint"></p></form>
 <form id="empty-queue-form" class="selection-tools">
-<label for="empty-queue-mode">佇列空時</label>
-<select id="empty-queue-mode"><option value="autoplaylist">自動播放清單</option><option value="radio">電台模式</option><option value="off">不播放</option></select>
-<label for="radio-min-seconds">電台最短秒數</label><input id="radio-min-seconds" type="number" min="0" max="31536000" step="1" value="0">
-<label for="radio-max-seconds">電台最長秒數（0 不限）</label><input id="radio-max-seconds" type="number" min="0" max="31536000" step="1" value="0">
-<button id="empty-queue-save" type="submit">儲存</button>
+<label for="empty-queue-mode"><span data-i18n="m0308">When the queue is empty</span></label>
+<select id="empty-queue-mode"><option value="autoplaylist" data-i18n="m0309">Autoplaylist</option><option value="radio" data-i18n="m0310">Radio</option><option value="off" data-i18n="m0311">Stop</option></select>
+<label for="radio-min-seconds"><span data-i18n="m0312">Radio minimum duration (seconds)</span></label><input id="radio-min-seconds" type="number" min="0" max="31536000" step="1" value="0">
+<label for="radio-max-seconds"><span data-i18n="m0313">Radio maximum duration (0 = unlimited)</span></label><input id="radio-max-seconds" type="number" min="0" max="31536000" step="1" value="0">
+<button id="empty-queue-save" type="submit"><span data-i18n="m0314">Save</span></button>
 <p id="radio-seeds" class="hint"></p>
 <p id="empty-queue-status" role="status" aria-live="polite"></p>
-</form><h3>自動播放清單</h3>
-<form id="admin-apl-search" class="input-row"><label for="admin-apl-query">搜尋網址</label><input id="admin-apl-query" type="search" maxlength="100"><button id="admin-apl-search-button" type="submit">搜尋</button></form>
+</form><h3><span data-i18n="m0309">Autoplaylist</span></h3>
+<form id="admin-apl-search" class="input-row"><label for="admin-apl-query"><span data-i18n="m0315">Search URLs</span></label><input id="admin-apl-query" type="search" maxlength="100"><button id="admin-apl-search-button" type="submit"><span data-i18n="m0316">Search</span></button></form>
 <p id="admin-apl-count" role="status"></p><ol id="admin-apl-list" class="admin-apl-list"></ol>
-<div class="selection-tools"><button id="admin-apl-prev" type="button">上一頁</button><button id="admin-apl-next" type="button">下一頁</button></div>
+<div class="selection-tools"><button id="admin-apl-prev" type="button"><span data-i18n="m0317">Previous</span></button><button id="admin-apl-next" type="button"><span data-i18n="m0318">Next</span></button></div>
 
 <div id="admin-permissions"></div></section>
-<dialog id="permission-confirm-dialog"><h2>確認修改權限</h2><p id="permission-confirm-text"></p><div class="selection-tools"><button id="permission-confirm" type="button">確認修改</button><button id="permission-cancel" type="button">取消</button></div></dialog>
-    <footer id="identity-note">即時更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道</footer>
+<dialog id="permission-confirm-dialog"><h2><span data-i18n="m0319">Confirm permission change</span></h2><p id="permission-confirm-text"></p><div class="selection-tools"><button id="permission-confirm" type="button"><span data-i18n="m0320">Confirm change</span></button><button id="permission-cancel" type="button"><span data-i18n="m0302">Cancel</span></button></div></dialog>
+    <footer id="identity-note"><span data-i18n="m0047">Live updates · Using OwnerID permissions · Join a Discord voice channel before adding songs</span></footer>
   </main>
 <section id="lyrics-panel" class="lyrics-panel" aria-labelledby="lyrics-heading" hidden>
-<div class="section-top"><h2 id="lyrics-heading">歌詞</h2><button id="lyrics-close" type="button" aria-label="關閉歌詞">關閉</button></div>
+<div class="section-top"><h2 id="lyrics-heading"><span data-i18n="m0141">Lyrics</span></h2><button id="lyrics-close" type="button" aria-label="Close lyrics" data-i18n-aria-label="m0321"><span data-i18n="m0118">Off</span></button></div>
 <p id="lyrics-status" class="hint" role="status" aria-live="polite"></p>
 <div id="lyrics-timing-controls" class="lyrics-timing-controls" hidden>
-<button id="lyrics-minus" type="button">−0.5 秒</button><button id="lyrics-plus" type="button">+0.5 秒</button>
-<button id="lyrics-sync" type="button">對時</button><button id="lyrics-reset" type="button">重設</button></div>
+<button id="lyrics-minus" type="button"><span data-i18n="m0322">−0.5 s</span></button><button id="lyrics-plus" type="button"><span data-i18n="m0323">+0.5 s</span></button>
+<button id="lyrics-sync" type="button"><span data-i18n="m0142">Sync</span></button><button id="lyrics-reset" type="button"><span data-i18n="m0324">Reset</span></button></div>
 <p id="lyrics-offset" class="hint"></p><p id="lyrics-sync-prompt" class="hint" hidden></p>
-<div id="lyrics-content" class="lyrics-content" tabindex="0" aria-label="歌詞內容"></div>
-<form id="lyrics-search-form" class="lyrics-search" hidden><label for="lyrics-query">歌名與演出者</label><input id="lyrics-query" maxlength="200"><button id="lyrics-search">搜尋歌詞</button></form>
+<div id="lyrics-content" class="lyrics-content" tabindex="0" aria-label="Lyrics content" data-i18n-aria-label="m0325"></div>
+<form id="lyrics-search-form" class="lyrics-search" hidden><label for="lyrics-query"><span data-i18n="m0326">Track and artist</span></label><input id="lyrics-query" maxlength="200"><button id="lyrics-search"><span data-i18n="m0327">Search lyrics</span></button></form>
 </section>
-<section id="playback-bar" class="playback-bar" aria-label="播放控制">
+<section id="playback-bar" class="playback-bar" aria-label="Playback controls" data-i18n-aria-label="m0328">
 <div class="bar-track"><div class="art mini-art"><span aria-hidden="true">♫</span><img id="bar-cover" alt="" hidden></div>
-<div class="bar-copy"><button id="bar-title" type="button" aria-expanded="false" aria-controls="song-choices" aria-haspopup="true">目前沒有播放</button><small id="bar-status">選一首喜歡的歌</small>
-<div id="song-choices" class="song-choices" role="group" aria-label="開啟歌曲" hidden>
-<a id="source-link" target="_blank" rel="noopener noreferrer">在 YouTube 開啟</a>
-<a id="song-spotify" target="_blank" rel="noopener noreferrer">在 Spotify 開啟</a></div></div>
-<button id="favorite" class="player-control" type="button" aria-label="收藏這首歌" aria-pressed="false">♡</button></div>
+<div class="bar-copy"><button id="bar-title" type="button" aria-expanded="false" aria-controls="song-choices" aria-haspopup="true"><span data-i18n="m0110">Nothing playing</span></button><small id="bar-status"><span data-i18n="m0113">Pick a song</span></small>
+<div id="song-choices" class="song-choices" role="group" aria-label="Open track" hidden data-i18n-aria-label="m0329">
+<a id="source-link" target="_blank" rel="noopener noreferrer"><span data-i18n="m0106">Open on YouTube</span></a>
+<a id="song-spotify" target="_blank" rel="noopener noreferrer"><span data-i18n="m0330">Open on Spotify</span></a></div></div>
+<button id="favorite" class="player-control" type="button" aria-label="Save this track" aria-pressed="false" data-i18n-aria-label="m0201">♡</button></div>
 <div class="bar-center"><div id="player-transport" class="transport">
-<button id="toggle" class="primary player-control" aria-label="播放或暫停" disabled>繼續</button><button id="skip" class="player-control" aria-label="跳過目前歌曲" disabled>跳過</button>
-<button id="repeat" class="repeat-control player-control" aria-label="重複：關閉" aria-pressed="false" disabled>重複</button></div>
-<div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1" step="1" value="0" aria-label="底部播放列：跳到指定時間" disabled><span id="duration">0:00</span></div></div>
-<p class="sr-only seek-hint">拖動或按左右鍵，放開後跳轉。</p><div class="bar-right"><button id="lyrics-toggle" class="player-control" type="button" aria-expanded="false" aria-controls="lyrics-panel" disabled>歌詞</button>
-<div class="volume-row"><label for="volume" class="sr-only">音量</label><input id="volume" type="range" min="1" max="100" value="15" aria-label="音量" disabled><output id="volume-label" for="volume">15%</output></div></div>
+<button id="toggle" class="primary player-control" aria-label="Play or pause" disabled data-i18n-aria-label="m0331"><span data-i18n="m0109">Resume</span></button><button id="skip" class="player-control" aria-label="Skip the current track" disabled data-i18n-aria-label="m0332"><span data-i18n="m0333">Skip</span></button>
+<button id="repeat" class="repeat-control player-control" aria-label="Repeat: off" aria-pressed="false" disabled data-i18n-aria-label="m0334"><span data-i18n="m0114">Repeat</span></button></div>
+<div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1" step="1" value="0" aria-label="Player seek position" disabled data-i18n-aria-label="m0335"><span id="duration">0:00</span></div></div>
+<p class="sr-only seek-hint"><span data-i18n="m0336">Drag or use the arrow keys. Release to seek.</span></p><div class="bar-right"><button id="lyrics-toggle" class="player-control" type="button" aria-expanded="false" aria-controls="lyrics-panel" disabled><span data-i18n="m0141">Lyrics</span></button>
+<div class="volume-row"><label for="volume" class="sr-only"><span data-i18n="m0337">Volume</span></label><input id="volume" type="range" min="1" max="100" value="15" aria-label="Volume" disabled data-i18n-aria-label="m0337"><output id="volume-label" for="volume">15%</output></div></div>
 </section>
   </div>
 </body>

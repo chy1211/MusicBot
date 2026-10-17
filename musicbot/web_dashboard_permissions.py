@@ -1,5 +1,6 @@
 """Surgical permissions.ini editing. Never serializes live configuration."""
 from __future__ import annotations
+from .web_dashboard_i18n import message as _web_text
 import asyncio
 import os
 import re
@@ -37,14 +38,14 @@ def replace_value(raw, group, field, value):
     bounds = sections(text)
     matches = [j for j, (_, label) in enumerate(bounds) if label == group]
     if len(matches) != 1:
-        fail(400, "只能修改檔案中既有的權限群組。")
+        fail(400, _web_text('m0558'))
     j = matches[0]
     start, end = bounds[j][0] + 1, bounds[j+1][0] if j+1 < len(bounds) else len(lines)
     option = re.compile(r"^([ \t]*" + re.escape(field) + r"[ \t]*[=:][ \t]*)(.*?)([ \t]*(?:[;#].*)?)(\r?\n)?$")
     found = [(i, m) for i in range(start, end) if (m := option.match(lines[i]))]
     rendered = ("yes" if value else "no") if type(value) is bool else str(value)
     if len(found) > 1:
-        fail(400, "目標欄位重複，請先檢查權限檔案。")
+        fail(400, _web_text('m0559'))
     if found:
         i, m = found[0]
         lines[i] = m[1] + rendered + m[3] + (m[4] or "")
@@ -71,10 +72,10 @@ class DashboardPermissions:
             for key, attr in READ_FIELDS.items():
                 value = getattr(group, attr)
                 values[key] = sorted(value) if isinstance(value, set) else value
-            values["GrantToRoles"] = [getattr(role, "name", "未知角色") if role else "未知角色"
+            values["GrantToRoles"] = [getattr(role, "name", _web_text('m0560')) if role else _web_text('m0560')
                                      for rid in sorted(group.granted_to_roles)
                                      for role in [getattr(guild, "get_role", lambda _: None)(rid)]]
-            values["UserList"] = [str(getattr(member, "display_name", None) or getattr(member, "name", "未知成員")) if member else "未知成員"
+            values["UserList"] = [str(getattr(member, "display_name", None) or getattr(member, "name", _web_text('m0561'))) if member else _web_text('m0561')
                                   for uid in sorted(group.user_list) for member in [guild.get_member(uid)]]
             result.append({"name": label, "values": values,
                            "editable": list(FIELDS) if label in existing else []})
@@ -92,22 +93,22 @@ class DashboardPermissions:
                 return web.json_response(self.permissions_view(guild))
             data = await self.payload(request)
             if set(data) != {"group", "field", "value", "old_value"}:
-                fail(400, "修改權限須提供群組、欄位、舊值與新值。")
+                fail(400, _web_text('m0562'))
             group, field, value = data["group"], data["field"], data["value"]
             if not isinstance(group, str) or not isinstance(field, str) or field not in FIELDS:
-                fail(400, "只能修改 MaxSongs、MaxSongLength、MaxPlaylistLength、AllowPlaylists。")
+                fail(400, _web_text('m0563'))
             attr, limit = FIELDS[field]
             if field == "AllowPlaylists":
                 if type(value) is not bool:
-                    fail(400, "AllowPlaylists 必須是是／否。")
+                    fail(400, _web_text('m0564'))
             elif type(value) is not int or not 0 <= value <= limit:
-                fail(400, f"{field} 必須是 0 至 {limit} 的整數。")
+                fail(400, _web_text('m0565', p0=field, p1=limit))
             original_permissions = self.bot.permissions
             if group not in original_permissions.groups:
-                fail(400, "只能修改既有的權限群組。")
+                fail(400, _web_text('m0566'))
             old = getattr(original_permissions.groups[group], attr)
             if type(data["old_value"]) is not type(old) or data["old_value"] != old:
-                fail(409, "權限值已更新，請重新整理並再次確認。")
+                fail(409, _web_text('m0567'))
             path = Path(self.bot._perms_file)
             raw = path.read_bytes()
             updated = replace_value(raw, group, field, value)
@@ -136,7 +137,7 @@ class DashboardPermissions:
                 self.require_owner(request)
                 # Do not overwrite a simultaneous native/external config edit.
                 if path.read_bytes() != raw or self.bot.permissions is not original_permissions:
-                    fail(409, "權限檔案或記憶體已更新，請重新整理後再試。")
+                    fail(409, _web_text('m0568'))
                 phase = "reload"
                 os.replace(temp, path)
                 replaced = True
@@ -160,18 +161,18 @@ class DashboardPermissions:
                         atomic_write(path, backup.read_bytes())
                         self.bot.permissions = original_permissions
                     except Exception:
-                        fail(500, "權限還原失敗，請由管理者檢查備份後復原。")
+                        fail(500, _web_text('m0569'))
                 if isinstance(exc, asyncio.CancelledError):
                     raise
                 from .web_dashboard import APIError
                 if isinstance(exc, APIError):
                     raise
                 fail(400 if phase == "parse" else 500,
-                     "權限檔案驗證失敗，原檔未變動。" if phase == "parse" else "權限重新載入失敗，已還原原檔與記憶體。")
+                     _web_text('m0570') if phase == "parse" else _web_text('m0571'))
             finally:
                 if temp and os.path.exists(temp):
                     os.unlink(temp)
-            render = lambda v: ("是" if v else "否") if type(v) is bool else str(v)
+            render = lambda v: (_web_text('m0210') if v else _web_text('m0211')) if type(v) is bool else str(v)
             self.admin_records.appendleft({"time": time.time(),
-                "detail": f"管理：修改權限 {group} {field} {render(old)}→{render(value)}"})
-            return web.json_response(dict(self.permissions_view(guild), message="權限已更新並重新載入。"))
+                "detail": _web_text('m0572', p0=group, p1=field, p2=render(old), p3=render(value))})
+            return web.json_response(dict(self.permissions_view(guild), message=_web_text('m0573')))

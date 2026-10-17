@@ -2487,3 +2487,27 @@ msgstr ""
 #: musicbot/config.py:993
 msgid "The number of threads MusicBot may use for yt-dlp calls.\nMost useful for multi-server bot's with high traffic.\nThese threads are spawned as-needed, not immediately.\nNOTE: Each thread may spawn up to YtdlpConcurrentFrags child-threads."
 msgstr ""
+
+msgid "%(name)s requested music via the web dashboard"
+msgstr "%(name)s 透過網頁控制台點歌"
+
+msgid "%(name)s used the web dashboard"
+msgstr "%(name)s 透過網頁控制台操作"
+
+msgid "Seek: %(seconds)s seconds"
+msgstr "跳轉：%(seconds)s 秒"
+
+msgid "Removed %(title)s"
+msgstr "已移除〈%(title)s〉"
+
+msgid "Moved track %(source)s to position %(target)s."
+msgstr "已將第 %(source)s 首移到第 %(target)s 首。"
+
+msgid "Queue shuffled."
+msgstr "已將佇列洗牌。"
+
+msgid "Restored %(title)s"
+msgstr "已復原〈%(title)s〉。"
+
+msgid "Added %(added)s tracks; skipped %(skipped)s."
+msgstr "已加入 %(added)s 首，略過 %(skipped)s 首。"

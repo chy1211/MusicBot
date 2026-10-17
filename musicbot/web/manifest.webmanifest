@@ -1,7 +1,7 @@
 {
-  "name": "音樂控制台",
-  "short_name": "音樂控制台",
-  "lang": "zh-Hant-TW",
+  "name": "Music dashboard",
+  "short_name": "Music dashboard",
+  "lang": "en",
   "id": "/",
   "start_url": "/",
   "scope": "/",

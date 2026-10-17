@@ -1,3 +1,4 @@
+const {t,dashboardLocale,dashboardTimeZone,dashboardI18nReady}=require("./dashboard_i18n_fixture.cjs");
 "use strict";
 const {test}=require("node:test"), assert=require("node:assert/strict");
 const fs=require("node:fs"),vm=require("node:vm"),path=require("node:path");
@@ -12,7 +13,7 @@ class El {
 function setup(api) {
  const nodes=new Map(),requests=[],previews=[],views=[],saved=[];
  const node=id=>{if(!nodes.has(id))nodes.set(id,new El());return nodes.get(id);};
- const ctx=vm.createContext({generation:1,selected:"1",connected:true,$:node,
+ const ctx=vm.createContext({t,dashboardLocale,dashboardTimeZone,dashboardI18nReady,generation:1,selected:"1",connected:true,$:node,
  document:{createElement:()=>new El()},
  songLinkURL:s=>s,drag:null,suppressSongLinksUntil:0,api:async url=>{requests.push(url);return api?api(url):{tracks:[{title:"<img onerror=x>",url:"https://example.test/song",duration:83,count:12}]};},
  duration:s=>"1:23",safeURL:s=>s,libraryView:p=>views.push(p),

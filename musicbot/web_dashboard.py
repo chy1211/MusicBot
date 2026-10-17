@@ -1,5 +1,6 @@
 """Optional HTTP dashboard with backwards-compatible owner or Discord identity."""
 from __future__ import annotations
+from .web_dashboard_i18n import message as _web_text, localized_request, DASHBOARD_KEY, catalog, LANGUAGE
 
 import asyncio
 import configparser
@@ -59,6 +60,9 @@ class DashboardConfig:
     session_secret: str = field(default="", repr=False)
     session_hours: float = 720
 
+    default_language: str = "en"
+    time_zone: str = "UTC"
+
     @classmethod
     def load(cls, path: Path) -> DashboardConfig:
         if not path.is_file():
@@ -75,6 +79,11 @@ class DashboardConfig:
         mode = parser.get("WebDashboard", "AuthMode", fallback="owner").strip().lower()
         if mode not in ("owner", "discord"):
             raise ValueError("Invalid dashboard AuthMode")
+        language = parser.get("WebDashboard", "DefaultLanguage", fallback="en").strip()
+        zone = parser.get("WebDashboard", "TimeZone", fallback="UTC").strip()
+        if language not in ("en", "zh-TW"): raise ValueError("Invalid DefaultLanguage")
+        from zoneinfo import ZoneInfo
+        ZoneInfo(zone)
         # Ignore Discord-only options in owner mode for backwards compatibility.
         options = {}
         if mode == "discord":
@@ -86,7 +95,7 @@ class DashboardConfig:
                 "session_hours": parser.getfloat("WebDashboard", "SessionHours", fallback=168),
             }
         return cls(True, host, port, parser.get(
-            "WebDashboard", "SharedSecret", fallback="").strip(), auth_mode=mode, **options)
+            "WebDashboard", "SharedSecret", fallback="").strip(), auth_mode=mode, default_language=language, time_zone=zone, **options)
 
 
 @dataclass
@@ -128,20 +137,20 @@ def public_url(value) -> str:
 
 def requester(entry, guild=None):
     if is_radio(entry):
-        return {"name": "電台", "avatar": ""}
+        return {"name": _web_text('m0338'), "avatar": ""}
     meta = getattr(entry, "meta", None) or {}
     author = (getattr(entry, "author", None) or getattr(entry, "member", None)
               or meta.get("author") or meta.get("member"))
     if author is None:
         # Restored entries can lose their author when the member left the guild.
-        return {"name": "點播者已離開或無法取得" if getattr(entry, "channel", None)
-                else "自動播放", "avatar": ""}
+        return {"name": _web_text('m0339') if getattr(entry, "channel", None)
+                else _web_text('m0045'), "avatar": ""}
     uid = getattr(author, "id", None)
     member = guild.get_member(uid) if guild is not None and uid is not None else None
     person = member or author
     return {"name": str(getattr(person, "display_name", None)
                         or getattr(person, "global_name", None)
-                        or getattr(person, "name", None) or "點播者已離開或無法取得")[:128],
+                        or getattr(person, "name", None) or _web_text('m0339'))[:128],
             "avatar": public_url(getattr(getattr(person, "display_avatar", None), "url", ""))}
 
 
@@ -164,25 +173,28 @@ def track(entry, guild=None, viewer=None) -> dict | None:
 def denial_text(message):
     """Dashboard-only Traditional Chinese fallbacks; upstream messages stay intact."""
     mappings = (
-        ("You do not have the permission to remove", "你只能刪除自己點播的歌曲；刪除他人的歌曲需要移除權限。"),
-        ("You have reached your enqueued song limit", "已達到可排入佇列的歌曲數量上限。"),
-        ("The playlist entries will exceed", "加入清單將超過可排入佇列的歌曲數量上限。"),
-        ("Queue limit reached", "已達到可排入佇列的歌曲數量上限。"),
-        ("Song duration exceeds limit", "歌曲超過你的歌曲長度限制。"),
-        ("You are not allowed to request playlists", "目前的權限不允許加入播放清單。"),
-        ("Playlist has too many entries", "播放清單超過首數限制。"),
-        ("Karaoke mode is enabled", "目前為卡拉 OK 模式，沒有點歌權限。"),
-        ("This command is not allowed", "你的權限群組不允許使用這個指令。"),
-        ("This command requires you to be in a Voice", "請先加入 Discord 語音頻道。"),
-        ("Invalid entry number", "歌曲位置已失效，請重新整理佇列。"),
-        ("You must be in the same", "請先加入機器人所在的語音頻道。"),
-        ("You cannot use this command", "目前沒有使用這個指令的權限。"),
+        ("You do not have the permission to remove", _web_text('m0340')),
+        ("You have reached your enqueued song limit", _web_text('m0341')),
+        ("The playlist entries will exceed", _web_text('m0342')),
+        ("Queue limit reached", _web_text('m0341')),
+        ("Song duration exceeds limit", _web_text('m0343')),
+        ("You are not allowed to request playlists", _web_text('m0344')),
+        ("Playlist has too many entries", _web_text('m0345')),
+        ("Karaoke mode is enabled", _web_text('m0346')),
+        ("This command is not allowed", _web_text('m0347')),
+        ("This command requires you to be in a Voice", _web_text('m0348')),
+        ("Invalid entry number", _web_text('m0349')),
+        ("You must be in the same", _web_text('m0350')),
+        ("You cannot use this command", _web_text('m0351')),
     )
     for prefix, translated in mappings:
         if message.startswith(prefix):
             return translated
     # Do not expose raw extractor details/URLs through a rejection.
-    return message if any("\u3400" <= c <= "\u9fff" for c in message) else "機器人無法完成操作，請確認權限、語音頻道與歌曲限制。"
+    for key, value in catalog("zh-TW").items():
+        if message == value:
+            return _web_text(key)
+    return _web_text('m0354')
 
 
 def revision(player) -> str:
@@ -222,7 +234,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.queue_arrivals = defaultdict(list)
         self.init_auth()
         self.app = web.Application(
-            middlewares=[self.guard], client_max_size=16 * 1024)
+            middlewares=[localized_request, self.guard], client_max_size=16 * 1024)
+        self.app[DASHBOARD_KEY] = self
         if self.discord_auth: self.app.cleanup_ctx.append(self.auth_lifecycle)
         self.init_events()
         self.init_library()
@@ -251,6 +264,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 log.warning("Dashboard popularity final flush failed")
         self.app.on_cleanup.append(cleanup_popularity)
 
+        self.app.router.add_get("/ui-config", self.ui_config)
+        self.app.router.add_get("/i18n/{locale}.json", self.language_catalog)
+        self.app.router.add_get("/i18n.js", self.asset)
         self.app.router.add_get("/", self.index)
         for path in ("manifest.webmanifest", "sw.js", "pwa.js", "offline.html",
                      "icon-192.png", "icon-512.png", "apple-touch-icon.png"):
@@ -294,7 +310,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             return
         user = self.session_user(request)
         if user is None:
-            raise APIError(401, "請先用 Discord 登入。")
+            raise APIError(401, _web_text('m0355'))
         request[USER_KEY] = user
 
     def request_action(self, request):
@@ -324,33 +340,33 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             if self.discord_auth and (api or request.path.startswith("/auth/")):
                 # Never infer trust from Forwarded headers supplied by a client.
                 if request.host.lower() != urlsplit(self.public_origin).netloc.lower():
-                    raise APIError(403, "公開網址不符，請從控制台網址操作。")
+                    raise APIError(403, _web_text('m0356'))
                 origin = request.headers.get("Origin")
                 if origin and origin != self.public_origin:
-                    raise APIError(403, "不允許跨網站操作。")
+                    raise APIError(403, _web_text('m0357'))
             if api or logout:
                 if events:
                     if request.headers.get("Sec-Fetch-Site") not in (None, "same-origin"):
-                        raise APIError(403, "不允許跨網站即時連線。")
+                        raise APIError(403, _web_text('m0358'))
                     # EventSource cannot send Bearer headers. Never put the secret
                     # in a URL or silently bypass legacy owner protection.
                     if not self.discord_auth and self.config.shared_secret:
-                        raise APIError(403, "共享密鑰模式請使用一般更新。")
+                        raise APIError(403, _web_text('m0359'))
                 elif request.headers.get("X-MusicBot-Dashboard") != "1":
-                    raise APIError(403, "請從音樂控制台操作。")
+                    raise APIError(403, _web_text('m0360'))
                 origin = request.headers.get("Origin")
                 if (not self.discord_auth and origin
                         and urlsplit(origin).netloc != request.host):
-                    raise APIError(403, "不允許跨網站操作。")
+                    raise APIError(403, _web_text('m0357'))
                 # Discord sessions replace the owner-mode optional shared secret.
                 if not self.discord_auth and self.config.shared_secret:
                     token = request.headers.get("Authorization", "")
                     expected = "Bearer " + self.config.shared_secret
                     if not hmac.compare_digest(token.encode(), expected.encode()):
-                        raise APIError(401, "共享密鑰錯誤或尚未填寫。")
+                        raise APIError(401, _web_text('m0361'))
                 if api and (not self.bot.is_ready() or not self.bot.init_ok
                             or self.bot.logout_called):
-                    raise APIError(503, "機器人尚未就緒，請稍後再試。")
+                    raise APIError(503, _web_text('m0362'))
             response = await handler(request)
         except APIError as exc:
             response = web.json_response({"error": str(exc), **exc.details}, status=exc.status)
@@ -358,14 +374,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             try:
                 guild_id = request.match_info.get("guild_id", "")
                 ssd = self.bot.server_data.get(int(guild_id)) if guild_id.isdigit() else None
-                message = denial_text(_D(exc.message, ssd) % exc.fmt_args)
+                message = denial_text(exc.message % exc.fmt_args)
                 response = web.json_response(
-                    {"error": "機器人拒絕操作：" + message},
+                    {"error": _web_text('m0363') + message},
                     status=403 if isinstance(exc, exceptions.PermissionsError) else 400)
             except Exception as formatting_error:
                 log.error("Dashboard error formatting failed (%s)", type(formatting_error).__name__)
                 response = web.json_response(
-                    {"error": "操作失敗，已記錄錯誤。"}, status=500)
+                    {"error": _web_text('m0364')}, status=500)
         except web.HTTPRedirection as exc:
             response = exc
         except web.HTTPException as exc:
@@ -376,12 +392,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 response = web.HTTPFound(location="/")
             else:
                 response = web.json_response(
-                    {"error": "請求內容、路徑或方法不正確。"}, status=exc.status)
+                    {"error": _web_text('m0365')}, status=exc.status)
         except Exception as exc:
             # Exceptions can contain URLs, authorization codes or provider tokens.
             log.error("Dashboard request failed (%s)", type(exc).__name__)
             response = web.json_response(
-                {"error": "操作失敗，已記錄錯誤；請重新整理後再試。"}, status=500)
+                {"error": _web_text('m0366')}, status=500)
         if api or logout or request.path in ("/auth/login", "/auth/callback"):
             uid = (request.get(USER_KEY) or {}).get("id")
             if uid is None and not self.discord_auth:
@@ -425,6 +441,15 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         return web.Response(text=(STATIC / "favicon.svg").read_text(encoding="utf-8"),
                             content_type="image/svg+xml")
 
+    async def ui_config(self, _request):
+        return web.json_response({"default_language": self.config.default_language,
+                                  "time_zone": self.config.time_zone})
+
+    async def language_catalog(self, request):
+        locale = request.match_info["locale"]
+        if locale not in ("en", "zh-TW"): raise web.HTTPNotFound()
+        return web.json_response(catalog(locale))
+
     async def index(self, _request):
         return web.Response(
             text=(STATIC / "index.html").read_text(encoding="utf-8"),
@@ -439,16 +464,16 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     def guild_owner(self, request):
         raw = request.match_info["guild_id"]
         if not raw.isdigit():
-            raise APIError(400, "伺服器編號不正確。")
+            raise APIError(400, _web_text('m0367'))
         guild = self.bot.get_guild(int(raw))
         if not guild or getattr(guild, "unavailable", False):
-            raise APIError(404, "找不到可用的伺服器。")
+            raise APIError(404, _web_text('m0368'))
         uid = int(request[USER_KEY]["id"]) if self.discord_auth else self.bot.config.owner_id
         owner = guild.get_member(uid)
         if owner is None:
             if self.discord_auth: self.revoke_session(request)
-            raise APIError(403, "你不是這個伺服器的成員。" if self.discord_auth
-                           else "OwnerID 本人不在這個伺服器。")
+            raise APIError(403, _web_text('m0369') if self.discord_auth
+                           else _web_text('m0370'))
         self.check_blocked(owner)
         now = time.monotonic()
         self.web_viewers = {uid: at for uid, at in self.web_viewers.items() if at > now-45}
@@ -460,7 +485,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             return
         blocklist = getattr(self.bot.config, "user_blocklist", None)
         if blocklist is not None and blocklist.is_blocked(member):
-            raise APIError(403, "你已被機器人的使用者封鎖清單擋下。")
+            raise APIError(403, _web_text('m0371'))
 
     async def guilds(self, request):
         uid = int(request[USER_KEY]["id"]) if self.discord_auth else self.bot.config.owner_id
@@ -537,7 +562,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             public["requester"] = requester(SimpleNamespace(
                 author=person, channel=True if item["requested"] else None), guild)
             if item.get("radio"):
-                public["requester"] = {"name": "電台", "avatar": ""}
+                public["requester"] = {"name": _web_text('m0338'), "avatar": ""}
             rows.append(public)
         source = "dashboard_memory"
         config = self.bot.config
@@ -552,10 +577,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 for url in reversed(list(playlist)[-50:]):
                     url = public_url(url)
                     if url and url not in known and len(rows) < 50:
-                        rows.append({"title": "較早播放的歌曲（僅保留來源連結）",
+                        rows.append({"title": _web_text('m0372'),
                                      "url": url, "thumbnail": "", "duration": 0,
                                      "played_at": None,
-                                     "requester": {"name": "點播者無法取得", "avatar": ""}})
+                                     "requester": {"name": _web_text('m0373'), "avatar": ""}})
                         known.add(url)
         elif getattr(config, "enable_queue_history_global", False):
             # Never disclose the global URL pool to a member of one guild.
@@ -572,7 +597,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             if stamps and stamps[-1] > now - 60}
         stamps = self.lyrics_rate_limits.setdefault(member.id, [])
         if len(stamps) >= self.LYRICS_REQUESTS_PER_MINUTE:
-            raise APIError(429, "歌詞查詢過於頻繁，每人每分鐘最多 12 次，請稍後再試。")
+            raise APIError(429, _web_text('m0374'))
         if len(self.lyrics_rate_limits) > 1024:
             self.lyrics_rate_limits.pop(next(iter(self.lyrics_rate_limits)))
         stamps.append(now)
@@ -582,7 +607,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         if request.method == "POST":
             data = await self.payload(request)
             if not isinstance(data, dict) or set(data) != {"enabled"} or type(data["enabled"]) is not bool:
-                raise APIError(400, "歌詞設定不正確。")
+                raise APIError(400, _web_text('m0375'))
             async with self.admin_lock:
                 if self.discord_auth: self.authenticate(request)
                 guild, _ = self.require_owner(request)
@@ -594,15 +619,15 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     async def lyrics(self, request):
         guild, member = self.guild_owner(request)
         if not await self.lyrics_store.enabled(guild):
-            raise APIError(403, "這個伺服器已停用歌詞。")
+            raise APIError(403, _web_text('m0376'))
         query = request.query.get("query", "").strip()
         if len(query) > 160 or any(ord(char) < 32 for char in query):
-            raise APIError(400, "歌詞搜尋最多 160 字，且不可包含控制字元。")
+            raise APIError(400, _web_text('m0377'))
         self.lyrics_rate_limit(member)
         player = self.bot.get_player_in(guild)
         entry = getattr(player, "current_entry", None)
         if entry is None:
-            raise APIError(409, "目前沒有播放中的歌曲。")
+            raise APIError(409, _web_text('m0378'))
         token = self.track_token(player)
         info = getattr(entry, "info", {}) or {}
         title, artist = clean_metadata(entry.title, info.get("artist") or info.get("creator") or "")
@@ -626,9 +651,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             self.authenticate(request)
         self.guild_owner(request)
         if not await self.lyrics_store.enabled(guild):
-            raise APIError(403, "這個伺服器已停用歌詞。")
+            raise APIError(403, _web_text('m0376'))
         if token != self.track_token(self.bot.get_player_in(guild)):
-            raise APIError(409, "歌曲已變更，請重新取得歌詞。")
+            raise APIError(409, _web_text('m0379'))
         offset = {}
         if key and value.get("status") == "synced":
             await self.lyrics_alignment.request(self.bot, entry, value)
@@ -646,19 +671,19 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     async def lyrics_offset(self, request):
         guild, member = self.guild_owner(request)
         if not await self.lyrics_store.enabled(guild):
-            raise APIError(403, "這個伺服器已停用歌詞。")
+            raise APIError(403, _web_text('m0376'))
         now = time.monotonic()
         rates = self.lyrics_offset_rates = {uid:[stamp for stamp in stamps if stamp>now-60]
             for uid,stamps in self.lyrics_offset_rates.items() if stamps and stamps[-1]>now-60}
         stamps = rates.setdefault(member.id, [])
         if len(stamps) >= 60:
-            raise APIError(429, "歌詞對時操作過於頻繁，請稍後再試。")
+            raise APIError(429, _web_text('m0380'))
         stamps.append(now)
         if len(rates)>1024: rates.pop(next(iter(rates)))
         player = self.bot.get_player_in(guild)
         entry = getattr(player, "current_entry", None)
         key = video_id(entry.url) if entry else ""
-        if not key: raise APIError(409, "目前歌曲無法使用歌詞對時。")
+        if not key: raise APIError(409, _web_text('m0381'))
         token = self.track_token(player)
         if request.method == "POST":
             self.lyrics_rate_limit(member)
@@ -667,22 +692,22 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             fields = {"set":{"action","offset","track_token"}, "adjust":{"action","delta","track_token"},
                       "sync":{"action","position","track_token"}, "reset":{"action","track_token"}}
             if action not in fields or set(data) != fields[action]:
-                raise APIError(400, "歌詞對時資料不正確。")
+                raise APIError(400, _web_text('m0382'))
             if data["track_token"] != self.track_token(player):
-                raise APIError(409, "歌曲已變更，請重新校正。")
+                raise APIError(409, _web_text('m0383'))
             async with self.lyrics_offset_locks[(guild.id, key)]:
                 if self.discord_auth: self.authenticate(request)
                 guild, member = self.guild_owner(request)
                 if not await self.lyrics_store.enabled(guild):
-                    raise APIError(403, "這個伺服器已停用歌詞。")
+                    raise APIError(403, _web_text('m0376'))
                 if data["track_token"] != self.track_token(self.bot.get_player_in(guild)):
-                    raise APIError(409, "歌曲已變更，請重新校正。")
+                    raise APIError(409, _web_text('m0383'))
                 value = None
                 if action == "set": value = data["offset"]
                 elif action == "adjust":
                     delta = data["delta"]
                     if type(delta) not in (int,float) or delta not in (-.5,.5):
-                        raise APIError(400, "每次只能調整 0.5 秒。")
+                        raise APIError(400, _web_text('m0384'))
                     value = (await self.lyric_offset_value(guild,key))["offset"] + delta
                 elif action == "sync":
                     lyrics = await self.lyrics_store.get(key)
@@ -690,18 +715,18 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     position = data["position"]
                     if (not lines or type(position) not in (int,float) or not math.isfinite(position)
                             or not 0 <= position <= (entry.duration or 0)):
-                        raise APIError(400, "目前無法依第一句歌詞對時。")
+                        raise APIError(400, _web_text('m0385'))
                     value = position - lines[0]["time"]
                 if action != "reset" and (type(value) not in (int,float) or not math.isfinite(value) or not -30 <= value <= 60):
-                    raise APIError(400, "歌詞位移須在 -30 至 +60 秒之間。")
+                    raise APIError(400, _web_text('m0386'))
                 await self.lyrics_store.set_manual(guild,key,round(value,2) if value is not None else None)
                 self.record_activity(guild, getattr(member,"display_name",None) or member.name,
-                    "lyrics_offset","web","調整歌詞位移" + ("：重設" if value is None else f"：{value:+.1f} 秒"),"成功")
+                    "lyrics_offset","web",_web_text('m0387') + (_web_text('m0388') if value is None else _web_text('m0389', p0=format(value, '+.1f'))),_web_text('m0024'))
         if self.discord_auth: self.authenticate(request)
         self.guild_owner(request)
         value = await self.lyric_offset_value(guild,key)
         if token != self.track_token(self.bot.get_player_in(guild)):
-            raise APIError(409, "歌曲已變更，請重新校正。")
+            raise APIError(409, _web_text('m0383'))
         return web.json_response(dict(value,video_id=key,track_token=token))
 
     @staticmethod
@@ -774,11 +799,11 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         guild, member = self.guild_owner(request)
         period = request.query.get("period", "7")
         if period not in ("7", "30", "all"):
-            raise APIError(400, "統計期間只接受近 7 天、近 30 天或全部。")
+            raise APIError(400, _web_text('m0390'))
         try:
             tracks = await self.popularity_store.top(guild, period)
         except Exception:
-            raise APIError(503, "暫時無法讀取熱門點播，請稍後再試。") from None
+            raise APIError(503, _web_text('m0391')) from None
         # Recheck membership after the asynchronous read.
         self.guild_owner(request)
         return web.json_response({"period": period, "tracks": tracks})
@@ -848,12 +873,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             if (member_perms.view_channel and member_perms.send_messages
                     and bot_perms.view_channel and bot_perms.send_messages):
                 return channel
-        raise APIError(403, "找不到符合綁定設定且雙方都能發言的頻道。")
+        raise APIError(403, _web_text('m0392'))
 
     def command_permission(self, member, permissions, command, sub=""):
         if (member.id != self.bot.config.owner_id
                 and not permissions.can_use_command(command, sub)):
-            raise APIError(403, "沒有使用這個指令的權限。")
+            raise APIError(403, _web_text('m0393'))
 
     def bot_voice_channel(self, guild):
         voice = getattr(getattr(guild, "me", None), "voice", None)
@@ -867,15 +892,15 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
 
     def voice_permission(self, guild, member, permissions, command):
         if not member.voice or not member.voice.channel:
-            raise APIError(409, "請先加入 Discord 語音頻道。")
+            raise APIError(409, _web_text('m0348'))
         bot_channel = self.bot_voice_channel(guild)
         if bot_channel is not None:
             if bot_channel.id != member.voice.channel.id:
-                raise APIError(403, "你不在機器人的語音頻道。")
+                raise APIError(403, _web_text('m0394'))
         elif command not in ("play", "playnext"):
-            raise APIError(409, "機器人尚未加入語音頻道。")
+            raise APIError(409, _web_text('m0395'))
         elif not permissions.summonplay:
-            raise APIError(403, "沒有 summonplay 權限，無法把機器人叫進語音頻道。")
+            raise APIError(403, _web_text('m0396'))
 
     async def context(self, guild, owner, command, sub=""):
         permissions = self.bot.permissions.for_user(owner)
@@ -883,7 +908,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         if self.discord_auth or command in ("seek", "playnext"):
             self.voice_permission(guild, owner, permissions, command)
         elif not owner.voice or not owner.voice.channel:
-            raise APIError(409, "請先用 OwnerID 本人加入 Discord 語音頻道。")
+            raise APIError(409, _web_text('m0397'))
         if permissions.ignore_non_voice and command in permissions.ignore_non_voice:
             await self.bot._check_ignore_non_voice(
                 SimpleNamespace(guild=guild, author=owner))
@@ -894,14 +919,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             # Membership, roles and voice may change while a connection is awaited.
             owner = guild.get_member(owner.id)
             if owner is None:
-                raise APIError(403, "你不是這個伺服器的成員。")
+                raise APIError(403, _web_text('m0369'))
             self.check_blocked(owner)
             permissions = self.bot.permissions.for_user(owner)
             self.command_permission(owner, permissions, command, sub)
             self.voice_permission(guild, owner, permissions, command)
             channel = self.channel_for(guild, owner)
             if not player or not getattr(player, "voice_client", None):
-                raise APIError(409, "機器人尚未加入語音頻道。")
+                raise APIError(409, _web_text('m0395'))
         return player, permissions, channel
 
     @staticmethod
@@ -928,14 +953,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                             if times and times[-1] > now - 60}
         times = self.rate_limits.setdefault(member.id, [])
         if len(times) >= self.USER_REQUESTS_PER_MINUTE:
-            raise APIError(429, "點歌與解析過於頻繁，每人每分鐘最多 12 次，請稍後再試。")
+            raise APIError(429, _web_text('m0398'))
         times.append(now)
 
     @staticmethod
     def integer(data, key, minimum, maximum):
         value = data.get(key)
         if type(value) is not int or not minimum <= value <= maximum:
-            raise APIError(400, f"{key} 必須是 {minimum} 到 {maximum} 之間的整數。")
+            raise APIError(400, _web_text('m0399', p0=key, p1=minimum, p2=maximum))
         return value
 
     RESOLVE_TIMEOUT = 20
@@ -950,16 +975,16 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         try:
             data = await request.json()
         except (json.JSONDecodeError, UnicodeDecodeError):
-            raise APIError(400, "請提供 JSON 格式的操作內容。") from None
+            raise APIError(400, _web_text('m0400')) from None
         if not isinstance(data, dict):
-            raise APIError(400, "操作內容必須是 JSON 物件。")
+            raise APIError(400, _web_text('m0401'))
         return data
 
     @staticmethod
     def query(data):
         value = data.get("query")
         if not isinstance(value, str) or not 0 < len(value.strip()) <= 2000:
-            raise APIError(400, "請輸入連結或搜尋關鍵字（最多 2000 字）。")
+            raise APIError(400, _web_text('m0402'))
         return value.strip()
 
     def preview_player(self, guild):
@@ -970,12 +995,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     def addition_checks(self, player, owner, permissions):
         if (not self.discord_auth and owner.id != self.bot.config.owner_id
                 and not permissions.can_use_command("play")):
-            raise APIError(403, "沒有點歌權限。")
+            raise APIError(403, _web_text('m0403'))
         if (permissions.max_songs and
                 player.playlist.count_for_user(owner) >= permissions.max_songs):
-            raise APIError(403, "已達到可排入佇列的歌曲數量上限。")
+            raise APIError(403, _web_text('m0341'))
         if player.karaoke_mode and not permissions.bypass_karaoke_mode:
-            raise APIError(403, "目前為卡拉 OK 模式，沒有點歌權限。")
+            raise APIError(403, _web_text('m0346'))
 
     @staticmethod
     def info_duration(info):
@@ -992,18 +1017,18 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             self.bot._do_song_blocklist_check(info.webpage_url or info.get_playable_url())
             self.bot._do_song_blocklist_check(info.title)
         except exceptions.MusicbotException:
-            return "歌曲被封鎖清單擋下。"
+            return _web_text('m0404')
         try:
             permissions.can_use_extractor(info.extractor or extractor)
         except exceptions.MusicbotException:
-            return "沒有使用這個來源解析器的權限。"
+            return _web_text('m0405')
         duration = self.info_duration(info)
         if permissions.max_song_length and duration > permissions.max_song_length:
-            return f"超過歌曲長度限制（{duration:g} > {permissions.max_song_length} 秒）。"
+            return _web_text('m0406', p0=format(duration, 'g'), p1=permissions.max_song_length)
         if playlist and info.title.lower() in ("[private video]", "[deleted video]"):
-            return "影片已刪除或未公開。"
+            return _web_text('m0407')
         if not public_url(info.webpage_url or info.get_playable_url()):
-            return "找不到可確認的來源網址。"
+            return _web_text('m0408')
         return ""
 
     def preview_track(self, info, permissions, *, playlist=False, extractor=""):
@@ -1012,7 +1037,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     thumbnail=public_url(info.thumbnail_url),
                     url=public_url(info.webpage_url or info.get_playable_url()),
                     allowed=not reason, reason=reason,
-                    warning="" if self.info_duration(info) else "長度未知，加入時會重新檢查。")
+                    warning="" if self.info_duration(info) else _web_text('m0409'))
 
     async def resolve_options(self, guild, owner, query, action="play"):
         permissions = self.bot.permissions.for_user(owner)
@@ -1023,7 +1048,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         parsed = urlsplit(query)
         if (parsed.scheme and parsed.scheme not in ("http", "https")
                 and ("://" in query or parsed.scheme in ("file", "data", "javascript", "spotify"))):
-            raise APIError(400, "預覽僅接受 HTTP／HTTPS 網址或搜尋關鍵字。")
+            raise APIError(400, _web_text('m0410'))
         valid_url = self.bot.downloader.get_url_or_none(query)
         # Split combined links into explicit choices, eliminating reaction prompts.
         playlist_id, video_id = get_compound_link_ids(query)
@@ -1041,12 +1066,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 self.bot._do_song_blocklist_check(query)
                 self.bot._do_song_blocklist_check(subject)
             except exceptions.MusicbotException:
-                raise APIError(403, "查詢內容被封鎖清單擋下。") from None
+                raise APIError(403, _web_text('m0411')) from None
             if "open.spotify.com" in subject.lower():
                 if not self.bot.config.spotify_enabled:
-                    raise APIError(403, "尚未啟用這個音樂來源。")
+                    raise APIError(403, _web_text('m0412'))
                 if not Spotify.is_url_supported(subject):
-                    raise APIError(400, "這個音樂來源網址格式不受支援。")
+                    raise APIError(400, _web_text('m0413'))
             imported = None
             from .web_dashboard_imports import source_url
             try:
@@ -1069,18 +1094,18 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 info = await self.bot.downloader.extract_info(
                     subject, download=False, process=True)
             if not info or ("entries" in info and not info.entry_count):
-                raise APIError(404, "沒有找到可用的歌曲。")
+                raise APIError(404, _web_text('m0414'))
             try:
                 permissions.can_use_extractor(info.extractor)
             except exceptions.MusicbotException:
-                raise APIError(403, "沒有使用這個來源解析器的權限。") from None
+                raise APIError(403, _web_text('m0405')) from None
             if search:
                 choices = info.get_entries_objects() if info.has_entries else [info]
                 results.extend(dict(self.preview_track(item, permissions, extractor=info.extractor), kind="track")
                                for item in choices[:limit])
             elif info.has_entries:
                 count = max(info.playlist_count or 0, info.entry_count)
-                reason = ("下一首播放目前只支援單曲，請選取單曲來源。"
+                reason = (_web_text('m0415')
                           if action == "playnext" else self.playlist_restriction(permissions, count))
                 # Only retain/check the bounded subset we actually offer for selection.
                 children = info.get_entries_objects()[:self.PREVIEW_LIMIT]
@@ -1092,7 +1117,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                          for i, item in enumerate(children, 1)]
                 eligible = sum(item["allowed"] for item in items)
                 if not eligible and not reason:
-                    reason = "清單內沒有通過封鎖或歌曲長度檢查的歌曲。"
+                    reason = _web_text('m0416')
                 results.append({
                     "kind": "playlist", "title": info.title, "url": subject,
                     "source_url": imported["source_url"] if imported else "",
@@ -1103,15 +1128,15 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     "count": count, "checked_count": len(items), "eligible_count": eligible,
                     "entries": items, "allowed": not reason, "reason": reason,
                     "truncated": count > len(items), "limit": 25 if imported and imported.get("is_mix") else self.PREVIEW_LIMIT,
-                    "warning": ("合輯最多提供 25 首，預設只勾選第一首。" if imported and imported.get("is_mix") else "") +
-                               (f"來源至少 {count} 首、目前只讀得到 {len(items)} 首。" if imported and imported.get("count_is_minimum") else "") +
-                               (f"僅提供前 {self.PREVIEW_LIMIT} 首，超過的歌曲未加入預覽。" if count > len(items) else "") +
-                               "確認時會逐首重新檢查；佇列額滿時回報部分成功。",
+                    "warning": (_web_text('m0417') if imported and imported.get("is_mix") else "") +
+                               (_web_text('m0418', p0=count, p1=len(items)) if imported and imported.get("count_is_minimum") else "") +
+                               (_web_text('m0419', p0=self.PREVIEW_LIMIT) if count > len(items) else "") +
+                               _web_text('m0420'),
                 })
             else:
                 results.append(dict(self.preview_track(info, permissions), kind="track"))
         if not results:
-            raise APIError(404, "沒有找到可用的歌曲。")
+            raise APIError(404, _web_text('m0414'))
         return results
 
     async def resolve(self, request):
@@ -1119,13 +1144,13 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         query = self.query(data)
         action = data.get("action", "play")
         if action not in ("play", "playnext"):
-            raise APIError(400, "點歌用途必須是 play 或 playnext。")
+            raise APIError(400, _web_text('m0421'))
         guild, owner = self.guild_owner(request)
         self.user_rate_limit(owner)
         # Admission is separate from mutation locks; timed-out extractions retain
         # their slot until the coroutine completes (executor work cannot be killed).
         if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
-            raise APIError(429, "解析仍在進行，請稍後再查詢。播放控制仍可使用。")
+            raise APIError(429, _web_text('m0422'))
         task = asyncio.create_task(self.resolve_options(guild, owner, query, action))
         self.resolve_tasks[guild.id] = task
         def finished(done):
@@ -1136,12 +1161,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         try:
             results = await asyncio.wait_for(asyncio.shield(task), self.RESOLVE_TIMEOUT)
         except asyncio.TimeoutError:
-            raise APIError(504, "解析逾時，請稍後再試。播放控制仍可使用。") from None
+            raise APIError(504, _web_text('m0423')) from None
         except (APIError, exceptions.MusicbotException):
             raise
         except Exception:
             log.warning("Dashboard preview extraction failed")
-            raise APIError(502, "無法解析這個來源，請檢查連結或稍後再試。") from None
+            raise APIError(502, _web_text('m0424')) from None
         if self.discord_auth:
             self.authenticate(request)
             guild, owner = self.guild_owner(request)
@@ -1184,9 +1209,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         preview = self.previews.get(token) if isinstance(token, str) else None
         if (not preview or preview.get("retain_until", preview["expires"]) <= time.monotonic()
                 or preview["guild_id"] != guild.id or preview["owner_id"] != owner.id):
-            raise APIError(409, "預覽已過期或不屬於這個伺服器，請重新查詢。")
+            raise APIError(409, _web_text('m0425'))
         if data["query"].strip() != preview["url"] or not preview["allowed"]:
-            raise APIError(403, "這個選項無法加入，請重新查詢。")
+            raise APIError(403, _web_text('m0426'))
         if preview.get("kind") == "playlist":
             selected = data.get("selected_items")
             if selected is None:
@@ -1195,21 +1220,21 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     or len(selected) > self.PREVIEW_LIMIT
                     or any(not isinstance(i, str) for i in selected)
                     or len(set(selected)) != len(selected)):
-                raise APIError(400, "請選取至少一首歌曲，項目不可重複。")
+                raise APIError(400, _web_text('m0427'))
             available = {item["item_id"]: item for item in preview["entries"]}
             if any(i not in available or (not available[i]["allowed"] and preview["status"] != "done") for i in selected):
-                raise APIError(403, "選取的歌曲不在這份預覽內，或已被限制擋下。")
+                raise APIError(403, _web_text('m0428'))
             canonical = [item["item_id"] for item in preview["entries"]
                          if item["item_id"] in selected]
             if preview["status"] == "done" and canonical != preview["selection"]:
-                raise APIError(409, "這份預覽已完成另一組選擇，請重新查詢。")
+                raise APIError(409, _web_text('m0429'))
             data["selected_items"] = canonical
         elif "selected_items" in data:
-            raise APIError(400, "單曲預覽不接受清單項目。")
+            raise APIError(400, _web_text('m0430'))
         if preview["status"] == "done":
             return preview
         if preview["status"] != "ready":
-            raise APIError(409, "這個選項已送出；請先查看佇列，需再次點播時請重新查詢。")
+            raise APIError(409, _web_text('m0431'))
         return preview
 
     async def renew_preview(self, request, data, preview, guild, owner, action):
@@ -1217,17 +1242,17 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             return
         query = preview.get("original_query")
         if not query:
-            raise APIError(409, "預覽已過期，請重新搜尋。")
+            raise APIError(409, _web_text('m0432'))
         self.user_rate_limit(owner)
         if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
-            raise APIError(429, "解析仍在進行，請稍後再試。")
+            raise APIError(429, _web_text('m0433'))
         task = asyncio.create_task(self.resolve_options(guild, owner, query, action))
         self.resolve_tasks[guild.id] = task
         task.add_done_callback(lambda done: self.resolve_tasks.pop(guild.id, None))
         try:
             results = await asyncio.wait_for(task, self.RESOLVE_TIMEOUT)
         except asyncio.TimeoutError:
-            raise APIError(504, "重新搜尋逾時，請稍後再試。") from None
+            raise APIError(504, _web_text('m0434')) from None
         if self.discord_auth: self.authenticate(request)
         guild, owner = self.guild_owner(request)
         await self.issue_previews(guild, owner, results, query, action)
@@ -1237,14 +1262,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         match = next((item for item in results if item["kind"] == preview["kind"]
                       and same(item["url"], preview["url"])), None)
         if match is None or (preview["kind"] == "track" and not match["allowed"]):
-            raise APIError(409, "預覽已過期，這首目前搜尋不到，請重新搜尋",
+            raise APIError(409, _web_text('m0435'),
                            {"results": results, "expires_in": self.PREVIEW_TTL})
         if preview["kind"] == "playlist":
             refreshed = []
             for old in preview["entries"]:
                 new = next((item for item in match["entries"] if same(item["url"], old["url"])), None)
                 refreshed.append(dict(new, item_id=old["item_id"]) if new else
-                                 dict(old, allowed=False, reason="這首已不在來源中。"))
+                                 dict(old, allowed=False, reason=_web_text('m0436')))
             preview["entries"] = refreshed
             preview["count"] = match["count"]
             preview["fresh_reason"] = match["reason"]
@@ -1254,9 +1279,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     def playlist_restriction(permissions, count):
         # AllowPlaylists applies to the whole preview, even a one-item selection.
         if not permissions.allow_playlists:
-            return "目前的權限不允許加入播放清單。"
+            return _web_text('m0344')
         if permissions.max_playlist_length and count > permissions.max_playlist_length:
-            return f"清單超過首數限制（{count} > {permissions.max_playlist_length}）。"
+            return _web_text('m0437', p0=count, p1=permissions.max_playlist_length)
         return ""
 
     async def play_selection(self, request, data, preview, guild, owner):
@@ -1294,7 +1319,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                         and info.webpage_url == children[0].webpage_url
                     )
                     if not spotify_single:
-                        raise APIError(403, "選取的單曲解析成播放清單，請重新查詢。")
+                        raise APIError(403, _web_text('m0438'))
                     candidate = children[0]
                 if self.discord_auth:
                     self.authenticate(request)
@@ -1314,7 +1339,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             check = ConfirmedEntryCheck(validate)
             try:
                 if not item.get("allowed", True):
-                    raise APIError(403, item.get("reason") or "歌曲目前不允許加入。")
+                    raise APIError(403, item.get("reason") or _web_text('m0439'))
                 if preview.get("fresh_reason"):
                     raise APIError(403, preview["fresh_reason"])
                 if self.discord_auth:
@@ -1347,12 +1372,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             except APIError as exc:
                 error = str(exc)
             except exceptions.MusicbotException as exc:
-                error = denial_text(_D(exc.message, self.bot.server_data[guild.id]) % exc.fmt_args)
+                error = denial_text(exc.message % exc.fmt_args)
             except asyncio.TimeoutError:
-                error = "加入逾時，這份預覽不會重複送出，請先查看佇列。"
+                error = _web_text('m0440')
             except Exception as exc:
                 log.warning("Dashboard selected play failed (%s)", type(exc).__name__)
-                error = "加入失敗，請先查看佇列後再重新查詢。"
+                error = _web_text('m0441')
             # The command records the actual enqueue before preparing its response.
             # Other Discord/web requests cannot be mistaken for this selection.
             added = success or check.enqueued
@@ -1381,8 +1406,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             import discord
             name = str(getattr(owner, "display_name", None) or owner.name).replace("\n", " ").replace("\r", " ")[:128]
             name = discord.utils.escape_mentions(discord.utils.escape_markdown(name))
-            operation = "點歌" if command in ("play", "playnext") else "操作"
-            plain = Response(f"-# {name} 透過網頁控制台{operation}\n" + response.content,
+            ssd = self.bot.server_data[guild.id]
+            prefix = _D("%(name)s requested music via the web dashboard" if command in ("play", "playnext")
+                        else "%(name)s used the web dashboard", ssd) % {"name": name}
+            plain = Response("-# " + prefix + "\n" + response.content,
                              force_text=True, delete_after=response.delete_after)
             plain.dashboard_no_mentions = True
             await asyncio.wait_for(self.bot.safe_send_message(channel, plain), 10)
@@ -1397,7 +1424,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             action = "remove"
         if action in ("play", "playnext"):
             if "selected_items" in data and "preview_id" not in data:
-                raise APIError(400, "選歌加入必須提供預覽憑證。")
+                raise APIError(400, _web_text('m0445'))
             self.user_rate_limit(owner)
             query = self.query(data)
         elif action == "seek":
@@ -1408,7 +1435,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             except (ValueError, TypeError, OverflowError):
                 valid = False
             if not valid:
-                raise APIError(400, "跳轉位置必須是大於或等於 0 的有限秒數。")
+                raise APIError(400, _web_text('m0446'))
             # Normalize once before permissions, queue mutation and reporting.
             # Non-negative values use conventional half-up rather than bankers rounding.
             data["position"] = math.floor(float(position) + 0.5)
@@ -1418,11 +1445,11 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             seek_entry = getattr(seek_player, "current_entry", None)
             if ("track_token" in data
                     and data["track_token"] != self.track_token(seek_player)):
-                raise APIError(409, "播放中的歌曲已更新，請重新整理後再跳轉。")
+                raise APIError(409, _web_text('m0447'))
         elif action == "volume":
             self.integer(data, "volume", 1, 100)
         elif action == "repeat" and data.get("mode") not in ("off", "song", "all"):
-            raise APIError(400, "重複模式必須是 off、song 或 all。")
+            raise APIError(400, _web_text('m0448'))
 
         async with self.locks[guild.id]:
             request[ACTIVITY_KEY] = capture(self, guild, owner, action, "web")
@@ -1444,9 +1471,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             if preview:
                 await self.renew_preview(request, data, preview, guild, owner, action)
             if action == "playnext" and (data.get("selected_items") is not None or (preview and preview.get("kind") == "playlist")):
-                raise APIError(400, "下一首播放目前只支援單曲，請選取單曲來源。")
+                raise APIError(400, _web_text('m0415'))
             if preview and preview["status"] == "done" and not self.discord_auth:
-                return web.json_response({"message": "這個選項已加入，未重複點播。",
+                return web.json_response({"message": _web_text('m0449'),
                                           "state": self.snapshot(guild, owner), **(preview.get("summary") or {})})
             if self.discord_auth and action == "repeat":
                 current = self.bot.get_player_in(guild)
@@ -1455,30 +1482,30 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     sub = subs[0] if subs else sub
             player, permissions, channel = await self.context(guild, owner, action, sub)
             if action == "seek" and (player is not seek_player or player.current_entry is not seek_entry):
-                raise APIError(409, "播放中的歌曲已更新，請重新整理後再跳轉。")
+                raise APIError(409, _web_text('m0447'))
             if self.discord_auth:
                 self.authenticate(request)
                 guild, owner = self.guild_owner(request)
             if preview and preview["status"] == "done":
-                return web.json_response({"message": "這個選項已加入，未重複點播。",
+                return web.json_response({"message": _web_text('m0449'),
                                           "state": self.snapshot(guild, owner), **(preview.get("summary") or {})})
             ssd = self.bot.server_data[guild.id]
             if action in ("remove", "move", "shuffle"):
                 if not data.get("revision") or data["revision"] != revision(player):
-                    raise APIError(409, "隊列已更新，請重新整理後再操作。")
+                    raise APIError(409, _web_text('m0450'))
             response = None
             summary = {}
             if action == "play" and preview and preview.get("kind") == "playlist":
                 summary = await self.play_selection(request, data, preview, guild, owner)
                 reasons = list(dict.fromkeys(item["reason"] for item in summary["results"] if item["reason"]))
-                response = Response(f"已加入 {summary['added']} 首，略過 {summary['skipped']} 首。" +
-                                    (" " + "；".join(reasons) if reasons else ""))
+                response = Response(_D("Added %(added)s tracks; skipped %(skipped)s.", ssd) %
+                                    {"added":summary["added"],"skipped":summary["skipped"]})
             elif action in ("play", "playnext"):
                 if preview:
                     preview["status"] = "submitted"
                 def validate_next(info):
                     if info.has_entries and (info.entry_count > 1 or "search" not in str(info.extractor)):
-                        raise APIError(403, "下一首播放目前只支援單曲，請選取單曲來源。")
+                        raise APIError(403, _web_text('m0415'))
                     if self.discord_auth:
                         self.authenticate(request)
                     current_guild, member = self.guild_owner(request)
@@ -1494,7 +1521,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     if info.has_entries:
                         children = info.get_entries_objects()
                         if not children or children[0].has_entries:
-                            raise APIError(403, "沒有可確認的單曲，請重新查詢。")
+                            raise APIError(403, _web_text('m0452'))
                         candidate = children[0]
                     reason = self.restriction(candidate, perms, extractor=info.extractor)
                     if reason:
@@ -1511,17 +1538,17 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                         CONFIRMED_ENTRY_CHECK.reset(check_token)
             elif action == "seek":
                 if not player.current_entry:
-                    raise APIError(409, "目前沒有播放中的歌曲。")
+                    raise APIError(409, _web_text('m0378'))
                 if not self.is_seekable(player.current_entry):
-                    raise APIError(400, "直播或長度未知的歌曲無法跳轉。")
+                    raise APIError(400, _web_text('m0453'))
                 if position > player.current_entry.duration or data["position"] > player.current_entry.duration:
-                    raise APIError(400, "跳轉位置超過歌曲長度。")
+                    raise APIError(400, _web_text('m0454'))
                 response = await self.bot.cmd_seek(
                     ssd_=ssd, guild=guild, player=player, leftover_args=[],
                     seek_time=str(data["position"]))
                 # Native seek intentionally accepts fractional Discord arguments;
                 # dashboard reporting shares the activity log integer format.
-                response = Response(f"\u8df3\u8f49\uff1a{data['position']} \u79d2")
+                response = Response(_D("Seek: %(seconds)s seconds", ssd) % {"seconds": data["position"]})
             elif action in ("pause", "resume"):
                 response = await getattr(self.bot, "cmd_" + action)(ssd, player)
             elif action == "skip":
@@ -1533,7 +1560,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 response = await self.bot.cmd_volume(ssd, player, str(data["volume"]))
             elif action == "repeat":
                 if not player.current_entry:
-                    raise APIError(409, "目前沒有播放中的歌曲。")
+                    raise APIError(409, _web_text('m0378'))
                 mode = data["mode"]
                 if self.discord_auth:
                     # Target mode may require multiple original repeat subcommands.
@@ -1550,10 +1577,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             elif action == "remove":
                 position = request.match_info["position"]
                 if not position.isdigit() or int(position) < 1:
-                    raise APIError(400, "歌曲位置必須是正整數。")
+                    raise APIError(400, _web_text('m0456'))
                 index = int(position) - 1
                 if index >= len(player.playlist.entries):
-                    raise APIError(400, "歌曲位置已失效，請重新整理。")
+                    raise APIError(400, _web_text('m0457'))
                 removed = player.playlist.entries[index]
                 response = await self.bot.cmd_remove(
                     ssd_=ssd, user_mentions=[], author=owner,
@@ -1561,10 +1588,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     leftover_args=[], position=position)
                 if not isinstance(response, ErrorResponse):
                     summary = self.remember_removal(guild, owner, removed, index)
-                    response = Response("已移除〈" + str(removed.title) + "〉")
+                    response = Response(_D("Removed %(title)s", ssd) % {"title": str(removed.title)})
             elif action == "move":
                 if self.discord_auth and not player.current_entry:
-                    raise APIError(409, "目前沒有播放中的歌曲。")
+                    raise APIError(409, _web_text('m0378'))
                 size = len(player.playlist.entries)
                 source = self.integer(data, "from", 1, size) - 1
                 target = self.integer(data, "to", 1, size) - 1
@@ -1573,13 +1600,13 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 entry = player.playlist.delete_entry_at_index(source)
                 player.playlist.insert_entry_at_index(target, entry)
                 if self.discord_auth:
-                    response = Response(f"已將第 {source + 1} 首移到第 {target + 1} 首。")
+                    response = Response(_D("Moved track %(source)s to position %(target)s.", ssd) % {"source":source+1,"target":target+1})
             elif action == "shuffle":
                 player.playlist.shuffle()
                 if self.discord_auth:
-                    response = Response("已將佇列洗牌。")
+                    response = Response(_D("Queue shuffled.", ssd))
             if isinstance(response, ErrorResponse):
-                raise APIError(409, denial_text(response.description or "機器人無法完成操作。"))
+                raise APIError(409, denial_text(response.description or _web_text('m0461')))
             if self.discord_auth:
                 self.authenticate(request)
                 guild, owner = self.guild_owner(request)
@@ -1587,9 +1614,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 await self.bot.serialize_queue(guild)
             if preview:
                 preview["status"] = "done"
-            message = response.content if summary else "已完成操作。"
+            message = _web_text("m0451", p0=summary["added"], p1=summary["skipped"]) if summary else _web_text("m0462")
             if response is not None and (not summary or action == "remove"):
-                message = getattr(response, "content", "") or message
+                if action == "remove":
+                    message = _web_text("message.removed", p0=str(removed.title))
                 await self.send_web_response(request, guild, owner, response, action)
             return web.json_response({"message": message, "state": self.snapshot(guild, owner), **summary})
 

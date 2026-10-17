@@ -1,5 +1,6 @@
 """Public playlist imports using existing providers, bounded previews and private storage."""
 from __future__ import annotations
+from .web_dashboard_i18n import message as _web_text
 
 import asyncio
 import copy
@@ -21,7 +22,7 @@ def fail(status, message):
 def source_url(value):
     """Accept only known public playlist URLs; canonicalize before extraction."""
     if not isinstance(value, str) or len(value) > 2000 or any(c.isspace() or ord(c) < 32 for c in value):
-        fail(400, "請貼上有效的公開歌單或專輯連結。")
+        fail(400, _web_text('m0499'))
     try:
         parsed = urlsplit(value)
         host = parsed.hostname
@@ -29,20 +30,20 @@ def source_url(value):
                 or parsed.port not in (None, 80, 443)):
             raise ValueError()
     except ValueError:
-        fail(400, "來源只接受 HTTP／HTTPS 公開歌單連結。")
+        fail(400, _web_text('m0500'))
     if host == "open.spotify.com":
         parts = parsed.path.strip("/").split("/")
         if parts and parts[0].startswith("intl-"):
             parts = parts[1:]
         if len(parts) != 2 or parts[0] not in ("album", "playlist") or not re.fullmatch(r"[A-Za-z0-9]{1,100}", parts[1]):
-            fail(400, "Spotify 請提供公開歌單或專輯連結。")
+            fail(400, _web_text('m0501'))
         return "https://open.spotify.com/" + "/".join(parts), "spotify"
     if host in ("youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"):
         ids = parse_qs(parsed.query).get("list", [])
         if len(ids) != 1 or not re.fullmatch(r"[A-Za-z0-9_-]{1,150}", ids[0]):
-            fail(400, "YouTube／YouTube Music 請提供包含歌單的連結。")
+            fail(400, _web_text('m0502'))
         if ids[0] in ("WL", "LL", "LM"):
-            fail(400, "私人收藏、稍後觀看與喜歡的歌不支援公開匯入。")
+            fail(400, _web_text('m0503'))
         # Dynamic mixes require their seed watch URL; /playlist?list=RD... is
         # rejected by YouTube as an unviewable playlist.
         videos = parse_qs(parsed.query).get("v", [])
@@ -50,7 +51,7 @@ def source_url(value):
             return "https://www.youtube.com/watch?v=" + videos[0] + "&list=" + ids[0], "youtube"
         # Canonical URL for stable public playlists.
         return "https://www.youtube.com/playlist?list=" + ids[0], "youtube"
-    fail(400, "只支援 Spotify、YouTube 與 YouTube Music 公開歌單。")
+    fail(400, _web_text('m0504'))
 
 
 # Observed public embed/API image hosts; never allow arbitrary Spotify subdomains.
@@ -91,7 +92,7 @@ def imported_track(row, kind):
         if not isinstance(ident, str) or not re.fullmatch(r"[A-Za-z0-9]{1,100}", ident):
             return None
         artists = ", ".join(str(a.get("name", "")) for a in row.get("artists", []) if isinstance(a, dict) and a.get("name"))
-        title = (artists + " - " if artists else "") + str(row.get("name") or "未命名歌曲")
+        title = (artists + " - " if artists else "") + str(row.get("name") or _web_text('m0505'))
         url = "https://open.spotify.com/track/" + ident
         milliseconds = row.get("duration_ms")
         duration = milliseconds / 1000 if type(milliseconds) in (int, float) else None
@@ -108,14 +109,14 @@ def imported_track(row, kind):
             ident = url
         if not isinstance(ident, str) or not re.fullmatch(r"[A-Za-z0-9_-]{11}", ident):
             return None
-        title = str(row.get("title") or "未命名歌曲")
+        title = str(row.get("title") or _web_text('m0505'))
         if title.lower() in ("[private video]", "[deleted video]"):
             return None
         url = "https://www.youtube.com/watch?v=" + ident
         duration = row.get("duration")
     if type(duration) not in (int, float) or not math.isfinite(duration) or not 0 <= duration <= 31536000:
         duration = None
-    track = {"title": title.strip()[:300] or "未命名歌曲", "url": url, "duration": duration}
+    track = {"title": title.strip()[:300] or _web_text('m0505'), "url": url, "duration": duration}
     cover = spotify_image(row.get("album", {}).get("images")) or spotify_image(row.get("images")) if kind == "spotify" else ""
     if cover: track["thumbnail"] = cover
     return track
@@ -128,7 +129,7 @@ def source_diff(old, new):
 
 # Public embed fallback contains no authentication and never follows redirects.
 SPOTIFY_EMBED_LIMIT = 3 * 1024 * 1024
-SPOTIFY_UNREADABLE = "這個 Spotify 歌單目前讀不到，可能是私人歌單"
+SPOTIFY_UNREADABLE = _web_text('m0506')
 
 def parse_spotify_embed(content, ident):
     import json
@@ -178,7 +179,7 @@ def parse_spotify_embed(content, ident):
     # Embed is a partial view. Never claim it is the entire source.
     total = entity.get("totalTracks")
     total = max(len(tracks), total if type(total) is int else 0)
-    return {"id": ident, "type": "playlist", "name": str(entity.get("name") or entity.get("title") or "Spotify 歌單")[:300],
+    return {"id": ident, "type": "playlist", "name": str(entity.get("name") or entity.get("title") or _web_text('m0507'))[:300],
             "external_urls": {"spotify": "https://open.spotify.com/playlist/" + ident},
             "tracks": {"items": tracks, "next": None, "total": total},
             "images": [{"url": cover}] if cover else [], "_embed_partial": True}
@@ -234,12 +235,12 @@ class DashboardImports:
         if self.discord_auth:
             self.authenticate(request)
         if self.library_identity(request) != uid:
-            fail(403, "登入身分已變更，請重新登入。")
+            fail(403, _web_text('m0508'))
 
     async def library_sources(self, request):
         self.library_identity(request)
         return web.json_response({"spotify": self.spotify_import_enabled(), "youtube": True,
-                                  "spotify_message": "" if self.spotify_import_enabled() else "目前無法讀取 Spotify 歌單"})
+                                  "spotify_message": "" if self.spotify_import_enabled() else _web_text('m0509')})
 
 
     async def import_mix(self, url):
@@ -271,7 +272,7 @@ class DashboardImports:
             if not isinstance(value, dict) or not isinstance(value.get("entries"), list):
                 raise ValueError("No mix entries")
             if value.get("availability") in ("private","needs_auth","premium_only","subscriber_only"):
-                fail(403, "只支援不需登入的公開歌單。")
+                fail(403, _web_text('m0510'))
             rows = [track for row in value["entries"][:25]
                     if (track := imported_track(getattr(row, "data", row), "youtube"))]
             fixed = ident.startswith("RDCLAK") and bool(rows)
@@ -280,19 +281,19 @@ class DashboardImports:
         except Exception:
             pass
         if fixed:
-            return {"title": str(value.get("title") or "YouTube Music 歌單")[:300],
+            return {"title": str(value.get("title") or _web_text('m0511'))[:300],
                     "tracks": rows, "count": len(rows), "truncated": len(rows) == 25,
                     "source_url": "https://www.youtube.com/playlist?list=" + ident, "source_type": "youtube",
                     "saveable": True, "is_mix": False}
         if not seed and rows: seed = rows[0]
         if not seed:
-            fail(400, "合輯無法讀取，請使用包含影片的合輯連結。")
+            fail(400, _web_text('m0512'))
         tracks, seen = [], set()
         for track in [seed, *rows]:
             if track["url"] in seen: continue
             seen.add(track["url"]); tracks.append(track)
             if len(tracks) == 25: break
-        return {"title": "YouTube 合輯", "tracks": tracks, "count": len(tracks),
+        return {"title": _web_text('m0513'), "tracks": tracks, "count": len(tracks),
                 "truncated": len(tracks) == 25, "source_url": "", "source_type": "",
                 "saveable": True, "is_mix": True}
 
@@ -304,14 +305,14 @@ class DashboardImports:
         count_is_minimum = False
         if kind == "spotify":
             if not self.spotify_import_enabled():
-                fail(503, "目前無法讀取 Spotify 歌單")
+                fail(503, _web_text('m0509'))
             spotify = self.bot.spotify
             category, ident = urlsplit(url).path.strip("/").split("/")
             # Existing Spotify API/session owns credentials and token handling.
             try:
                 value = await (spotify.get_album(ident) if category == "album" else spotify_playlist(spotify, ident))
             except Exception:
-                fail(400, SPOTIFY_UNREADABLE if category == "playlist" else "這個 Spotify 專輯目前讀不到，請稍後再試。")
+                fail(400, SPOTIFY_UNREADABLE if category == "playlist" else _web_text('m0514'))
             count_is_minimum = bool(value.get("_embed_partial"))
             container = value.get("tracks", {})
             rows = list(container.get("items") or [])
@@ -320,14 +321,14 @@ class DashboardImports:
             # Fetch only pages needed for the bounded first 200 source entries.
             while len(rows) < 200 and next_url:
                 if not isinstance(next_url, str) or not next_url.startswith(spotify.API_BASE):
-                    fail(502, "來源回傳無效的歌單內容，請稍後再試。")
+                    fail(502, _web_text('m0515'))
                 page = await spotify.make_api_req(spotify.api_safe_url(next_url))
                 more = page.get("items") or []
                 if not more:
                     break
                 rows.extend(more)
                 next_url = page.get("next")
-            title = value.get("name") or "Spotify 歌單"
+            title = value.get("name") or _web_text('m0507')
             for item in rows[:200]:
                 track = imported_track(item.get("track") if category == "playlist" and isinstance(item, dict) else item, kind)
                 if track:
@@ -343,11 +344,11 @@ class DashboardImports:
             info = await self.bot.downloader.extract_info(url, download=False, process=False, public_only=True)
             value = getattr(info, "data", info)
             if not isinstance(value, dict) or "entries" not in value:
-                fail(400, "來源不是可讀取的公開歌單。")
+                fail(400, _web_text('m0516'))
             if value.get("availability") in ("private", "needs_auth", "premium_only", "subscriber_only"):
-                fail(403, "只支援不需登入的公開歌單。")
+                fail(403, _web_text('m0510'))
             rows = list(value.get("entries") or [])
-            title = value.get("title") or "YouTube 歌單"
+            title = value.get("title") or _web_text('m0517')
             total = value.get("playlist_count") or value.get("n_entries")
             count = max(len(rows), total if type(total) is int else 0)
             count_is_minimum = type(total) is not int and len(rows) > 200
@@ -356,7 +357,7 @@ class DashboardImports:
                 if track:
                     tracks.append(track)
         if not tracks:
-            fail(404, "歌單內沒有可匯入的公開歌曲。")
+            fail(404, _web_text('m0518'))
         return {"title": str(title)[:300], "tracks": tracks, "count": count,
                 "truncated": count > len(tracks) or count_is_minimum, "count_is_minimum": count_is_minimum,
                 "source_url": url, "source_type": kind}
@@ -370,32 +371,32 @@ class DashboardImports:
         target = None
         if pid is not None:
             if set(data) != {"revision"}:
-                fail(400, "重新同步預覽只接受歌單版本。")
+                fail(400, _web_text('m0519'))
             if data["revision"] != value["revision"]:
-                fail(409, "歌單已更新，請重新整理後再操作。")
+                fail(409, _web_text('m0520'))
             target = next((p for p in value["playlists"] if p["id"] == pid), None)
             if target is None:
-                fail(404, "找不到你的歌單。")
+                fail(404, _web_text('m0521'))
             if not target.get("source_url"):
-                fail(400, "這份歌單沒有可重新同步的來源。")
+                fail(400, _web_text('m0522'))
             url, kind = source_url(target["source_url"])
         else:
             if set(data) != {"url"}:
-                fail(400, "匯入預覽只接受來源連結。")
+                fail(400, _web_text('m0523'))
             if len(value["playlists"]) >= 21:
-                fail(400, "自訂歌單最多 20 份。")
+                fail(400, _web_text('m0524'))
             url, kind = source_url(data["url"])
         if kind == "spotify" and not self.spotify_import_enabled():
-            fail(503, "目前無法讀取 Spotify 歌單")
+            fail(503, _web_text('m0509'))
         from . import exceptions
         from .web_dashboard import APIError
         try:
             self.bot._do_song_blocklist_check(url)
         except exceptions.MusicbotException:
-            fail(403, "查詢內容被封鎖清單擋下。")
+            fail(403, _web_text('m0411'))
         self.user_rate_limit(member)
         if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
-            fail(429, "解析仍在進行，請稍後再查詢。播放控制仍可使用。")
+            fail(429, _web_text('m0422'))
         task = asyncio.create_task(self.import_source(url, kind))
         self.resolve_tasks[guild.id] = task
         def finished(done):
@@ -406,11 +407,11 @@ class DashboardImports:
         try:
             preview = await asyncio.wait_for(asyncio.shield(task), self.RESOLVE_TIMEOUT)
         except asyncio.TimeoutError:
-            fail(504, "解析逾時，請稍後再試。播放控制仍可使用。")
+            fail(504, _web_text('m0423'))
         except APIError:
             raise
         except Exception:
-            fail(502, "無法讀取這份公開歌單，請檢查連結或稍後再試。")
+            fail(502, _web_text('m0525'))
         self.import_authorize(request, uid)
         self.guild_owner(request)
         now = time.monotonic()
@@ -428,7 +429,7 @@ class DashboardImports:
             "import_count": len(preview["tracks"]), "tracks": preview["tracks"][:5],
             "count_is_minimum": preview.get("count_is_minimum", False),
             "truncated": preview["truncated"],
-            "warning": "超過 200 首，只會匯入來源前 200 首中的可用歌曲。" if preview["truncated"] else "",
+            "warning": _web_text('m0526') if preview["truncated"] else "",
             "diff": pending.get("diff"), "expires_in": self.PREVIEW_TTL})
 
     async def library_import_confirm(self, request):
@@ -437,27 +438,27 @@ class DashboardImports:
         pid = request.match_info.get("playlist_id")
         allowed = {"preview_id", "revision"} if pid is not None else {"preview_id", "revision", "name"}
         if set(data) not in (allowed, allowed | {"selected_items"}) or (pid is not None and "selected_items" in data):
-            fail(400, "匯入確認欄位不正確，請重新預覽。")
+            fail(400, _web_text('m0527'))
         token = data.get("preview_id")
         if not isinstance(token, str):
-            fail(409, "匯入預覽已過期，請重新預覽。")
+            fail(409, _web_text('m0528'))
         lock = self.import_locks.setdefault(uid, asyncio.Lock())
         async with lock:
             pending = self.import_previews.get(token)
             if (not pending or pending["expires"] <= time.monotonic() or pending["owner_id"] != uid
                     or pending["playlist_id"] != pid or pending["revision"] != data.get("revision")):
-                fail(409, "匯入預覽已過期或歌單已更新，請重新預覽。")
+                fail(409, _web_text('m0529'))
             guild = self.bot.get_guild(pending["guild_id"])
             member = guild.get_member(uid) if guild and not getattr(guild, "unavailable", False) else None
             if member is None:
-                fail(403, "你目前不是來源伺服器的成員。")
+                fail(403, _web_text('m0530'))
             self.check_blocked(member)
             def authorize():
                 self.import_authorize(request, uid)
                 current = self.bot.get_guild(pending["guild_id"])
                 person = current.get_member(uid) if current and not getattr(current, "unavailable", False) else None
                 if person is None:
-                    fail(403, "你目前不是來源伺服器的成員。")
+                    fail(403, _web_text('m0530'))
                 self.check_blocked(person)
             from .web_dashboard_library import name, song
             tracks = pending["tracks"]
@@ -467,18 +468,18 @@ class DashboardImports:
                 if (not isinstance(selected, list) or not selected or len(selected) > 200
                         or any(type(i) is not str or i not in available or not available[i].get("allowed", True) for i in selected)
                         or len(set(selected)) != len(selected)):
-                    fail(400, "請勾選有效且允許的歌曲。")
+                    fail(400, _web_text('m0531'))
                 tracks = [t for i, t in available.items() if i in selected]
             def change(value):
                 if pid is None:
                     if len(value["playlists"]) >= 21:
-                        fail(400, "自訂歌單最多 20 份。")
+                        fail(400, _web_text('m0524'))
                     target = {"id": secrets.token_hex(12), "name": name(data["name"])}
                     value["playlists"].append(target)
                 else:
                     target = next((p for p in value["playlists"] if p["id"] == pid), None)
                     if target is None:
-                        fail(404, "找不到你的歌單。")
+                        fail(404, _web_text('m0521'))
                 target.update(tracks=[song(t) for t in tracks])
                 if pending["source_url"]:
                     target.update(source_url=pending["source_url"], source_type=pending["source_type"])
@@ -488,4 +489,4 @@ class DashboardImports:
                 authorize=authorize)
             self.import_previews.pop(token, None)
         return web.json_response(dict(result, owner=uid == self.bot.config.owner_id,
-            message="已從來源重新同步。" if pid else "已匯入新的個人歌單。"))
+            message=_web_text('m0532') if pid else _web_text('m0533')))

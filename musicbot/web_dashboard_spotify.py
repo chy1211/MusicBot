@@ -1,4 +1,5 @@
 """Read-only Spotify matching through the bot's existing client."""
+from .web_dashboard_i18n import message as _web_text
 import asyncio
 import re
 import time
@@ -39,7 +40,7 @@ class SpotifyLookup:
                       info.get("__input_subject"),getattr(entry,"url","")):
             direct=spotify_track_url(value)
             if direct: return {"url":direct,"mode":"track","query":""}
-        title,artist=metadata(entry);query=" ".join(p for p in (artist,title) if p)[:200] or "音樂"
+        title,artist=metadata(entry);query=" ".join(p for p in (artist,title) if p)[:200] or _web_text('m0576')
         fallback={"url":"https://open.spotify.com/search/"+quote(query,safe=""),"mode":"search","query":query}
         key=(title.casefold(),artist.casefold(),getattr(entry,"duration",None))
         cached=self.cache.get(key)
@@ -84,10 +85,10 @@ class DashboardSpotify:
         now=time.monotonic()
         self.spotify_rate_limits={uid:[t for t in stamps if t>now-60] for uid,stamps in self.spotify_rate_limits.items() if stamps and stamps[-1]>now-60}
         stamps=self.spotify_rate_limits.setdefault(member.id,[])
-        if len(stamps)>=12: raise APIError(429,"Spotify 查詢過於頻繁，請稍後再試。")
+        if len(stamps)>=12: raise APIError(429,_web_text('m0577'))
         stamps.append(now)
         player=self.bot.get_player_in(guild);entry=getattr(player,"current_entry",None)
-        if entry is None: raise APIError(409,"目前沒有播放中的歌曲。")
+        if entry is None: raise APIError(409,_web_text('m0378'))
         token=self.track_token(player)
         value=await self.spotify_lookup.lookup(self.bot,entry)
         if self.discord_auth: self.authenticate(request)

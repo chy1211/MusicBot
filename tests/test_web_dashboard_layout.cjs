@@ -1,3 +1,4 @@
+const {t,dashboardLocale,dashboardTimeZone,dashboardI18nReady}=require("./dashboard_i18n_fixture.cjs");
 "use strict";
 const {test} = require("node:test");
 const assert = require("node:assert/strict");
@@ -27,7 +28,7 @@ test("loading a navigation page preserves its label without inserting a spinner"
   const button = {id: "nav-library", textContent: "我的歌單", dataset: {},
     classList: {toggle: (name, value) => { active[name] = value; }},
     setAttribute: (name, value) => { attrs[name] = value; }};
-  const context = vm.createContext({button}); vm.runInContext(snippet, context);
+  const context = vm.createContext({t,dashboardLocale,dashboardTimeZone,dashboardI18nReady,button}); vm.runInContext(snippet, context);
   vm.runInContext("buttonBusy(button, true)", context);
   assert.equal(button.textContent, "我的歌單"); assert.equal(active["is-loading"], false);
   assert.equal(attrs["aria-busy"], "true");
@@ -41,7 +42,7 @@ test("initial server respects URL, recommendation, browser and first choice", ()
   const snippet = source.slice(source.indexOf("function rememberGuild"), source.indexOf("async function connect"));
   const data = {guilds:[{id:"1"},{id:"2"}], recommended_guild_id:"2"};
   const window = {location:{href:"https://music.example.com/?guild=1"},localStorage:{getItem:()=>"1",setItem(){}}};
-  const c = vm.createContext({window,URL,manualGuild:"",data}); vm.runInContext(snippet,c);
+  const c = vm.createContext({t,dashboardLocale,dashboardTimeZone,dashboardI18nReady,window,URL,manualGuild:"",data}); vm.runInContext(snippet,c);
   assert.equal(vm.runInContext("initialGuild(data)",c),"1");
   window.location.href="https://music.example.com/";
   assert.equal(vm.runInContext("initialGuild(data)",c),"2");
@@ -97,7 +98,7 @@ test("explicit server survives the login redirect and is consumed after selectio
   const snippet=source.slice(source.indexOf("function rememberGuild"),source.indexOf("async function connect"));
   const stored=new Map(), window={location:{href:"https://music.example.com/?guild=2"},
     sessionStorage:{getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)}};
-  const c=vm.createContext({window,URL,entryGuild:"",manualGuild:"",data:{guilds:[{id:"1"},{id:"2"}],recommended_guild_id:"1"}});
+  const c=vm.createContext({t,dashboardLocale,dashboardTimeZone,dashboardI18nReady,window,URL,entryGuild:"",manualGuild:"",data:{guilds:[{id:"1"},{id:"2"}],recommended_guild_id:"1"}});
   vm.runInContext(snippet,c);vm.runInContext("captureEntryGuild()",c);
   assert.equal(stored.size,1);
   window.location.href="https://music.example.com/";c.entryGuild="";

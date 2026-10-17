@@ -1,8 +1,8 @@
 "use strict";
 // Change VERSION on every static release; never intercept authentication/data.
-const VERSION = "musicbot-dashboard-r13-phone";
+const VERSION = "musicbot-dashboard-r13-i18n";
 const STATIC = ["/", "/offline.html", "/dashboard.css", "/dashboard.js", "/library.js",
-  "/popular.js", "/admin.js", "/permissions.js", "/pwa.js", "/favicon.svg", "/manifest.webmanifest",
+  "/i18n.js", "/i18n/en.json", "/i18n/zh-TW.json", "/popular.js", "/admin.js", "/permissions.js", "/pwa.js", "/favicon.svg", "/manifest.webmanifest",
   "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 const ASSETS = new Set(STATIC);
 self.addEventListener("install", event => {
@@ -45,7 +45,7 @@ self.addEventListener("fetch", event => {
         } catch { /* Cache quota must not hide a successful network response. */ }
         return response;
       } catch {
-        return (await caches.match("/offline.html")) || new Response("目前離線", {
+        return (await caches.match("/offline.html")) || new Response("Offline", {
           status: 503, headers: {"Content-Type": "text/plain; charset=utf-8"}});
       }
     })());
