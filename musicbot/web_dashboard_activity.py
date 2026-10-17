@@ -14,7 +14,7 @@ ACTIVE = ContextVar("dashboard_native_activity", default=None)
 ACTIONS = {
     "play": "點歌", "playnext": "插播", "playnow": "立即播放",
     "shuffleplay": "隨機點歌", "stream": "串流點歌", "skip": "跳過",
-    "remove": "刪除", "move": "移動", "shuffle": "洗牌", "clear": "清空佇列",
+    "undo": "復原", "remove": "移除", "move": "移動", "shuffle": "洗牌", "clear": "清空佇列",
     "pause": "暫停", "resume": "繼續", "volume": "音量",
     "repeat": "重複", "seek": "跳轉",
 }
@@ -52,7 +52,7 @@ class Capture:
         before = self.before
         label = ACTIONS[self.action]
         titles = []
-        if self.action in ("play", "playnext", "playnow", "shuffleplay", "stream"):
+        if self.action in ("play", "playnext", "playnow", "shuffleplay", "stream", "undo"):
             titles = [name for key, name in after["entries"].items() if key not in before["entries"]]
             if after["current"] and after["current"] != before["current"]:
                 titles.append(after["current"][1])

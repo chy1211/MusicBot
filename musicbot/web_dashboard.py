@@ -178,7 +178,9 @@ def revision(player) -> str:
     return hashlib.sha256(str(identities).encode()).hexdigest()
 
 
-class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin):
+from .web_dashboard_undo import DashboardUndo
+
+class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin, DashboardUndo):
     def __init__(self, bot, config: DashboardConfig):
         self.bot = bot
         self.config = config
@@ -202,6 +204,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.init_events()
         self.init_library()
         self.init_admin()
+        self.init_undo()
         self.popularity_store = PopularityStore(write_path("data/web_dashboard/stats"))
         async def cleanup_popularity(_app):
             try:
@@ -1386,10 +1389,17 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 position = request.match_info["position"]
                 if not position.isdigit() or int(position) < 1:
                     raise APIError(400, "歌曲位置必須是正整數。")
+                index = int(position) - 1
+                if index >= len(player.playlist.entries):
+                    raise APIError(400, "歌曲位置已失效，請重新整理。")
+                removed = player.playlist.entries[index]
                 response = await self.bot.cmd_remove(
                     ssd_=ssd, user_mentions=[], author=owner,
                     permissions=permissions, player=player,
                     leftover_args=[], position=position)
+                if not isinstance(response, ErrorResponse):
+                    summary = self.remember_removal(guild, owner, removed, index)
+                    response = Response("已移除〈" + str(removed.title) + "〉")
             elif action == "move":
                 if self.discord_auth and not player.current_entry:
                     raise APIError(409, "目前沒有播放中的歌曲。")
@@ -1416,7 +1426,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             if preview:
                 preview["status"] = "done"
             message = response.content if summary else "已完成操作。"
-            if response is not None and not summary:
+            if response is not None and (not summary or action == "remove"):
                 message = getattr(response, "content", "") or message
                 await self.send_web_response(request, guild, owner, response, action)
             return web.json_response({"message": message, "state": self.snapshot(guild, owner), **summary})
