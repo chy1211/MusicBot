@@ -29,7 +29,10 @@ class Element {
     if (this.tag === "select") this.value = "";
     this.append(...items);
   }
-  setAttribute(name, value) { this.attributes[name] = value; }
+  setAttribute(name, value) {
+    this.attributes[name] = String(value);
+    if (name.startsWith("data-")) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = String(value);
+  }
   getAttribute(name) { return this.attributes[name] || null; }
   removeAttribute(name) { delete this.attributes[name]; }
   addEventListener(name, handler) { this.listeners[name] = handler; }
@@ -89,6 +92,16 @@ async function setup(options = {}) {
     createElement: (tag) => new Element(tag),
     querySelectorAll(selector) {
       const result = [];
+      if (selector.startsWith("[data-i18n")) {
+        const attr = selector.slice(1, -1), key = attr.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        const seen = new Set();
+        const visit = element => {
+          if (seen.has(element)) return; seen.add(element);
+          if (element.dataset[key]) result.push(element);
+          element.children.forEach(visit);
+        };
+        visit(this.body); elements.forEach(visit); return result;
+      }
       function walk(element) {
         if (element.tag === (selector.endsWith("input") ? "input" : "button")) result.push(element);
         element.children.forEach(walk);
@@ -96,6 +109,26 @@ async function setup(options = {}) {
       walk(this.getElementById(selector.includes("preview") ? "preview-results" : selector.includes("history") ? "history-list" : selector.includes("recommendation") ? "recommendation-list" : "queue"));
       return result;
     }};
+  // In the delayed-catalog case parse the real shell, including anonymous
+  // translation nodes and accessible attributes, so the leak scan covers all DOM.
+  if (options.delayedI18n) {
+    const stack = [document.body], voids = new Set(["meta","link","input","img","br","hr"]);
+    const html = fs.readFileSync(path.join(__dirname, "../musicbot/web/index.html"), "utf8");
+    for (const token of html.match(/<[^>]+>|[^<]+/g)) {
+      if (token.startsWith("</")) { if (stack.length > 1) stack.pop(); }
+      else if (/^<[a-z]/i.test(token)) {
+        const tag = token.match(/^<([\w-]+)/)[1], el = new Element(tag);
+        for (const m of token.matchAll(/([\w-]+)="([^"]*)"/g)) el.setAttribute(m[1], m[2]);
+        if (el.attributes.id) { el.id = el.attributes.id; elements.set(el.id, el); }
+        stack.at(-1).append(el);
+        if (!voids.has(tag)) stack.push(el);
+      } else if (!token.startsWith("<") && token.trim()) {
+        const text = new Element("#text"); text.textContent = token; stack.at(-1).append(text);
+      }
+    }
+  }
+  let releaseCatalogs;
+  const catalogsReleased = new Promise(resolve => { releaseCatalogs = resolve; });
   const requests = [], timers = [], frames = [], scrolls = [], states = {1: initial(1), 2: initial(2)};
   const session = clone(options.session || {auth_mode: "owner", authenticated: true, user: null});
   let hook = options.hook || null;
@@ -106,7 +139,12 @@ async function setup(options = {}) {
       if (intercepted) return intercepted;
     }
     let body, status = 200;
-    if (url === "/auth/session") body = clone(session);
+    if (url === "/ui-config") body = {default_language:"zh-TW",time_zone:"Asia/Taipei"};
+    else if (url.startsWith("/i18n/")) {
+      await catalogsReleased;
+      body = require("../musicbot/web/i18n/" + (url.includes("zh-TW") ? "zh-TW" : "en") + ".json");
+    }
+    else if (url === "/auth/session") body = clone(session);
     else if (["/auth/logout","/auth/logout-all"].includes(url)) { session.authenticated = false; session.user = null; body = {message: "signed out"}; }
     else if (url.endsWith("/admin/empty-queue")) body = {empty_queue:"autoplaylist",radio_min_seconds:0,radio_max_seconds:0};
     else if (url.endsWith("/admin/lyrics")) body = {enabled:true};
@@ -148,11 +186,16 @@ async function setup(options = {}) {
     requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
     matchMedia: (query) => ({matches: query.includes("reduced-motion") ? !!options.reducedMotion : !options.mobile}),
     innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
+  if (options.delayedI18n) {
+    context.navigator = {languages:["zh-TW"]};
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "../musicbot/web/i18n.js"), "utf8"), context);
+  }
   vm.runInContext(code, context);
+  if (options.delayedI18n) document.documentElement = new Element("html");
   if (options.round7) for (const name of ["library.js", "admin.js", "permissions.js"])
     vm.runInContext(fs.readFileSync(path.join(__dirname, "../musicbot/web", name), "utf8"), context);
   await flush();
-  return {document, elements, states, requests, context, timers, frames, scrolls, session, streams,
+  return {releaseCatalogs, document, elements, states, requests, context, timers, frames, scrolls, session, streams,
     element: (id) => document.getElementById(id),
     run: (expression) => vm.runInContext(expression, context),
     hook: (value) => { hook = value; }};
@@ -2190,4 +2233,47 @@ test("round14 missing scrollTo falls back to the lyric box scrollTop only",async
 test("round14 reduced motion centers without smooth scrolling",async()=>{
   const app=await lyricScrollApp({reducedMotion:true,height:90});
   visibleLyric(app,3);assert.equal(app.box.scrolled.behavior,"auto");
+});
+
+function assertNoTranslationKeys(app) {
+  const seen = new Set();
+  const visit = el => {
+    if (seen.has(el)) return; seen.add(el);
+    // Script source contains key literals but is not rendered UI.
+    if (el.tag === "script") return;
+    if (!el.children.length) assert.doesNotMatch(el.textContent, /\bm\d{4}\b/, el.id || el.tag);
+    for (const attr of ["placeholder", "title", "aria-label"])
+      assert.doesNotMatch(String(el.getAttribute(attr) || el[attr] || ""), /\bm\d{4}\b/, (el.id || el.tag) + ":" + attr);
+    el.children.forEach(visit);
+  };
+  visit(app.document.body); app.elements.forEach(visit);
+}
+test("playlist initializes before catalogs, then translates zh-TW and en without raw keys", async () => {
+  const app = await setup({round7:true, delayedI18n:true});
+  assert.equal(app.requests.some(r => r.url === "/auth/session"), false);
+  assert.match(app.element("library-import-hint").textContent, /m0202/);
+  app.run('libraryImportRender({source_url:"https://example.test/list"})');
+  app.releaseCatalogs(); await app.run("dashboardI18nReady"); await flush();
+  for (const lang of ["zh-TW", "en"]) {
+    const catalog = require("../musicbot/web/i18n/" + lang + ".json");
+    app.context.catalog = catalog;
+    app.run('dashboardCatalog=catalog; applyDashboardLanguage()');
+    assert.equal(app.element("library-import-hint").textContent, catalog.m0202);
+    assert.equal(app.element("library-sync-slot").children[1].textContent, catalog.m0203);
+    assert.equal(app.element("library-sync-slot").children[0].textContent, catalog.m0204);
+    assertNoTranslationKeys(app);
+  }
+});
+test("whole initialized DOM and accessible attributes contain no translation keys", async () => {
+  const app = await setup({round7:true, delayedI18n:true});
+  app.releaseCatalogs(); await app.run("dashboardI18nReady"); await flush();
+  assert.ok(app.requests.some(r => r.url === "/auth/session"));
+  assertNoTranslationKeys(app);
+  // Prove the generic scan catches text as well as each accessible attribute.
+  for (const attr of [null,"placeholder","title","aria-label"]) {
+    const el = new Element("input"); app.document.body.append(el);
+    if (attr) el.setAttribute(attr, "m0202"); else el.textContent = "m0202";
+    assert.throws(() => assertNoTranslationKeys(app));
+    app.document.body.children.pop();
+  }
 });

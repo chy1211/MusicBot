@@ -177,9 +177,9 @@ $("library-save-confirm").addEventListener("click", () => libraryRun($("library-
 }));
 
 let libraryImportUI = null, libraryImportPending = null;
-function libraryImportElement(tag, text, id) {
+function libraryImportElement(tag, key, id) {
   const element = document.createElement(tag);
-  if (text) element.textContent = text;
+  if (key) { element.dataset.i18n = key; element.textContent = t(key); }
   if (id) element.id = id;
   return element;
 }
@@ -190,7 +190,7 @@ function libraryInitImports() {
   hint.className = "subtle library-import-hint";
   $("library-import-hint").append(hint);
   const sync = libraryButton("m0203", librarySync); sync.hidden = true;
-  const origin = libraryImportElement("p", "", "library-source"); origin.hidden = true;
+  const origin = libraryImportElement("p", "m0204", "library-source"); origin.hidden = true;
   $("library-sync-slot").append(origin, sync);
   libraryImportUI = {sync, origin};
 }

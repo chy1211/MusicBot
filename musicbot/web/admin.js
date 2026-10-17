@@ -36,7 +36,7 @@ function adminAplRender() {
   for (const track of adminApl.tracks) {
     const li = document.createElement("li"), label = document.createElement("span");
     label.textContent = track.url || track.title;
-    const remove = libraryButton(t("m0004"), async () => {
+    const remove = libraryButton("m0004", async () => {
       if (!window.confirm(t("m0005"))) return;
       await adminAplChange({index: track.index}, "DELETE");
     });
