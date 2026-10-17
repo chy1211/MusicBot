@@ -1604,3 +1604,16 @@ is unavailable. Successful RDCLAK sources remain syncable.
 Resolve entries add is_requested/default_selected; results add is_mix/saveable.
 No new endpoint or permission bypass. Downloader's new public_limit is used
 only by the existing credential-free dashboard path; Discord extraction is unchanged.
+
+
+## Round 11: personal playlist layout
+Desktop: collection choices (name/count/source) on the left and selected contents
+on the right. Tablet: choices above contents. Phone: list -> selected contents ->
+return. Favorites and custom playlists share the same cover/title/duration/delete
+rows; long titles truncate. Collection actions use Play All / selected enqueue and
+a More menu for whole-list enqueue, rename, source sync and confirmed deletion.
+Play All retains native enqueue/start behavior and never clears the current queue.
+Creation is collapsed; source URL and rename fields no longer consume the main
+song area. Source sync only appears for stable imported sources.
+Demo includes an empty Favorites list, long titles, unknown duration, custom and
+Spotify-source collections; all artwork is fabricated and same-origin.

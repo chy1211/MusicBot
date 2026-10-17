@@ -12,13 +12,13 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r11-3">
-  <script src="/dashboard.js?v=r11-3" defer></script>
-  <script src="/library.js?v=r11-3" defer></script>
-  <script src="/popular.js?v=r11-3" defer></script>
-  <script src="/admin.js?v=r11-3" defer></script>
-  <script src="/permissions.js?v=r11-3" defer></script>
-  <script src="/pwa.js?v=r11-3" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r11-4">
+  <script src="/dashboard.js?v=r11-4" defer></script>
+  <script src="/library.js?v=r11-4" defer></script>
+  <script src="/popular.js?v=r11-4" defer></script>
+  <script src="/admin.js?v=r11-4" defer></script>
+  <script src="/permissions.js?v=r11-4" defer></script>
+  <script src="/pwa.js?v=r11-4" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -122,12 +122,26 @@
 <p id="popular-status" class="hint" role="status" aria-live="polite">選擇伺服器後查看熱門點播。</p><ol id="popular-list" class="history-list popular-list"></ol>
 </section>
 <section id="library-panel" class="card" hidden aria-labelledby="library-heading">
-<h2 id="library-heading">我的歌單</h2><div id="library-import-hint"></div>
-<form id="library-create" class="input-row"><label for="library-new-name">新增歌單</label><input id="library-new-name" maxlength="60" required><button id="library-create-button" type="submit">建立</button></form>
-<div class="input-row"><label for="library-select">歌單</label><select id="library-select"></select><button id="library-refresh" type="button">重新整理</button></div>
-<div class="input-row"><label for="library-name">名稱</label><input id="library-name" maxlength="60"><button id="library-rename" type="button">改名</button><button id="library-delete" type="button">刪除歌單</button></div>
-<div class="selection-tools"><button id="library-play-all" type="button">整份加入佇列</button><button id="library-play-selected" type="button" disabled>加入勾選歌曲</button></div>
-<p id="library-empty" class="hint">歌單目前沒有歌曲。</p><ol id="library-list" class="library-list"></ol>
+<div class="section-top"><h2 id="library-heading">我的歌單</h2><button id="library-refresh" type="button">重新整理</button></div>
+<div class="library-workspace">
+<aside class="library-sidebar" aria-label="個人歌單列表">
+<details class="library-create-menu"><summary>新增歌單</summary>
+<form id="library-create"><label for="library-new-name">歌單名稱</label><input id="library-new-name" maxlength="60" required><button id="library-create-button" type="submit">建立</button></form></details>
+<div id="library-import-hint"></div><ul id="library-playlists" class="library-playlists"></ul>
+</aside>
+<section id="library-detail" class="library-detail" aria-labelledby="library-detail-heading">
+<button id="library-back" type="button" class="subtle">返回歌單列表</button>
+<h3 id="library-detail-heading" tabindex="-1"></h3><p id="library-meta" class="hint"></p>
+<div class="library-toolbar">
+<button id="library-play-all" class="primary" type="button">播放全部</button>
+<button id="library-play-selected" type="button" disabled>加入勾選歌曲</button>
+<details id="library-actions" class="library-actions"><summary aria-label="歌單更多動作">⋯</summary>
+<div class="library-menu"><button id="library-enqueue-all" type="button">整份加入佇列</button>
+<div id="library-rename-form"><label for="library-name">名稱</label><input id="library-name" maxlength="60"><button id="library-rename" type="button">改名</button></div>
+<div id="library-sync-slot"></div><button id="library-delete" class="danger" type="button">刪除歌單</button></div>
+</details></div>
+<p id="library-empty" class="hint">歌單目前沒有歌曲。可從搜尋結果或播放器加入。</p><ol id="library-list" class="library-list"></ol>
+</section></div>
 </section>
 <dialog id="shortcuts-dialog" aria-labelledby="shortcuts-heading">
   <div class="section-top"><h2 id="shortcuts-heading">鍵盤快捷鍵</h2><button id="shortcuts-close" type="button" aria-label="關閉快捷鍵說明">關閉 ×</button></div>

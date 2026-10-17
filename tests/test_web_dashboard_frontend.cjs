@@ -1478,7 +1478,7 @@ test("round7 general member sees playlists and no management entry", async()=>{
   await flush();assert.equal(app.element("nav-admin").hidden,true);
   await app.element("nav-library").listeners.click();
   assert.equal(app.element("play-view").hidden,true);assert.equal(app.element("library-panel").hidden,false);
-  assert.equal(app.element("library-list").children[0].children[1].textContent.startsWith("<img"),true);
+  assert.equal(app.element("library-list").children[0].children[2].children[0].textContent.startsWith("<img"),true);
   assert.equal(app.element("library-rename").disabled,true);assert.equal(app.element("library-delete").disabled,true);
 });
 test("round7 owner capability reveals management and current-track action",async()=>{
@@ -1506,15 +1506,14 @@ test("round7 playlist picker selects custom list and closes after save",async()=
   assert.ok(app.requests.some(r=>r.url==="/api/library/custom/tracks"));
   assert.equal(app.element("library-save-dialog").open,false);
 });
-test("round7 up down remove and rename send observed library revision",async()=>{
+test("playlist row removal and rename send observed library revision",async()=>{
   const fixture=libraryFixture(),app=await setup({round7:true,hook:fixture.hook});
   await app.element("nav-library").listeners.click();
-  app.element("library-select").value="custom";app.element("library-select").listeners.change();
-  const row=app.element("library-list").children[0],actions=row.children[2].children;
-  assert.equal(actions[0].disabled,true);
-  await actions[1].listeners.click();
+  app.element("library-playlists").children[1].children[0].listeners.click();
+  const row=app.element("library-list").children[0];
+  await row.children[4].listeners.click();
   const change=app.requests.find(r=>r.method==="PATCH");
-  assert.equal(change.data.action,"move");assert.equal(change.data.index,0);assert.equal(change.data.to,1);
+  assert.equal(change.data.action,"remove");assert.equal(change.data.index,0);
   assert.equal(change.data.revision,"library-v1");
   app.element("library-name").value="New name";await app.element("library-rename").listeners.click();
   assert.ok(app.requests.some(r=>r.data?.name==="New name"));
@@ -1522,7 +1521,7 @@ test("round7 up down remove and rename send observed library revision",async()=>
 test("round7 checked enqueue uses target guild and displays partial rejection",async()=>{
   const fixture=libraryFixture(),app=await setup({round7:true,hook:fixture.hook});
   await app.element("nav-library").listeners.click();
-  app.element("library-select").value="custom";app.element("library-select").listeners.change();
+  app.element("library-playlists").children[1].children[0].listeners.click();
   const check=app.element("library-list").children[1].children[0];check.checked=true;check.listeners.change();
   assert.equal(app.element("library-play-selected").disabled,false);
   await app.element("library-play-selected").onclick();
@@ -1945,4 +1944,21 @@ test("owner empty-queue settings use guild-scoped JSON and validate ranges",asyn
   app.element("radio-min-seconds").value="-1";
   await app.element("empty-queue-form").listeners.submit({preventDefault(){}});
   assert.equal(app.requests.length,count);
+});
+
+test("round11 library separates collection choices, compact actions and song columns",async()=>{
+ const fixture=libraryFixture(),app=await setup({round7:true,hook:fixture.hook});
+ await app.element("nav-library").listeners.click();
+ assert.equal(app.element("library-playlists").children.length,2);
+ app.element("library-playlists").children[1].children[0].listeners.click();
+ assert.equal(app.element("library-panel").classes.has("detail-open"),true);
+ assert.equal(app.element("library-list").children[0].children.length,5);
+ assert.equal(app.element("library-detail-heading").textContent,"Study");
+});
+test("round11 mix defaults only seed and can save without sync source",async()=>{
+ const app=await setup();
+ await app.run('renderPreviewResults([{kind:"playlist",title:"Mix",url:"https://www.youtube.com/watch?v=abcdefghijk&list=RDdemo",count:2,checked_count:2,eligible_count:2,allowed:true,saveable:true,entries:[{item_id:"1",title:"Seed",url:"https://www.youtube.com/watch?v=abcdefghijk",allowed:true,is_requested:true,default_selected:true},{item_id:"2",title:"Next",url:"https://www.youtube.com/watch?v=other123456",allowed:true,default_selected:false}]}])');
+ const card=app.element("preview-results").children[0],list=card.children[1].children.find(e=>e.tag==="ol");
+ assert.equal(list.children[0].children[0].children[0].checked,true);
+ assert.equal(list.children[1].children[0].children[0].checked,false);
 });

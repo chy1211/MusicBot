@@ -1,11 +1,11 @@
 """Fabricated Spotify image structure and persisted fallback."""
 import unittest
-from test_web_dashboard_round10_spotify import EmbedTests
+import test_web_dashboard_round10_spotify as embed
 from musicbot.web_dashboard_imports import parse_spotify_embed, imported_track, spotify_image
 from musicbot.web_dashboard_library import song
 class Images(unittest.TestCase):
     def test_embed_cover_and_track_precedence(self):
-        helper=EmbedTests()
+        helper=embed.EmbedTests()
         entity={"name":"Test","coverArt":{"sources":[{"url":"https://mosaic.scdn.co/640/fake"}]},
                 "trackList":[{"uri":"spotify:track:abc","title":"Song","duration":120000}]}
         for custom in (False,True):
