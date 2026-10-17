@@ -1641,17 +1641,16 @@ Demo includes an empty Favorites list, long titles, unknown duration, custom and
 Spotify-source collections; all artwork is fabricated and same-origin.
 
 
-## Round 11: one player
-The homepage hero card is removed. The bottom bar remains on every page, with
-cover, linked title, requester, transport/repeat and progress. Blank-space clicks
-or Expand open a right-side desktop panel / full-screen phone sheet containing
-the larger cover, progress, volume, favorites, Spotify, source, lyrics and owner
-actions. The same transport DOM moves into the panel and back (no second set).
-Modal focus enters Collapse; Collapse, Escape and a downward touch swipe on the
-sheet header close it and restore focus to Expand. Controls/links do not trigger
-expansion. Volume lives in the full panel at all widths. The phone bar remains
-152px with no extra row. Empty playback retains a stable bar and explicit status.
-
+## Round 12: one-level player
+The persistent player contains artwork, title/requester, favorite toggle,
+pause/resume, skip, repeat, seek, volume and the reserved lyrics toggle.
+No player dialog, expansion, transport reparenting or swipe-to-close exists.
+Click its title for two pre-resolved native links (YouTube/source and Spotify).
+Escape, outside click and focus departure dismiss this small choice;
+Escape and link activation restore title focus. Other song titles retain links.
+The web UI no longer offers any add-to-autoplaylist entrance. Its backend API
+and native Discord commands are unchanged; owner read/delete management remains.
+Lyrics is temporarily hidden until the Round 12 opt-in implementation.
 
 ### Round 11 offline demo and verification
 Use the temporary image/context workflow above with a new musicbot-webtest-r11
@@ -1666,8 +1665,7 @@ name and a git archive of feature/dashboard-round11. Run the demo with
 * My Playlists: empty Favorites, custom list with long title/unknown duration,
   stable Spotify-source list. At 1280/768/390 check left/top/mobile drill-in
   navigation, More actions, confirmed deletion and title clipping.
-* From any page, expand the bottom player, adjust volume/favorite/Spotify/lyrics,
-  collapse or press Escape; phone sheet header also supports a downward swipe.
+* From any page, use the bottom controls directly, and click the title for source/Spotify.
   Empty-queue demo toggles remain available through the existing demo controls.
 * Account -> Log out all devices demonstrates the protected new session route.
   All demo session files live in its TemporaryDirectory, created before auth init.

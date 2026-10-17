@@ -12,13 +12,13 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r11-final">
-  <script src="/dashboard.js?v=r11-final" defer></script>
-  <script src="/library.js?v=r11-final" defer></script>
-  <script src="/popular.js?v=r11-final" defer></script>
-  <script src="/admin.js?v=r11-final" defer></script>
-  <script src="/permissions.js?v=r11-final" defer></script>
-  <script src="/pwa.js?v=r11-final" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r12-player">
+  <script src="/dashboard.js?v=r12-player" defer></script>
+  <script src="/library.js?v=r12-player" defer></script>
+  <script src="/popular.js?v=r12-player" defer></script>
+  <script src="/admin.js?v=r12-player" defer></script>
+  <script src="/permissions.js?v=r12-player" defer></script>
+  <script src="/pwa.js?v=r12-player" defer></script>
 </head>
 <body>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
@@ -147,44 +147,31 @@
 <form id="admin-apl-search" class="input-row"><label for="admin-apl-query">搜尋網址</label><input id="admin-apl-query" type="search" maxlength="100"><button id="admin-apl-search-button" type="submit">搜尋</button></form>
 <p id="admin-apl-count" role="status"></p><ol id="admin-apl-list" class="admin-apl-list"></ol>
 <div class="selection-tools"><button id="admin-apl-prev" type="button">上一頁</button><button id="admin-apl-next" type="button">下一頁</button></div>
-<form id="admin-apl-add" class="input-row"><label for="admin-apl-url">新增網址</label><input id="admin-apl-url" type="url" maxlength="2000" required><button id="admin-apl-add-button" type="submit">新增</button></form>
+
 <div id="admin-permissions"></div></section>
 <dialog id="permission-confirm-dialog"><h2>確認修改權限</h2><p id="permission-confirm-text"></p><div class="selection-tools"><button id="permission-confirm" type="button">確認修改</button><button id="permission-cancel" type="button">取消</button></div></dialog>
     <footer id="identity-note">即時更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道</footer>
   </main>
-<dialog id="player-dialog" class="player-panel" aria-labelledby="now-heading">
-<div id="player-sheet-handle" class="section-top player-panel-heading"><span>正在播放</span><button id="player-collapse" type="button" autofocus>收合</button></div>
-    <section class="card now-playing" aria-labelledby="now-heading">
-      <div class="art hero-art"><span aria-hidden="true">♫</span><img id="cover" alt="歌曲封面" hidden></div>
-      <div class="track-info"><p class="eyebrow" id="now-heading">正在播放</p><span id="play-status" class="badge">尚未連線</span>
-        <h2 id="title">選一首喜歡的歌</h2><p id="subtitle" class="muted">請先加入 Discord 語音頻道</p>
-        <a id="source-link" class="source-link" target="_blank" rel="noopener noreferrer" hidden>在來源網站開啟 ↗</a>
-        <a id="spotify-link" class="source-link" target="_blank" rel="noopener noreferrer" aria-disabled="true" hidden>在 Spotify 打開</a>
-        <button id="autoplaylist-current" class="subtle" type="button" hidden>加入自動播放清單</button>
-        <button id="favorite" class="subtle" type="button" aria-pressed="false" title="收藏這首歌">♡ 收藏</button>
-        <button id="lyrics-toggle" class="subtle" type="button" aria-expanded="false" aria-controls="lyrics-panel" disabled>歌詞</button>
-        <div class="progress-row hero-progress"><span id="hero-elapsed">0:00</span><input id="hero-progress" type="range" min="0" max="1" step="1" value="0" aria-label="正在播放：跳到指定時間" disabled><span id="hero-duration">0:00</span></div>
-        <div id="panel-transport"></div><div class="volume-row panel-volume"><label for="volume">音量</label><input id="volume" type="range" min="1" max="100" value="15" disabled><output id="volume-label" for="volume">15%</output></div>
-        <p class="sr-only seek-hint">拖動或按左右鍵，放開後跳轉。</p>
-      </div>
-    </section>
-    <section id="lyrics-panel" class="card lyrics-panel" aria-labelledby="lyrics-heading" hidden>
-      <div class="section-top"><div><h2 id="lyrics-heading">歌詞</h2></div><button id="lyrics-close" class="subtle" type="button" aria-label="關閉歌詞">關閉</button></div>
-      <p id="lyrics-status" class="hint" role="status" aria-live="polite"></p>
-      <div id="lyrics-content" class="lyrics-content" tabindex="0" aria-label="歌詞內容"></div>
-      <form id="lyrics-search-form" class="lyrics-search" hidden><label for="lyrics-query">試試歌名與演出者</label><div class="input-row"><input id="lyrics-query" type="search" maxlength="200" placeholder="歌名 演出者" required><button id="lyrics-search" type="submit">搜尋歌詞</button></div></form>
-    </section>
-</dialog>
-  <section id="playback-bar" class="playback-bar" aria-label="播放控制">
-    <div class="bar-track"><div class="art mini-art"><span aria-hidden="true">♫</span><img id="bar-cover" alt="" hidden></div>
-      <div class="bar-copy"><p id="bar-title">目前沒有播放</p><small id="bar-status">選一首喜歡的歌</small></div><button id="player-expand" type="button" aria-expanded="false" aria-controls="player-dialog">展開</button></div>
-    <div class="bar-center">
-      <div id="bar-transport-slot"><div id="player-transport" class="transport"><button id="toggle" class="primary" aria-label="播放或暫停" disabled>繼續</button>
-        <button id="skip" aria-label="跳過目前歌曲" disabled>跳過</button>
-        <label class="repeat-label" for="repeat">重複<select id="repeat" disabled><option value="off">關閉</option><option value="song">單曲</option><option value="all">整個佇列</option></select></label></div></div>
-      <div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1" step="1" value="0" aria-label="底部播放列：跳到指定時間" disabled><span id="duration">0:00</span></div>
-    </div>
-  </section>
+<section id="lyrics-panel" class="lyrics-panel" aria-labelledby="lyrics-heading" hidden>
+<div class="section-top"><h2 id="lyrics-heading">歌詞</h2><button id="lyrics-close" type="button" aria-label="關閉歌詞">關閉</button></div>
+<p id="lyrics-status" class="hint" role="status" aria-live="polite"></p>
+<div id="lyrics-content" class="lyrics-content" tabindex="0" aria-label="歌詞內容"></div>
+<form id="lyrics-search-form" class="lyrics-search" hidden><label for="lyrics-query">歌名與演出者</label><input id="lyrics-query" maxlength="200"><button id="lyrics-search">搜尋歌詞</button></form>
+</section>
+<section id="playback-bar" class="playback-bar" aria-label="播放控制">
+<div class="bar-track"><div class="art mini-art"><span aria-hidden="true">♫</span><img id="bar-cover" alt="" hidden></div>
+<div class="bar-copy"><button id="bar-title" type="button" aria-expanded="false" aria-controls="song-choices" aria-haspopup="true">目前沒有播放</button><small id="bar-status">選一首喜歡的歌</small>
+<div id="song-choices" class="song-choices" role="group" aria-label="開啟歌曲" hidden>
+<a id="source-link" target="_blank" rel="noopener noreferrer">在 YouTube 開啟</a>
+<a id="song-spotify" target="_blank" rel="noopener noreferrer">在 Spotify 開啟</a></div></div>
+<button id="favorite" type="button" aria-label="收藏這首歌" aria-pressed="false">♡</button></div>
+<div class="bar-center"><div id="player-transport" class="transport">
+<button id="toggle" class="primary" aria-label="播放或暫停" disabled>繼續</button><button id="skip" aria-label="跳過目前歌曲" disabled>跳過</button>
+<label class="repeat-label" for="repeat"><span class="sr-only">重複</span><select id="repeat" aria-label="重複" disabled><option value="off">重複</option><option value="song">單曲</option><option value="all">佇列</option></select></label></div>
+<div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1" step="1" value="0" aria-label="底部播放列：跳到指定時間" disabled><span id="duration">0:00</span></div></div>
+<p class="sr-only seek-hint">拖動或按左右鍵，放開後跳轉。</p><div class="bar-right"><button id="lyrics-toggle" type="button" aria-expanded="false" aria-controls="lyrics-panel" hidden disabled>歌詞</button>
+<div class="volume-row"><label for="volume" class="sr-only">音量</label><input id="volume" type="range" min="1" max="100" value="15" aria-label="音量" disabled><output id="volume-label" for="volume">15%</output></div></div>
+</section>
   </div>
 </body>
 </html>

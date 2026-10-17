@@ -154,7 +154,7 @@ async function setup(options = {}) {
 
 test("renders current track, progress, queue and safe untrusted titles", async () => {
   const app = await setup();
-  assert.equal(app.element("title").textContent, "First");
+  assert.equal(app.element("bar-title").textContent, "First");
   assert.equal(app.element("progress").value, 30);
   assert.equal(app.element("queue-count").textContent, "2");
   assert.equal(app.element("queue").children[0].children[2].children[0].textContent, "<img onerror=evil>");
@@ -216,10 +216,10 @@ test("guild switching clears previous content and rejects stale response", async
   const old = app.run("refresh()");
   app.element("guild").value = "2";
   await app.element("guild").listeners.change();
-  assert.equal(app.element("title").textContent, "Second");
+  assert.equal(app.element("bar-title").textContent, "Second");
   release({ok: true, status: 200, json: async () => initial(1)});
   await old;
-  assert.equal(app.element("title").textContent, "Second");
+  assert.equal(app.element("bar-title").textContent, "Second");
   await app.element("skip").listeners.click();
   assert.equal(app.requests.find((r) => r.url.endsWith("/skip")).url, "api/guilds/2/skip");
 });
@@ -229,7 +229,7 @@ test("failed guild switch clears old queue and disables controls", async () => {
   app.hook((url) => url === "api/guilds/2/state" ? Promise.reject(new Error("offline")) : null);
   app.element("guild").value = "2";
   await app.element("guild").listeners.change();
-  assert.notEqual(app.element("title").textContent, "First");
+  assert.notEqual(app.element("bar-title").textContent, "First");
   assert.equal(app.element("queue").children.length, 0);
   assert.equal(app.element("toggle").disabled, true);
   assert.equal(app.element("enqueue").disabled, true);
@@ -517,7 +517,7 @@ test("Discord API 401 erases songs, guilds, preview, profile and query before st
   assert.equal(app.element("query").value, "");
   assert.equal(app.element("user-name").textContent, "");
   assert.equal(app.element("user-avatar").getAttribute("src"), null);
-  assert.notEqual(app.element("title").textContent, "First");
+  assert.notEqual(app.element("bar-title").textContent, "First");
   assert.notEqual(app.element("bar-title").textContent, "First");
   assert.equal(app.run("state"), null);
   assert.equal(app.run("selected"), "");
@@ -717,7 +717,7 @@ test("current source link only exposes HTTP links and requester display names", 
   assert.equal(app.element("source-link").href, app.states[1].current.url);
   assert.equal(app.element("source-link").hidden, false);
   assert.match(app.element("source-link").textContent, /YouTube/);
-  assert.equal(app.element("subtitle").textContent, "點播：<script>點播者</script>");
+  assert.equal(app.element("bar-status").textContent, "播放中 · 點播：<script>點播者</script>");
   assert.equal(app.element("queue").children[0].children[2].children[1].textContent, "點播：好友");
   for (const url of ["javascript:alert(1)", "file:///tmp/test", "https://u:p@example.test/song"]) {
     app.states[1].current.url = url;
@@ -864,7 +864,7 @@ test("drop displacement uses unequal row heights without changing the move paylo
 
 
 test("both seek sliders preview a drag across polling and post only on release", async () => {
-  for (const id of ["progress", "hero-progress"]) {
+  for (const id of ["progress", "progress"]) {
     const app = await setup(), slider = app.element(id);
     slider.listeners.pointerdown(pointer());
     slider.value = "105"; slider.listeners.input();
@@ -872,9 +872,9 @@ test("both seek sliders preview a drag across polling and post only on release",
     app.states[1].progress = 31;
     await app.run("refresh()");
     assert.equal(app.element("progress").value, 105);
-    assert.equal(app.element("hero-progress").value, 105);
+    assert.equal(app.element("progress").value, 105);
     assert.equal(app.element("elapsed").textContent, "1:45");
-    assert.equal(app.element("hero-elapsed").textContent, "1:45");
+    assert.equal(app.element("elapsed").textContent, "1:45");
     assert.equal(app.requests.filter((request) => request.url.endsWith("/seek")).length, 0);
     await app.document.listeners.pointerup(pointer());
     await slider.listeners.change();
@@ -903,7 +903,7 @@ test("touch seek and keyboard repeated arrows commit once at the end of interact
 });
 
 test("assistive input/change commits once and cancelled seek restores actual time", async () => {
-  const app = await setup(), slider = app.element("hero-progress");
+  const app = await setup(), slider = app.element("progress");
   slider.value = "75"; slider.listeners.input(); await slider.listeners.change();
   assert.deepEqual(app.requests.find((request) => request.url.endsWith("/seek")).data, {position: 75});
   slider.listeners.pointerdown(pointer("touch"));
@@ -938,7 +938,7 @@ test("live, empty and disconnected players disable seek and backend rejection re
   app.states[1].current.seekable = true;
   app.states[1].current.duration = 0; await app.run("refresh()");
   assert.equal(app.element("progress").disabled, true);
-  assert.equal(app.element("hero-progress").disabled, true);
+  assert.equal(app.element("progress").disabled, true);
   app.element("progress").listeners.pointerdown(pointer());
   assert.equal(app.run("seekDrag"), null);
   app.states[1].current.duration = 180; await app.run("refresh()");
@@ -1033,7 +1033,7 @@ test("history failures are isolated and late guild response cannot restore old r
   app.element("guild").value = "2"; await app.element("guild").listeners.change();
   release({ok: true, status: 200, json: async () => historyReply()}); await pending;
   assert.equal(app.element("history-list").children.length, 0);
-  assert.equal(app.element("title").textContent, "Second");
+  assert.equal(app.element("bar-title").textContent, "Second");
 });
 
 function lyricsResponse(body) { return Promise.resolve({ok: true, status: 200, json: async () => body}); }
@@ -1092,7 +1092,7 @@ test("lyrics service errors and rate limits leave playback usable with manual re
   assert.match(app.element("lyrics-status").textContent, /太頻繁/);
   assert.equal(app.element("lyrics-search-form").hidden, false);
   await app.element("toggle").listeners.click();
-  assert.equal(app.element("play-status").textContent, "已暫停");
+  assert.equal(app.element("toggle").textContent, "繼續");
 });
 
 test("late lyrics cannot overwrite a different track, different guild or expired session", async () => {
@@ -1132,7 +1132,7 @@ test("manual lyrics query rejects an older slower response for the same track", 
 test("seek controls remain native keyboard/touch ranges and lyrics use no external script", () => {
   const html = fs.readFileSync(path.join(__dirname, "../musicbot/web/index.html"), "utf8");
   const css = fs.readFileSync(path.join(__dirname, "../musicbot/web/dashboard.css"), "utf8");
-  for (const id of ["progress", "hero-progress"])
+  for (const id of ["progress", "progress"])
     assert.match(html, new RegExp('id="' + id + '"[^>]*type="range"[^>]*step="1"[^>]*aria-label='));
   assert.match(html, /id="lyrics-toggle"[^>]*aria-controls="lyrics-panel"/);
   assert.match(css, /progress-row input\[type=range\].*min-height:44px/);
@@ -1162,7 +1162,7 @@ test("seek sends the captured track token and reconciles a backend stale-track r
 });
 
 test("a changed track token cancels seek even when title URL and duration are unchanged", async () => {
-  const app = await setup(), slider = app.element("hero-progress");
+  const app = await setup(), slider = app.element("progress");
   app.states[1].current.track_token = "first-instance"; await app.run("refresh()");
   slider.listeners.pointerdown(pointer()); slider.value = "90"; slider.listeners.input();
   app.states[1].current.track_token = "second-instance"; app.states[1].progress = 2;
@@ -1208,7 +1208,7 @@ test("native range lost capture preserves preview until document pointerup commi
 });
 
 test("blurring a pointer seek cancels safely while keyboard blur commits its final preview", async () => {
-  const app = await setup(), slider = app.element("hero-progress");
+  const app = await setup(), slider = app.element("progress");
   slider.listeners.pointerdown(pointer()); slider.value = "100"; slider.listeners.input();
   slider.listeners.blur(); await app.document.listeners.pointerup(pointer());
   assert.equal(slider.value, 30);
@@ -1383,7 +1383,7 @@ test("SSE switch guild closes old stream ignores stale callbacks", async () => {
   assert.equal(old.closed,true);
   assert.equal(app.streams.at(-1).url,"/api/guilds/2/events");
   old.emit("snapshot",snapshot(app.states[1]));
-  assert.equal(app.element("title").textContent,"Second");
+  assert.equal(app.element("bar-title").textContent,"Second");
   app.streams.at(-1).emit("snapshot",snapshot(app.states[2]));
   assert.equal(app.element("connection").textContent,"連線狀態");
 });
@@ -1443,7 +1443,7 @@ test("SSE wrong-guild data closes and reconnects safely", async () => {
   app.streams[0].emit("snapshot",snapshot(app.states[2]));
   await flush();
   assert.equal(app.streams[0].closed,true);
-  assert.equal(app.element("title").textContent,"First");
+  assert.equal(app.element("bar-title").textContent,"First");
 });
 
 function libraryFixture(owner = false) {
@@ -1481,10 +1481,10 @@ test("round7 general member sees playlists and no management entry", async()=>{
   assert.equal(app.element("library-list").children[0].children[2].children[0].textContent.startsWith("<img"),true);
   assert.equal(app.element("library-rename").disabled,true);assert.equal(app.element("library-delete").disabled,true);
 });
-test("round7 owner capability reveals management and current-track action",async()=>{
+test("owner capability reveals read/delete management",async()=>{
   const fixture=libraryFixture(true),app=await setup({round7:true,hook:fixture.hook});
   await flush();assert.equal(app.element("nav-admin").hidden,false);
-  assert.equal(app.element("autoplaylist-current").hidden,false);
+  assert.equal(app.element("autoplaylist-current").listeners.click, undefined);
   await app.element("nav-admin").listeners.click();
   assert.equal(app.element("admin-panel").hidden,false);
   assert.equal(app.element("admin-apl-list").children.length,1);
@@ -1884,7 +1884,7 @@ test("round10 song links canonicalize YouTube, reject scripts and suppress drag 
 
 test("Spotify prefetch enables a real href without opening a popup", async () => {
   const app = await setup();
-  const link = app.element("spotify-link");
+  const link = app.element("song-spotify");
   assert.equal(link.getAttribute("href"), "https://open.spotify.com/track/Fake0001");
   assert.equal(link.getAttribute("aria-disabled"), "false");
   assert.equal(link.classes.has("is-loading"), false);
@@ -1894,25 +1894,25 @@ test("Spotify ignores stale replies and disables clicks while loading", async ()
   const pending = [];
   app.hook(url => url.endsWith("/spotify") ? new Promise(resolve => pending.push(resolve)) : null);
   app.run('spotifyPrefetch()');
-  assert.equal(app.element("spotify-link").getAttribute("href"), null);
+  assert.equal(app.element("song-spotify").getAttribute("href"), null);
   let prevented = false;
-  app.element("spotify-link").listeners.click({preventDefault() { prevented = true; }});
+  app.element("song-spotify").listeners.click({preventDefault() { prevented = true; }});
   assert.equal(prevented, true);
   app.run('state.current = {title:"Another"}; spotifyPrefetch()');
   pending[1]({ok:true,status:200,json:async()=>({url:"https://open.spotify.com/track/New"})});
   await flush();
   pending[0]({ok:true,status:200,json:async()=>({url:"https://open.spotify.com/track/Old"})});
   await flush();
-  assert.equal(app.element("spotify-link").getAttribute("href"), "https://open.spotify.com/track/New");
+  assert.equal(app.element("song-spotify").getAttribute("href"), "https://open.spotify.com/track/New");
   app.run('state.current = null; spotifyPrefetch()');
-  assert.equal(app.element("spotify-link").hidden, true);
-  assert.equal(app.element("spotify-link").getAttribute("href"), null);
+  assert.equal(app.element("song-spotify").hidden, true);
+  assert.equal(app.element("song-spotify").getAttribute("href"), null);
 });
 test("Spotify lookup failure offers an encoded search URL", async () => {
   const app = await setup();
   app.hook(url => url.endsWith("/spotify") ? Promise.resolve({ok:false,status:503,json:async()=>({error:"稍後再試"})}) : null);
   await app.run('spotifyPrefetch()');
-  assert.equal(app.element("spotify-link").getAttribute("href"), "https://open.spotify.com/search/First");
+  assert.equal(app.element("song-spotify").getAttribute("href"), "https://open.spotify.com/search/First");
 });
 
 
@@ -1963,26 +1963,21 @@ test("round11 mix defaults only seed and can save without sync source",async()=>
  assert.equal(list.children[1].children[0].children[0].checked,false);
 });
 
-test("round11 full player moves the existing transport and restores focus",async()=>{
- const app=await setup();
- await app.element("player-expand").listeners.click();
- assert.equal(app.element("player-dialog").open,true);
- assert.equal(app.element("player-transport").parent,app.element("panel-transport"));
- assert.equal(app.element("player-collapse").focused,true);
- let prevented=false;
- app.element("player-dialog").listeners.cancel({preventDefault(){prevented=true}});
- assert.equal(prevented,true);assert.equal(app.element("player-dialog").open,false);
- assert.equal(app.element("player-transport").parent,app.element("bar-transport-slot"));
- assert.equal(app.element("player-expand").focused,true);
+test("round12 title opens two choices and Escape restores focus",async()=>{
+ const app=await setup();app.run('state.current.url="https://youtu.be/abcdefghijk";render(state)');
+ app.element("bar-title").listeners.click();
+ assert.equal(app.element("song-choices").hidden,false);
+ assert.equal(app.element("bar-title").getAttribute("aria-expanded"),"true");
+ app.run('closeSongChoices()');
+ assert.equal(app.element("song-choices").hidden,true);
+ assert.equal(app.element("bar-title").focused,true);
 });
-test("round11 touch sheet downward swipe closes without leaving selection lock",async()=>{
- const app=await setup();app.element("player-expand").listeners.click();
- const handle=app.element("player-sheet-handle"), target={closest:()=>null};
- handle.listeners.pointerdown({pointerType:"touch",pointerId:1,clientX:80,clientY:10,target,currentTarget:handle});
- handle.listeners.pointerup({pointerId:1,clientX:90,clientY:130});
- assert.equal(app.element("player-dialog").open,false);
+test("round12 player has all controls and no expansion code or autoplaylist add UI",()=>{
+ const html=fs.readFileSync(path.join(__dirname,"../musicbot/web/index.html"),"utf8");
+ for (const id of ["favorite","toggle","skip","repeat","progress","volume","lyrics-toggle"]) assert.match(html,new RegExp('id="'+id+'"'));
+ assert.doesNotMatch(html,/player-dialog|player-expand|player-sheet-handle|autoplaylist-current|admin-apl-add|spotify-link/);
+ assert.doesNotMatch(code,/openPlayerPanel|closePlayerPanel|playerSwipe|panel-transport|hero-progress/);
 });
-
 test("round11 logout all uses protected endpoint and clears private state",async()=>{
  const app=await setup({session:{auth_mode:"discord",authenticated:true,user:{id:"43",name:"Friend",avatar:""}}});
  await app.element("logout-all").listeners.click();

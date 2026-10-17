@@ -92,7 +92,7 @@ function authDisplay() {
     : "即時更新 · 以 OwnerID 本人權限操作 · 加入佇列前需先進入 Discord 語音頻道";
 }
 function signedOut(message = "登入後即可查看你的伺服器並點歌。") {
-  closePlayerPanel();
+  closeSongChoices(false);
   stopEvents();
   if (typeof libraryClear === "function") libraryClear();
   if (typeof adminClear === "function") adminClear();
@@ -175,7 +175,7 @@ function controls() {
   $("enqueue").disabled = !usable || resolving;
   $("request-action").disabled = !usable || resolving;
   const seekable = active && state.capabilities?.seek === true && state.current.duration > 0 && state.current.seekable === true;
-  for (const id of ["progress", "hero-progress"]) $(id).disabled = !seekable;
+  for (const id of ["progress"]) $(id).disabled = !seekable;
   $("lyrics-toggle").disabled = !hasPlayer || !state.current;
   $("favorite").disabled = !hasPlayer || !safeURL(state?.current?.url) || $("favorite").dataset.loading === "1";
   $("lyrics-search").disabled = !usable || lyricsLoading;
@@ -406,7 +406,7 @@ function shortcutsHelp() {
 function keyboardShortcut(event) {
   if (event.key === "Escape") {
     if ($("shortcuts-dialog").open) { event.preventDefault(); $("shortcuts-dialog").close(); }
-    cancelDrag("已取消拖曳。"); cancelSeek(); noSelection("volume", false);
+    closeSongChoices(); cancelDrag("已取消拖曳。"); cancelSeek(); noSelection("volume", false);
     return;
   }
   if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey ||
@@ -606,30 +606,22 @@ function render(next, force = false) {
   const previousTrack = currentTrackKey();
   state = next; stateAt = Date.now();
   if (seekDrag && seekDrag.track !== currentTrackKey()) cancelSeek();
-  if (previousTrack !== currentTrackKey()) { resetLyrics(false); spotifyPrefetch(); }
-  songTitle($("title"), state.current || {title:"選一首喜歡的歌"});
-  $("subtitle").textContent = state.current ? "點播：" + requesterName(state.current) : "請先加入 Discord 語音頻道，再點播歌曲";
+  if (previousTrack !== currentTrackKey()) { resetLyrics(false); closeSongChoices(false); spotifyPrefetch(); }
   const source = songLinkURL(state.current?.url || "");
   $("source-link").hidden = !source;
   if (source) {
     $("source-link").href = source;
-    $("source-link").textContent = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(source)
-      ? "在 YouTube 開啟 ↗" : "在來源網站開啟 ↗";
+    $("source-link").textContent = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(source) ? "在 YouTube 開啟" : "開啟原始網址";
   } else $("source-link").removeAttribute("href");
   if (typeof favoriteRender === "function") favoriteRender();
-  $("play-status").textContent = labels[state.status] || "準備中";
   $("toggle").textContent = state.status === "playing" ? "暫停" : "繼續";
-  songTitle($("bar-title"), state.current || {title:"目前沒有播放"});
+  $("bar-title").textContent = state.current?.title || "目前沒有播放";
+  $("bar-title").disabled = !state.current;
   $("bar-status").textContent = state.current ? (labels[state.status] || "準備中") + " · 點播：" + requesterName(state.current) : "選一首喜歡的歌";
   $("playback-bar").classList.toggle("is-empty", !state.current);
   const cover = safeURL(state.current?.thumbnail || "");
   if (cover) { $("bar-cover").src = cover; $("bar-cover").hidden = false; }
   else { $("bar-cover").hidden = true; $("bar-cover").removeAttribute("src"); }
-  if (cover) {
-    if ($("cover").getAttribute("src") !== cover) {
-      $("cover").src = cover; $("cover").hidden = false;
-    }
-  } else { $("cover").hidden = true; $("cover").removeAttribute("src"); }
   const total = state.current ? state.current.duration : 0;
   drawProgress(seekDrag ? seekDrag.position : state.progress, total);
   if (lyricsOpen && state.current && lyricsTrack !== currentTrackKey() && !lyricsLoading) loadLyrics();
@@ -774,49 +766,31 @@ async function poll() {
   }
   window.setTimeout(poll, document.hidden ? 10000 : 1000);
 }
-function openPlayerPanel() {
-  const panel = $("player-dialog");
-  if (panel.open) return;
-  $("panel-transport").append($("player-transport"));
-  panel.showModal();
-  $("player-expand").setAttribute("aria-expanded", "true");
-  document.body.classList.toggle("player-open", true);
-  $("player-collapse").focus();
+function closeSongChoices(restore = true) {
+  const wasOpen = !$("song-choices").hidden;
+  $("song-choices").hidden = true; $("bar-title").setAttribute("aria-expanded", "false");
+  if (wasOpen && restore) $("bar-title").focus();
 }
-function closePlayerPanel() {
-  const panel = $("player-dialog"), wasOpen = panel.open;
-  if (wasOpen) panel.close();
-  $("bar-transport-slot").append($("player-transport"));
-  $("player-expand").setAttribute("aria-expanded", "false");
-  document.body.classList.toggle("player-open", false);
-  noSelection("player-sheet", false);
-  if (wasOpen) $("player-expand").focus();
-}
-$("player-expand").addEventListener("click", openPlayerPanel);
-$("player-collapse").addEventListener("click", closePlayerPanel);
-$("player-dialog").addEventListener("cancel", event => { event.preventDefault(); closePlayerPanel(); });
-$("player-dialog").addEventListener("close", closePlayerPanel);
-$("playback-bar").addEventListener("click", event => {
-  if (event.target.closest("a,button,input,select,label")) return;
-  openPlayerPanel();
+$("bar-title").addEventListener("click", () => {
+  if (!state?.current) return;
+  const open = $("song-choices").hidden;
+  closeSongChoices(false);
+  if (open) { $("song-choices").hidden = false; $("bar-title").setAttribute("aria-expanded", "true"); $("source-link").focus(); }
 });
-let playerSwipe = null;
-$("player-sheet-handle").addEventListener("pointerdown", event => {
-  if (event.pointerType !== "touch" || event.target.closest("button")) return;
-  playerSwipe = {x:event.clientX, y:event.clientY, id:event.pointerId};
-  noSelection("player-sheet", true);
-  event.currentTarget.setPointerCapture?.(event.pointerId);
+document.addEventListener("pointerdown", event => {
+  if (!event.target.closest?.(".bar-copy")) closeSongChoices(false);
 });
-$("player-sheet-handle").addEventListener("pointerup", event => {
-  if (!playerSwipe || event.pointerId !== playerSwipe.id) return;
-  const dy = event.clientY - playerSwipe.y, dx = Math.abs(event.clientX - playerSwipe.x);
-  playerSwipe = null; noSelection("player-sheet", false);
-  if (dy > 80 && dy > dx * 1.5) closePlayerPanel();
+document.addEventListener("focusin", event => {
+  if (!event.target.closest?.(".bar-copy")) closeSongChoices(false);
 });
-$("player-sheet-handle").addEventListener("pointercancel", () => {
-  playerSwipe = null; noSelection("player-sheet", false);
+for (const id of ["source-link", "song-spotify"]) $(id).addEventListener("click", () => closeSongChoices());
+$("song-choices").addEventListener("keydown", event => {
+  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+    event.preventDefault();
+    const links = [$("source-link"), $("song-spotify")];
+    links[event.key === "Home" ? 0 : event.key === "End" ? 1 : document.activeElement === links[0] ? 1 : 0].focus();
+  }
 });
-$("cover").addEventListener("error", () => { $("cover").hidden = true; });
 $("guild").addEventListener("change", async () => {
   stopEvents(); fallbackPolling = true;
   ++generation; selected = $("guild").value; state = null;
@@ -859,12 +833,12 @@ function currentTrackKey() {
 }
 function drawProgress(position, total = state?.current?.duration || 0) {
   const value = total ? Math.max(0, Math.min(Number(position) || 0, total)) : 0;
-  for (const id of ["progress", "hero-progress"]) {
+  for (const id of ["progress"]) {
     $(id).max = total || 1; $(id).value = value;
     $(id).setAttribute("aria-valuetext", duration(value) + "，共 " + (total ? duration(total) : "長度未知"));
   }
-  for (const id of ["elapsed", "hero-elapsed"]) $(id).textContent = duration(value);
-  for (const id of ["duration", "hero-duration"]) $(id).textContent = total ? duration(total) : "直播／長度未知";
+  for (const id of ["elapsed"]) $(id).textContent = duration(value);
+  for (const id of ["duration"]) $(id).textContent = total ? duration(total) : "直播／長度未知";
 }
 function cancelSeek() {
   noSelection("seek", false);
@@ -1095,7 +1069,7 @@ function toggleLyrics(open = !lyricsOpen) {
   $("lyrics-toggle").setAttribute("aria-expanded", String(open));
   if (open && lyricsTrack !== currentTrackKey()) return loadLyrics();
 }
-installSeek("progress"); installSeek("hero-progress");
+installSeek("progress");
 $("history-refresh").addEventListener("click", () => refreshHistory(true));
 $("lyrics-toggle").addEventListener("click", () => toggleLyrics());
 $("lyrics-close").addEventListener("click", () => { toggleLyrics(false); $("lyrics-toggle").focus?.(); });
@@ -1279,7 +1253,7 @@ window.addEventListener?.("blur", () => { cancelDrag(); cancelSeek(); noSelectio
 let spotifyRequest = 0;
 async function spotifyPrefetch() {
   const request = ++spotifyRequest, epoch = generation, key = currentTrackKey(), guild = selected;
-  const link = $("spotify-link"), title = state?.current?.title || "";
+  const link = $("song-spotify"), title = state?.current?.title || "";
   link.hidden = !key; link.removeAttribute("href");
   link.setAttribute("aria-disabled","true");
   link.classList.toggle("is-loading",!!key);
@@ -1298,6 +1272,6 @@ async function spotifyPrefetch() {
     }
   }
 }
-$("spotify-link").addEventListener("click", event => {
-  if ($("spotify-link").getAttribute("aria-disabled") === "true") event.preventDefault();
+$("song-spotify").addEventListener("click", event => {
+  if ($("song-spotify").getAttribute("aria-disabled") === "true") event.preventDefault();
 });
