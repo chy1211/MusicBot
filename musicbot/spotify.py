@@ -562,7 +562,9 @@ class Spotify:
 
     async def get_playlist(self, list_id: str) -> Dict[str, Any]:
         """Get a playlist's info from its Spotify ID"""
-        return await self.make_api_req(f"playlists/{list_id}")
+        from .web_dashboard_imports import spotify_playlist
+        return await spotify_playlist(
+            self, list_id, api=lambda: self.make_api_req(f"playlists/{list_id}"))
 
     async def make_api_req(self, endpoint: str) -> Dict[str, Any]:
         """Proxy method for making a Spotify request using the correct Auth headers"""
