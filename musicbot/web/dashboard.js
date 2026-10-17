@@ -19,13 +19,44 @@ function notice(message, error = false) {
     }
   }, error ? 10000 : 4500);
 }
-function buttonBusy(button, active, label = t("m0044")) {
-  if (active && button.dataset.loading !== "1") button.dataset.label = button.textContent;
-  button.dataset.loading = active ? "1" : "0";
+// Preserve the original nodes (including translation markers and listeners).
+const busyButtonLabels = new WeakMap();
+function buttonLabel(button, key, count = null, suffix = null) {
+  const label = document.createElement("span");
+  label.dataset.i18n = key; label.textContent = t(key);
+  button.replaceChildren(label);
+  if (count !== null) {
+    const number = document.createElement("span"); number.textContent = String(count);
+    const end = document.createElement("span");
+    end.dataset.i18n = suffix; end.textContent = t(suffix);
+    button.append(number, end);
+  }
+}
+function translateButton(button) {
+  const visit = node => {
+    if (node.dataset?.i18n) node.textContent = t(node.dataset.i18n);
+    for (const child of node.children || []) visit(child);
+  };
+  visit(button);
+}
+function buttonBusy(button, active, count = null) {
   const navigation = /^nav-/.test(button.id || "");
+  if (!navigation && active && !busyButtonLabels.has(button)) {
+    const nodes = Array.from(button.childNodes || button.children || []);
+    if (!nodes.length) {
+      const label = document.createElement("span"); label.textContent = button.textContent;
+      nodes.push(label);
+    }
+    busyButtonLabels.set(button, nodes);
+    buttonLabel(button, count === null ? "m0044" : "m0102", count, "m0103");
+  } else if (!navigation && !active && busyButtonLabels.has(button)) {
+    button.replaceChildren(...busyButtonLabels.get(button));
+    busyButtonLabels.delete(button);
+    translateButton(button);
+  }
+  button.dataset.loading = active ? "1" : "0";
   button.classList.toggle("is-loading", active && !navigation);
   button.setAttribute("aria-busy", String(active));
-  if (!navigation) button.textContent = active ? label : button.dataset.label || button.textContent;
   if (active) button.disabled = true;
 }
 function safeURL(value) {
@@ -521,7 +552,7 @@ function renderPreviewResults(results, action = "play") {
       const updateSelection = () => {
         if (selectionCount) selectionCount.textContent = t("m0087") + selectedItems.size + t("m0033");
         if (saveButton) saveButton.disabled = !selectedItems.size || libraryBusy;
-        button.textContent = song.kind === "playlist" ? t("m0088") + selectedItems.size + t("m0089") : song.allowed ? t("m0090") : t("m0091");
+        buttonLabel(button, song.kind === "playlist" ? "m0088" : song.allowed ? "m0090" : "m0091", song.kind === "playlist" ? selectedItems.size : null, "m0089");
         button.dataset.boundary = song.allowed && (song.kind !== "playlist" || selectedItems.size) ? "0" : "1";
         controls();
       };
@@ -573,7 +604,7 @@ function renderPreviewResults(results, action = "play") {
           const name = document.createElement("input"); name.maxLength = 60; name.value = Array.from(song.title).slice(0, 60).join("");
           nameLabel.append(name);
           saveButton = document.createElement("button"); saveButton.type = "button";
-          saveButton.textContent = t("m0101");
+          buttonLabel(saveButton, "m0101");
           saveButton.addEventListener("click", () => librarySavePreview(song, selectedItems, name.value, saveButton));
           info.append(nameLabel, saveButton);
         }
@@ -584,7 +615,7 @@ function renderPreviewResults(results, action = "play") {
         const payload = {query: song.url, preview_id: song.preview_id};
         if (song.kind === "playlist") payload.selected_items = song.entries
           .filter((item) => selectedItems.has(item.item_id)).map((item) => item.item_id);
-        buttonBusy(clicked, true, song.kind === "playlist" ? t("m0102") + selectedItems.size + t("m0103") : t("m0044"));
+        buttonBusy(clicked, true, song.kind === "playlist" ? selectedItems.size : null);
         try {
           if (await act(target, payload)) {
             clearPreview(); $("query").value = ""; controls();
@@ -592,13 +623,13 @@ function renderPreviewResults(results, action = "play") {
         } finally { buttonBusy(clicked, false); controls(); }
       };
       button.addEventListener("click", () => confirmSong(action));
-      if (action === "playnext") button.textContent = song.allowed ? t("m0104") : t("m0105");
+      if (action === "playnext") buttonLabel(button, song.allowed ? "m0104" : "m0105");
       article.append(art, info, button);
       if (song.kind !== "playlist") {
         const alternate = document.createElement("button");
         alternate.type = "button"; alternate.className = "subtle preview-alternate";
         alternate.dataset.boundary = song.allowed ? "0" : "1";
-        alternate.textContent = action === "play" ? t("m0104") : t("m0090");
+        buttonLabel(alternate, action === "play" ? "m0104" : "m0090");
         alternate.addEventListener("click", () => confirmSong(action === "play" ? "playnext" : "play", alternate));
         article.append(alternate);
         duplicateNote(article, song.url);
@@ -659,7 +690,7 @@ async function act(action, data = {}, method = "POST") {
       if (result.undo_token) {
         const version = toastVersion;
         window.clearTimeout(toastTimer);
-        const undo = document.createElement("button"); undo.type = "button"; undo.textContent = t("m0122");
+        const undo = document.createElement("button"); undo.type = "button"; buttonLabel(undo, "m0122");
         undo.addEventListener("click", async () => {
           if (busy || undo.disabled || epoch !== generation) return;
           undo.disabled = true; buttonBusy(undo, true);
