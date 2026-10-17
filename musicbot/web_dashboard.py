@@ -1141,9 +1141,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     children = info.get_entries_objects()
                     spotify_single = (
                         source.hostname == "open.spotify.com" and len(parts) == 2
-                        and parts[0] == "track" and info.ytdl_type == "video"
+                        and parts[0] == "track" and info.ytdl_type in ("video", "url", "")
                         and len(children) == 1 and not children[0].has_entries
                         and children[0].extractor == info.extractor
+                        and info.extractor == "youtube"
+                        and info.video_id == children[0].video_id
+                        and info.webpage_url == children[0].webpage_url
                     )
                     if not spotify_single:
                         raise APIError(403, "選取的單曲解析成播放清單，請重新查詢。")
