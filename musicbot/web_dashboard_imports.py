@@ -91,6 +91,95 @@ def source_diff(old, new):
     return {"added": sum((after - before).values()), "removed": sum((before - after).values())}
 
 
+# Public embed fallback contains no authentication and never follows redirects.
+SPOTIFY_EMBED_LIMIT = 3 * 1024 * 1024
+SPOTIFY_UNREADABLE = "這個 Spotify 歌單目前讀不到，可能是私人歌單"
+
+def parse_spotify_embed(content, ident):
+    import json
+    from html.parser import HTMLParser
+    if len(content) > SPOTIFY_EMBED_LIMIT:
+        raise ValueError(SPOTIFY_UNREADABLE)
+    class Scripts(HTMLParser):
+        def __init__(self):
+            super().__init__(); self.active = False; self.parts = []
+        def handle_starttag(self, tag, attrs):
+            self.active = tag == "script" and dict(attrs).get("id") == "__NEXT_DATA__"
+        def handle_endtag(self, tag):
+            if tag == "script": self.active = False
+        def handle_data(self, data):
+            if self.active: self.parts.append(data)
+    parser = Scripts()
+    parser.feed(content.decode("utf-8") if isinstance(content, bytes) else content)
+    data = json.loads("".join(parser.parts))
+    entity = data["props"]["pageProps"]["state"]["data"]["entity"]
+    rows = entity.get("trackList")
+    if not isinstance(rows, list):
+        raise ValueError(SPOTIFY_UNREADABLE)
+    tracks, seen = [], set()
+    for row in rows[:200]:
+        if not isinstance(row, dict): continue
+        uri = row.get("uri") or row.get("trackUri") or ""
+        match = re.fullmatch(r"spotify:track:([A-Za-z0-9]{1,100})", uri)
+        title = row.get("title")
+        duration = row.get("duration")
+        if isinstance(duration, dict): duration = duration.get("totalMilliseconds")
+        if (not match or not isinstance(title, str) or not title.strip()
+                or type(duration) not in (int, float) or not math.isfinite(duration)
+                or not 0 < duration <= 31536000000):
+            continue
+        tid = match[1]
+        if tid in seen: continue
+        seen.add(tid)
+        subtitle = row.get("subtitle")
+        tracks.append({"track": {"id": tid, "type": "track", "name": title[:300],
+                       "artists": [{"name": subtitle[:300]}] if isinstance(subtitle, str) else [],
+                       "duration_ms": duration,
+                       "external_urls": {"spotify": "https://open.spotify.com/track/" + tid}}})
+    if not tracks:
+        raise ValueError(SPOTIFY_UNREADABLE)
+    # Embed is a partial view. Never claim it is the entire source.
+    total = entity.get("totalTracks")
+    total = max(len(tracks), total if type(total) is int else 0)
+    return {"id": ident, "type": "playlist", "name": str(entity.get("name") or entity.get("title") or "Spotify 歌單")[:300],
+            "external_urls": {"spotify": "https://open.spotify.com/playlist/" + ident},
+            "tracks": {"items": tracks, "next": None, "total": total},
+            "_embed_partial": True}
+
+async def fetch_spotify_embed(session, ident):
+    import aiohttp
+    if not re.fullmatch(r"[A-Za-z0-9]{1,100}", ident):
+        raise ValueError(SPOTIFY_UNREADABLE)
+    url = "https://open.spotify.com/embed/playlist/" + ident
+    async with session.get(url, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=10)) as response:
+        actual = urlsplit(str(response.url))
+        if (response.status != 200 or actual.scheme != "https" or actual.hostname != "open.spotify.com"
+                or actual.username or actual.password or actual.port not in (None, 443)):
+            raise ValueError(SPOTIFY_UNREADABLE)
+        if response.content_length and response.content_length > SPOTIFY_EMBED_LIMIT:
+            raise ValueError(SPOTIFY_UNREADABLE)
+        chunks, size = [], 0
+        async for chunk in response.content.iter_chunked(65536):
+            size += len(chunk)
+            if size > SPOTIFY_EMBED_LIMIT: raise ValueError(SPOTIFY_UNREADABLE)
+            chunks.append(chunk)
+    return parse_spotify_embed(b"".join(chunks), ident)
+
+async def spotify_playlist(spotify, ident, api=None):
+    """API first; the existing authenticated client remains the only API client."""
+    original = None
+    try:
+        value = await (api() if api else spotify.get_playlist(ident))
+        if isinstance(value.get("tracks"), dict) and isinstance(value["tracks"].get("items"), list):
+            return value
+    except Exception as exc:
+        original = exc
+    try:
+        return await fetch_spotify_embed(spotify.aiosession, ident)
+    except Exception:
+        if original is not None: raise original
+        raise ValueError(SPOTIFY_UNREADABLE) from None
+
 class DashboardImports:
     def init_imports(self):
         self.import_previews = {}
@@ -125,7 +214,11 @@ class DashboardImports:
             spotify = self.bot.spotify
             category, ident = urlsplit(url).path.strip("/").split("/")
             # Existing Spotify API/session owns credentials and token handling.
-            value = await (spotify.get_album(ident) if category == "album" else spotify.get_playlist(ident))
+            try:
+                value = await (spotify.get_album(ident) if category == "album" else spotify_playlist(spotify, ident))
+            except Exception:
+                fail(400, SPOTIFY_UNREADABLE if category == "playlist" else "這個 Spotify 專輯目前讀不到，請稍後再試。")
+            count_is_minimum = bool(value.get("_embed_partial"))
             container = value.get("tracks", {})
             rows = list(container.get("items") or [])
             total = container.get("total", len(rows))
@@ -168,7 +261,7 @@ class DashboardImports:
         if not tracks:
             fail(404, "歌單內沒有可匯入的公開歌曲。")
         return {"title": str(title)[:300], "tracks": tracks, "count": count,
-                "truncated": count > 200, "count_is_minimum": count_is_minimum,
+                "truncated": count > len(tracks) or count_is_minimum, "count_is_minimum": count_is_minimum,
                 "source_url": url, "source_type": kind}
 
     async def library_import_preview(self, request):
