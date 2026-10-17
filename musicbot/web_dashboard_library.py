@@ -16,6 +16,7 @@ from pathlib import Path
 from aiohttp import web
 from . import write_path
 from .web_dashboard_auth import USER_KEY
+from .web_dashboard_imports import DashboardImports, source_url
 
 log = logging.getLogger(__name__)
 
@@ -105,8 +106,12 @@ class PlaylistStore:
                 raise ValueError()
             ids = set()
             for index, item in enumerate(lists):
-                if set(item) != {"id", "name", "tracks"}:
+                if set(item) not in ({"id", "name", "tracks"}, {"id", "name", "tracks", "source_url", "source_type"}):
                     raise ValueError()
+                if "source_url" in item:
+                    canonical, kind = source_url(item["source_url"])
+                    if index == 0 or canonical != item["source_url"] or kind != item["source_type"]:
+                        raise ValueError()
                 if not isinstance(item["id"], str) or item["id"] in ids:
                     raise ValueError()
                 if not (item["id"] == "favorites" if index == 0 else len(item["id"]) == 24 and all(c in "0123456789abcdef" for c in item["id"])):
@@ -147,9 +152,10 @@ class PlaylistStore:
             return dict(copy.deepcopy(value), revision=self.revision(value))
 
 
-class DashboardLibrary:
+class DashboardLibrary(DashboardImports):
     def init_library(self):
         self.playlist_store = PlaylistStore(write_path("data/web_dashboard/user_playlists"))
+        self.init_imports()
         self.app.router.add_get("/api/library", self.library)
         self.app.router.add_post("/api/library", self.library)
         for method in ("PATCH", "DELETE"):
@@ -178,7 +184,7 @@ class DashboardLibrary:
                 fail(403, "登入身分已變更，請重新登入。")
         owner = uid == self.bot.config.owner_id
         if request.method == "GET":
-            return web.json_response(dict(await self.playlist_store.transact(uid, authorize=authorize), owner=owner))
+            return web.json_response(dict(await self.playlist_store.transact(uid, authorize=authorize), owner=owner, sources={"spotify": self.spotify_import_enabled(), "youtube": True}))
         data = await self.payload(request)
         if any(key in data for key in ("user_id", "filename", "path")):
             fail(400, "請求包含不支援的欄位。")

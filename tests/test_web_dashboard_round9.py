@@ -239,3 +239,74 @@ class LibraryNotificationTests(unittest.IsolatedAsyncioTestCase):
         sent = self.bot.safe_send_message.call_args.args[1]
         self.assertIn("Enqueued **2** songs to be played.", sent.content)
         self.assertIn("Position in queue: 4", sent.content)
+
+
+import asyncio
+import copy
+from musicbot.downloader import Downloader
+
+
+class SpotifyNativeSelectionTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = library_fixtures.LibraryTests.asyncSetUp
+    asyncTearDown = library_fixtures.LibraryTests.asyncTearDown
+    call = identity.DiscordTests.call
+    login_as = identity.DiscordTests.login_as
+    provider_token = identity.DiscordTests.provider_token
+    provider_me = identity.DiscordTests.provider_me
+    get = library_fixtures.LibraryTests.get
+    add = library_fixtures.LibraryTests.add
+
+    async def set_real_spotify_extraction(self, raw=None):
+        self.bot.config.spotify_enabled = True
+        self.bot.loop = asyncio.get_running_loop()
+        self.bot.spotify = NS(get_spotify_ytdl_data=AsyncMock(return_value={
+            "_type": "url", "search_terms": "Artist Song"}))
+        raw = raw or {
+            "_type": "playlist", "extractor": "youtube:search", "playlist_count": 1,
+            "entries": [{"_type": "video", "extractor": "youtube", "id": "abcdefghijk",
+                         "title": "Found", "duration": 90,
+                         "url": "https://media.example.test/audio",
+                         "webpage_url": "https://www.youtube.com/watch?v=abcdefghijk"}]}
+        native = NS(bot=self.bot, thread_pool=None, _supported_search=["ytsearch"],
+            unsafe_ytdl=NS(extract_info=lambda *a, **kw: copy.deepcopy(raw)),
+            ytdl=NS(sanitize_info=lambda value: value))
+        async def extract(query, **kwargs):
+            with patch("musicbot.downloader.log.noise", create=True):
+                value = await Downloader._filtered_extract_info(native, query, **kwargs)
+            value["__input_subject"] = query
+            return YtdlpResponseDict(value)
+        self.bot.downloader.extract_info = extract
+        return raw
+
+    async def test_imported_spotify_real_native_search_wrapper_is_playable(self):
+        value = await self.add(track={"title": "Artist - Song",
+            "url": "https://open.spotify.com/track/ABC123", "duration": 90})
+        await self.set_real_spotify_extraction()
+        result = await self.call(BASE + "library/favorites/play", {"revision": value["revision"]})
+        self.assertEqual(result["added"], 1)
+        self.bot.spotify.get_spotify_ytdl_data.assert_awaited_once_with(
+            "https://open.spotify.com/track/ABC123", True)
+        self.assertEqual(self.bot.player.playlist.entries[-1].title, "Found")
+        self.bot.safe_send_message.assert_awaited_once()
+
+    async def test_real_spotify_wrapper_rechecks_full_duration_and_extractor(self):
+        value = await self.add(track={"title": "Artist - Song",
+            "url": "https://open.spotify.com/track/ABC123", "duration": 1})
+        await self.set_real_spotify_extraction()
+        self.bot.member_perms.max_song_length = 30
+        result = await self.call(BASE + "library/favorites/play", {"revision": value["revision"]})
+        self.assertEqual(result["added"], 0)
+        self.bot.safe_send_message.assert_not_awaited()
+
+    async def test_spotify_true_multiple_and_nested_playlists_remain_denied(self):
+        value = await self.add(track={"title": "Artist - Song",
+            "url": "https://open.spotify.com/track/ABC123", "duration": 90})
+        raw = await self.set_real_spotify_extraction()
+        for altered in (
+            dict(raw, entries=raw["entries"] * 2, playlist_count=2),
+            dict(raw, entries=[dict(raw["entries"][0], _type="playlist", entries=raw["entries"])]),
+        ):
+            await self.set_real_spotify_extraction(altered)
+            result = await self.call(BASE + "library/favorites/play", {"revision": value["revision"]})
+            self.assertEqual(result["added"], 0)
+        self.bot.safe_send_message.assert_not_awaited()
