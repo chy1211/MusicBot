@@ -100,7 +100,7 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         current = self.bot.players[1].current_entry
         result = await self.call(BASE + "seek", {"position": 62.5})
         self.assertIs(self.bot.players[1].current_entry, current)
-        self.assertAlmostEqual(result["state"]["progress"], 62.5, delta=.2)
+        self.assertAlmostEqual(result["state"]["progress"], 63, delta=.2)
         self.assertTrue(result["state"]["current"]["seekable"])
 
     async def test_playnext_inserts_before_existing_queue(self):

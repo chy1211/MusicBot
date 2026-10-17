@@ -93,6 +93,7 @@ from .utils import (
     slugify,
 )
 
+
 def build_play_response(ssd_, *, number, track, position, playlist=False):
     """Shared native enqueue formatting, without queue or command side effects."""
     template = (
@@ -1561,6 +1562,14 @@ class MusicBot(commands.Bot):
                 dashboard.note_queue_entry(player.voice_client.channel.guild, entry)
         except Exception as exc:
             log.warning("Dashboard queue observation failed (%s)", type(exc).__name__)
+
+        try:
+            dashboard = getattr(self, "_web_dashboard", None)
+            if dashboard is not None:
+                await dashboard.popularity_store.record(player.voice_client.channel.guild, entry)
+        except Exception as exc:
+            log.warning("Dashboard popularity observation failed (%s)", type(exc).__name__)
+
         # if playing auto-playlist track and a user queues a track,
         # if we're configured to do so, auto skip the auto playlist track.
         if (
@@ -4565,7 +4574,6 @@ class MusicBot(commands.Bot):
                         "No songs were added, all songs were over max duration (%(max)s seconds)",
                         fmt_args={"max": permissions.max_song_length},
                     )
-
 
             # If it's an entry
             else:

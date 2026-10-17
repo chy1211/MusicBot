@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 from aiohttp import web
 from discord import ChannelType
 
-from . import exceptions
+from . import exceptions, write_path
 from .constructs import ErrorResponse, Response
 from .entry import LocalFilePlaylistEntry, URLPlaylistEntry
 from .web_dashboard_lyrics import LyricsClient, clean_metadata
@@ -29,6 +29,7 @@ from .spotify import Spotify
 from .utils import get_compound_link_ids
 from .web_dashboard_auth import DashboardAuth, USER_KEY
 from .web_dashboard_events import DashboardEvents
+from .web_dashboard_stats import PopularityStore
 from .web_dashboard_library import DashboardLibrary
 from .web_dashboard_admin import DashboardAdmin
 from .web_dashboard_activity import capture, finish
@@ -200,6 +201,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.init_events()
         self.init_library()
         self.init_admin()
+        self.popularity_store = PopularityStore(write_path("data/web_dashboard/stats"))
+        async def cleanup_popularity(_app):
+            try:
+                await self.popularity_store.close()
+            except Exception:
+                log.warning("Dashboard popularity final flush failed")
+        self.app.on_cleanup.append(cleanup_popularity)
+
         self.app.router.add_get("/", self.index)
         for path in ("manifest.webmanifest", "sw.js", "pwa.js", "offline.html",
                      "icon-192.png", "icon-512.png", "apple-touch-icon.png"):
@@ -215,6 +224,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.app.router.add_get("/library.js", self.asset)
         self.app.router.add_get("/admin.js", self.asset)
         self.app.router.add_get("/permissions.js", self.asset)
+        self.app.router.add_get("/popular.js", self.asset)
         self.app.router.add_get("/api/guilds", self.guilds)
         self.app.router.add_get("/api/guilds/{guild_id}/state", self.state)
         self.app.router.add_get("/api/guilds/{guild_id}/listeners", self.listeners)
@@ -222,6 +232,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.app.router.add_get("/api/guilds/{guild_id}/events", self.events,
                                 name="dashboard_events", allow_head=False)
         self.app.router.add_get("/api/guilds/{guild_id}/history", self.history)
+        self.app.router.add_get("/api/guilds/{guild_id}/popular", self.popular)
         self.app.router.add_get("/api/guilds/{guild_id}/lyrics", self.lyrics)
         self.app.router.add_post(
             "/api/guilds/{guild_id}/resolve", self.resolve)
@@ -595,6 +606,20 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     async def state(self, request):
         guild, member = self.guild_owner(request)
         return web.json_response(self.snapshot(guild, member))
+
+
+    async def popular(self, request):
+        guild, member = self.guild_owner(request)
+        period = request.query.get("period", "7")
+        if period not in ("7", "30", "all"):
+            raise APIError(400, "統計期間只接受近 7 天、近 30 天或全部。")
+        try:
+            tracks = await self.popularity_store.top(guild, period)
+        except Exception:
+            raise APIError(503, "暫時無法讀取熱門點播，請稍後再試。") from None
+        # Recheck membership after the asynchronous read.
+        self.guild_owner(request)
+        return web.json_response({"period": period, "tracks": tracks})
 
     def note_queue_entry(self, guild, entry):
         """Observe member requests/insertion order; never mutate the playlist."""
@@ -1012,8 +1037,24 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             success = False
             def validate(info):
                 # Called inside _cmd_play AFTER extraction and before queue mutation.
+                candidate = info
                 if info.has_entries:
-                    raise APIError(403, "選取的單曲解析成播放清單，請重新查詢。")
+                    # Native Spotify processing searches for one matching video.
+                    # Downloader merges that video into the parent but retains
+                    # the one-child search entries. Accept only its already
+                    # flattened video shape; genuine/nested playlists still fail.
+                    source = urlsplit(item["url"])
+                    parts = source.path.strip("/").split("/")
+                    children = info.get_entries_objects()
+                    spotify_single = (
+                        source.hostname == "open.spotify.com" and len(parts) == 2
+                        and parts[0] == "track" and info.ytdl_type == "video"
+                        and len(children) == 1 and not children[0].has_entries
+                        and children[0].extractor == info.extractor
+                    )
+                    if not spotify_single:
+                        raise APIError(403, "選取的單曲解析成播放清單，請重新查詢。")
+                    candidate = children[0]
                 if self.discord_auth:
                     self.authenticate(request)
                 current_guild, member = self.guild_owner(request)
@@ -1024,7 +1065,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 why = self.playlist_restriction(perms, preview["count"])
                 player = self.bot.get_player_in(current_guild)
                 self.addition_checks(player, member, perms)
-                why = why or self.restriction(info, perms, playlist=True)
+                why = (why or self.restriction(info, perms, playlist=True)
+                       or self.restriction(candidate, perms, playlist=True))
                 if why:
                     raise APIError(403, why)
                 return perms
