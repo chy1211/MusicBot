@@ -1677,3 +1677,13 @@ discover -s tests -p 'test_web_dashboard*.py' in a musicbot-webtest-* container
 with --network none. Frontend: node --test tests/test_web_dashboard*.cjs (VM-only,
 no network). Links: python3 -m tools.test_compound_link in a --network none
 temporary container. Fabricated tests add no external calls or production mounts.
+
+
+Round 11 retains all prior test cases; revocation assertions distinguish the
+first membership/blocklist denial (403) from reuse of the revoked cookie (401).
+Backend adds 21 offline cases; frontend adds five behavior cases.
+Known boundary: provider-side Spotify embed listings can remain partial, and
+dynamic mixes are snapshots. If even seed metadata cannot be read, its canonical
+video ID/thumbnail are shown and native playback revalidates it on enqueue.
+As with the existing extractor, cancelling an await cannot forcibly stop work
+already running in yt-dlp's executor; the UI falls back without awaiting that work.

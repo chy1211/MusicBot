@@ -313,7 +313,7 @@ class Round5Discord(unittest.IsolatedAsyncioTestCase):
             self.bot.members.pop(43)
             return result("Track", "", {"plainLyrics": "Private"})
         self.dashboard.lyrics_client = NS(lookup=lookup)
-        await self.call(BASE + "lyrics", method="GET", status=401)
+        await self.call(BASE + "lyrics", method="GET", status=403)
 
 
 class LyricsTests(unittest.IsolatedAsyncioTestCase):
