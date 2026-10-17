@@ -104,6 +104,7 @@ async function setup(options = {}) {
     if (url === "/auth/session") body = clone(session);
     else if (["/auth/logout","/auth/logout-all"].includes(url)) { session.authenticated = false; session.user = null; body = {message: "signed out"}; }
     else if (url.endsWith("/admin/empty-queue")) body = {empty_queue:"autoplaylist",radio_min_seconds:0,radio_max_seconds:0};
+    else if (url.endsWith("/admin/lyrics")) body = {enabled:true};
     else if (url.endsWith("/admin/maintenance")) body = {cookie:{status:"unused"},host_status:{status:"missing"},viewers:1};
     else if (url === "api/guilds") body = {guilds: [{id: "1", name: "First Guild"}, {id: "2", name: "Second Guild"}]};
     else {
@@ -138,7 +139,7 @@ async function setup(options = {}) {
     emit(name, data) { return this.listeners[name]?.({data: JSON.stringify(data)}); }
   }
   const context = vm.createContext({document, fetch, URL, AbortController,
-    EventSource: options.events ? FakeEventSource : undefined, window: {setTimeout: (...args) => timers.push(args), clearTimeout() {},
+    EventSource: options.events ? FakeEventSource : undefined, window: {localStorage:options.storage, setTimeout: (...args) => timers.push(args), clearTimeout() {},
     requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
     matchMedia: (query) => ({matches: query.includes("reduced-motion") ? !!options.reducedMotion : !options.mobile}),
     innerHeight: 900, scrollBy: (...args) => scrolls.push(args)}});
@@ -168,8 +169,8 @@ test("control handlers send correct methods, body, guild and headers", async () 
   assert.equal(app.element("toggle").textContent.includes("繼續"), true);
   app.element("volume").value = "65";
   await app.element("volume").listeners.change();
-  app.element("repeat").value = "all";
-  await app.element("repeat").listeners.change();
+  app.run('state.repeat="song"');
+  await app.element("repeat").listeners.click();
   app.element("query").value = "search words";
   await app.element("play-form").listeners.submit({preventDefault() {}});
   await app.element("preview-results").children[0].children[2].listeners.click();
@@ -1073,7 +1074,7 @@ test("plain lyrics render as safe text and missing lyrics expose a same-origin m
   assert.equal(app.element("lyrics-content").classes.has("plain-lyrics"), true);
   app.hook((url) => url.includes("/lyrics") ? lyricsResponse({status: "not_found"}) : null);
   await app.run("loadLyrics()");
-  assert.equal(app.element("lyrics-status").textContent, "找不到歌詞");
+  assert.equal(app.element("lyrics-status").textContent, "找不到這首的歌詞");
   assert.equal(app.element("lyrics-search-form").hidden, false);
   app.element("lyrics-query").value = "歌名 Artist";
   await app.element("lyrics-search-form").listeners.submit({preventDefault() {}});
@@ -1107,11 +1108,12 @@ test("late lyrics cannot overwrite a different track, different guild or expired
   assert.equal(app.element("lyrics-content").textContent, "new lyrics");
   app.hook((url) => url.includes("/lyrics") ? new Promise((resolve) => { release = resolve; }) : null);
   const oldGuild = app.run("loadLyrics()");
+  app.element("lyrics-close").listeners.click();
   app.element("guild").value = "2"; await app.element("guild").listeners.change();
   release({ok: true, status: 200, json: async () => syncedLyrics}); await oldGuild;
   assert.equal(app.element("lyrics-panel").hidden, true);
   assert.equal(app.element("lyrics-content").textContent, "");
-  const expired = app.run("loadLyrics()");
+  const expired = app.element("lyrics-toggle").listeners.click();
   app.run("signedOut()");
   release({ok: true, status: 200, json: async () => syncedLyrics}); await expired;
   assert.equal(app.element("lyrics-content").textContent, "");
@@ -1983,4 +1985,76 @@ test("round11 logout all uses protected endpoint and clears private state",async
  await app.element("logout-all").listeners.click();
  assert.ok(app.requests.some(r=>r.url==="/auth/logout-all"&&r.method==="POST"));
  assert.equal(app.element("dashboard").hidden,true);
+});
+
+
+test("round12 lyrics default off sends no lyric or alignment requests across polls",async()=>{
+ const app=await setup();
+ await app.run("refresh()");await app.run("refresh()");
+ assert.equal(app.requests.some(r=>r.url.includes("/lyrics")),false);
+ assert.equal(app.element("lyrics-panel").hidden,true);
+ await app.run("loadLyrics()");
+ assert.equal(app.requests.some(r=>r.url.includes("/lyrics")),false);
+});
+test("round12 lyric preference is scoped to authenticated viewer and storage can fail",async()=>{
+ const store=new Map(),storage={getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)};
+ const app=await setup({session:discordSession(),storage});
+ await app.element("lyrics-toggle").listeners.click();
+ assert.equal(store.get("musicbot-lyrics:user:123"),"on");
+ app.element("lyrics-close").listeners.click();
+ assert.equal(store.get("musicbot-lyrics:user:123"),"off");
+ const second=await setup({session:{auth_mode:"discord",authenticated:true,user:{id:"99",name:"Other",avatar:""}},storage});
+ assert.equal(second.requests.some(r=>r.url.includes("/lyrics")),false);
+ const blocked=await setup({storage:{getItem(){throw Error("blocked")},setItem(){throw Error("blocked")}}});
+ await blocked.element("lyrics-toggle").listeners.click();
+ assert.equal(blocked.element("lyrics-panel").hidden,false);
+});
+test("round12 disabled server prevents queries and instrumental has no scroll controls",async()=>{
+ const app=await setup();app.states[1].lyrics_available=false;await app.run("refresh()");
+ await app.run("toggleLyrics(true)");
+ assert.equal(app.requests.some(r=>r.url.includes("/lyrics")),false);
+ assert.equal(app.element("lyrics-toggle").hidden,true);
+ app.states[1].lyrics_available=true;await app.run("refresh()");
+ app.hook(url=>url.endsWith("/lyrics")?lyricsResponse({status:"instrumental"}):null);
+ await app.element("lyrics-toggle").listeners.click();
+ assert.equal(app.element("lyrics-status").textContent,"純音樂");
+ assert.equal(app.element("lyrics-timing-controls").hidden,true);
+});
+test("round12 manual scroll pauses centering five seconds then seek realigns",async()=>{
+ const app=await setup();
+ app.hook(url=>url.endsWith("/lyrics")?lyricsResponse(syncedLyrics):null);
+ await app.element("lyrics-toggle").listeners.click();
+ const rows=app.element("lyrics-content").children;
+ app.element("lyrics-content").listeners.wheel();
+ app.states[1].progress=50;await app.run("refresh()");
+ assert.equal(rows[2].getAttribute("aria-current"),"true");
+ assert.equal(rows[2].scrolled,undefined);
+ assert.ok(app.run("lyricsUserScrollUntil-Date.now()")>4900);
+ app.run("lyricsUserScrollUntil=0;syncLyrics()");
+ assert.equal(rows[2].scrolled.block,"center");
+ app.states[1].progress=10;await app.run("refresh()");
+ assert.equal(rows[0].getAttribute("aria-current"),"true");
+});
+test("round12 offset controls send small deltas and two-click sync position with token",async()=>{
+ const app=await setup();app.states[1].current.track_token="token";await app.run("refresh()");
+ const timed={...syncedLyrics,video_id:"abcdefghijk",offset:7,offset_source:"matched"};
+ app.hook((url,options)=>url.endsWith("/lyrics/offset")?lyricsResponse({offset:7.5,offset_source:"manual"}):
+   url.endsWith("/lyrics")?lyricsResponse(timed):null);
+ await app.element("lyrics-toggle").listeners.click();
+ assert.match(app.element("lyrics-offset").textContent,/自動比對/);
+ await app.element("lyrics-plus").listeners.click();
+ const added=app.requests.find(r=>r.url.endsWith("/lyrics/offset")&&r.method==="POST");
+ assert.deepEqual(added.data,{action:"adjust",track_token:"token",delta:.5});
+ assert.match(app.element("lyrics-offset").textContent,/手動校正/);
+ app.run('state.progress=31.25;state.status="paused"');
+ app.element("lyrics-sync").listeners.click();
+ assert.equal(app.element("lyrics-sync-prompt").hidden,false);
+ const before=app.requests.length;
+ await app.element("lyrics-sync").listeners.click();
+ assert.equal(app.requests.length,before+1);
+ assert.deepEqual(app.requests.at(-1).data,{action:"sync",track_token:"token",position:31.25});
+ assert.equal(app.element("lyrics-sync-prompt").hidden,true);
+ app.element("lyrics-close").listeners.click();
+ const count=app.requests.length;await app.run("pollLyricsOffset()");
+ assert.equal(app.requests.length,count);
 });

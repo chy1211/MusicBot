@@ -12,15 +12,25 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>音樂控制台</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r12-radio">
-  <script src="/dashboard.js?v=r12-radio" defer></script>
-  <script src="/library.js?v=r12-radio" defer></script>
-  <script src="/popular.js?v=r12-radio" defer></script>
-  <script src="/admin.js?v=r12-radio" defer></script>
-  <script src="/permissions.js?v=r12-radio" defer></script>
-  <script src="/pwa.js?v=r12-radio" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r12-final">
+  <script src="/dashboard.js?v=r12-final" defer></script>
+  <script src="/library.js?v=r12-final" defer></script>
+  <script src="/popular.js?v=r12-final" defer></script>
+  <script src="/admin.js?v=r12-final" defer></script>
+  <script src="/permissions.js?v=r12-final" defer></script>
+  <script src="/pwa.js?v=r12-final" defer></script>
 </head>
 <body>
+<svg class="glass-filter-defs" aria-hidden="true" width="0" height="0">
+<defs><filter id="glass-edge" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
+<feMorphology in="SourceAlpha" operator="erode" radius="8" result="inside"/>
+<feComposite in="SourceAlpha" in2="inside" operator="xor" result="edge"/>
+<feTurbulence type="fractalNoise" baseFrequency=".025" numOctaves="1" seed="7" result="noise"/>
+<feDisplacementMap in="SourceGraphic" in2="noise" scale="5" xChannelSelector="R" yChannelSelector="G" result="bent"/>
+<feComposite in="bent" in2="edge" operator="in" result="rim"/>
+<feComposite in="SourceGraphic" in2="edge" operator="out" result="center"/>
+<feMerge><feMergeNode in="center"/><feMergeNode in="rim"/></feMerge>
+</filter></defs></svg>
 <div id="wallpaper" aria-hidden="true"><img id="wallpaper-a" alt=""><img id="wallpaper-b" alt=""></div>
   <section id="login-screen" class="login-screen" aria-labelledby="login-heading">
     <div class="login-card"><span class="login-icon" aria-hidden="true">&#9835;</span>
@@ -138,6 +148,7 @@
 <p id="maintenance-status" role="status" aria-live="polite"></p>
 <dl id="maintenance-details" class="maintenance-details"></dl>
 </section>
+<form id="admin-lyrics-form" class="selection-tools"><label for="admin-lyrics-enabled">伺服器歌詞功能</label><select id="admin-lyrics-enabled"><option value="true">允許（每人預設關閉）</option><option value="false">停用</option></select><button id="admin-lyrics-save" type="submit">儲存歌詞設定</button><p id="admin-lyrics-status" class="hint"></p></form>
 <form id="empty-queue-form" class="selection-tools">
 <label for="empty-queue-mode">佇列空時</label>
 <select id="empty-queue-mode"><option value="autoplaylist">自動播放清單</option><option value="radio">電台模式</option><option value="off">不播放</option></select>
@@ -158,6 +169,10 @@
 <section id="lyrics-panel" class="lyrics-panel" aria-labelledby="lyrics-heading" hidden>
 <div class="section-top"><h2 id="lyrics-heading">歌詞</h2><button id="lyrics-close" type="button" aria-label="關閉歌詞">關閉</button></div>
 <p id="lyrics-status" class="hint" role="status" aria-live="polite"></p>
+<div id="lyrics-timing-controls" class="lyrics-timing-controls" hidden>
+<button id="lyrics-minus" type="button">−0.5 秒</button><button id="lyrics-plus" type="button">+0.5 秒</button>
+<button id="lyrics-sync" type="button">對時</button><button id="lyrics-reset" type="button">重設</button></div>
+<p id="lyrics-offset" class="hint"></p><p id="lyrics-sync-prompt" class="hint" hidden></p>
 <div id="lyrics-content" class="lyrics-content" tabindex="0" aria-label="歌詞內容"></div>
 <form id="lyrics-search-form" class="lyrics-search" hidden><label for="lyrics-query">歌名與演出者</label><input id="lyrics-query" maxlength="200"><button id="lyrics-search">搜尋歌詞</button></form>
 </section>
@@ -170,9 +185,9 @@
 <button id="favorite" type="button" aria-label="收藏這首歌" aria-pressed="false">♡</button></div>
 <div class="bar-center"><div id="player-transport" class="transport">
 <button id="toggle" class="primary" aria-label="播放或暫停" disabled>繼續</button><button id="skip" aria-label="跳過目前歌曲" disabled>跳過</button>
-<label class="repeat-label" for="repeat"><span class="sr-only">重複</span><select id="repeat" aria-label="重複" disabled><option value="off">重複</option><option value="song">單曲</option><option value="all">佇列</option></select></label></div>
+<button id="repeat" class="repeat-control" aria-label="重複：關閉" aria-pressed="false" disabled>重複</button></div>
 <div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1" step="1" value="0" aria-label="底部播放列：跳到指定時間" disabled><span id="duration">0:00</span></div></div>
-<p class="sr-only seek-hint">拖動或按左右鍵，放開後跳轉。</p><div class="bar-right"><button id="lyrics-toggle" type="button" aria-expanded="false" aria-controls="lyrics-panel" hidden disabled>歌詞</button>
+<p class="sr-only seek-hint">拖動或按左右鍵，放開後跳轉。</p><div class="bar-right"><button id="lyrics-toggle" type="button" aria-expanded="false" aria-controls="lyrics-panel" disabled>歌詞</button>
 <div class="volume-row"><label for="volume" class="sr-only">音量</label><input id="volume" type="range" min="1" max="100" value="15" aria-label="音量" disabled><output id="volume-label" for="volume">15%</output></div></div>
 </section>
   </div>

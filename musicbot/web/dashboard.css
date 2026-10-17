@@ -371,3 +371,40 @@ html[data-glass=opaque] :is(.sidebar,.playback-bar,.lyrics-panel,.song-choices,.
 }
 
 @media(max-width:760px){.sidebar>.glass-preference{display:flex}}
+
+/* Opt-in lyrics remain a small, directly controlled reading viewport. */
+.lyrics-panel .section-top h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-size:13px}
+.lyrics-timing-controls{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+.lyrics-timing-controls button{min-height:32px;min-width:44px;font-size:11px;padding:4px 12px}
+.lyrics-panel .hint{font-size:11px;line-height:1.5;margin:3px 0}
+.lyrics-panel .hint:empty{display:none}
+.lyrics-content{position:relative;max-height:150px;scroll-padding:0}
+.lyrics-content p{padding:4px 0;font-size:16px;line-height:1.6}
+.lyrics-content .current-line{transform:none;font-size:20px;color:var(--text)}
+.lyrics-search{margin-top:6px}
+@media(max-width:760px){
+ .lyrics-panel{padding:8px 12px}
+ .lyrics-content{max-height:86px;padding:2px 6px}
+ .lyrics-content p{font-size:14px;line-height:1.65;padding:2px 0}
+ .lyrics-content .current-line{font-size:17px}
+ .lyrics-timing-controls{gap:4px}.lyrics-timing-controls button{padding:3px 8px;min-height:32px}
+ .lyrics-panel .section-top button{min-height:32px}
+}
+
+.repeat-control[aria-pressed=true]{color:var(--green);border-color:var(--green)}
+@media(max-width:760px){
+ .transport .repeat-control{grid-column:3;grid-row:2;width:40px;padding:3px;font-size:11px}
+}
+
+/* Fixed mobile tabs escape the content plane's stacking contexts. */
+.sidebar{z-index:20}
+.glass-filter-defs{position:fixed;pointer-events:none;overflow:hidden}
+@supports (backdrop-filter:url("#glass-edge")){
+ html.liquid-refraction:not([data-glass=opaque]) :is(.playback-bar,.page-tabs.mobile-glass){
+  backdrop-filter:blur(var(--glass-blur)) saturate(180%) url("#glass-edge");
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%) url("#glass-edge")
+ }
+}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){
+ html.liquid-refraction :is(.playback-bar,.page-tabs.mobile-glass){backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--opaque)}
+}

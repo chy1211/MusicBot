@@ -26,6 +26,7 @@ from .constructs import ErrorResponse, Response
 from .entry import LocalFilePlaylistEntry, URLPlaylistEntry
 from .web_dashboard_lyrics import LyricsClient, clean_metadata
 from .web_dashboard_lyrics_store import LyricsStore, video_id
+from .web_dashboard_lyrics_alignment import AlignmentService, UNCERTAIN
 from .i18n import _D
 from .spotify import Spotify
 from .utils import get_compound_link_ids
@@ -201,6 +202,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.lyrics_client = LyricsClient()
         self.lyrics_store = LyricsStore(write_path("data/web_dashboard/lyrics"))
         self.lyrics_lookup_lock = asyncio.Lock()
+        self.lyrics_alignment = AlignmentService(self.lyrics_store)
+        self.lyrics_offset_locks = defaultdict(asyncio.Lock)
+        self.lyrics_offset_rates = {}
         self.recent_history = defaultdict(lambda: deque(maxlen=50))
         self.history_marker = secrets.token_urlsafe(16)
         self.history_last_source = {}
@@ -223,6 +227,11 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 await self.lyrics_store.enabled(guild)
             yield
         self.app.cleanup_ctx.append(lyric_lifecycle)
+        async def cleanup_alignment(_app):
+            await self.lyrics_alignment.close()
+        self.app.on_cleanup.append(cleanup_alignment)
+        self.app.router.add_get("/api/guilds/{guild_id}/lyrics/offset", self.lyrics_offset)
+        self.app.router.add_post("/api/guilds/{guild_id}/lyrics/offset", self.lyrics_offset)
         self.app.router.add_get("/api/guilds/{guild_id}/admin/lyrics", self.admin_lyrics)
         self.app.router.add_post("/api/guilds/{guild_id}/admin/lyrics", self.admin_lyrics)
         self.popularity_store = PopularityStore(write_path("data/web_dashboard/stats"))
@@ -585,6 +594,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         entry = getattr(player, "current_entry", None)
         if entry is None:
             raise APIError(409, "目前沒有播放中的歌曲。")
+        token = self.track_token(player)
         info = getattr(entry, "info", {}) or {}
         title, artist = clean_metadata(entry.title, info.get("artist") or info.get("creator") or "")
         matched = await self.spotify_lookup.lookup(self.bot, entry)
@@ -608,7 +618,82 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.guild_owner(request)
         if not await self.lyrics_store.enabled(guild):
             raise APIError(403, "這個伺服器已停用歌詞。")
-        return web.json_response(dict(value, track_key=track_key))
+        if token != self.track_token(self.bot.get_player_in(guild)):
+            raise APIError(409, "歌曲已變更，請重新取得歌詞。")
+        offset = {}
+        if key and value.get("status") == "synced":
+            await self.lyrics_alignment.request(self.bot, entry, value)
+            offset = await self.lyric_offset_value(guild, key)
+        return web.json_response(dict(value, track_key=track_key, video_id=key,
+            track_token=token, **offset))
+
+    async def lyric_offset_value(self, guild, key):
+        automatic = await self.lyrics_store.get(key, "analysis") or dict(UNCERTAIN)
+        manual = await self.lyrics_store.manual(guild, key)
+        return {"offset": manual if manual is not None else automatic.get("offset", 0),
+                "offset_source": "manual" if manual is not None else automatic.get("source", "uncertain"),
+                "analysis_pending": key in self.lyrics_alignment.tasks}
+
+    async def lyrics_offset(self, request):
+        guild, member = self.guild_owner(request)
+        if not await self.lyrics_store.enabled(guild):
+            raise APIError(403, "這個伺服器已停用歌詞。")
+        now = time.monotonic()
+        rates = self.lyrics_offset_rates = {uid:[stamp for stamp in stamps if stamp>now-60]
+            for uid,stamps in self.lyrics_offset_rates.items() if stamps and stamps[-1]>now-60}
+        stamps = rates.setdefault(member.id, [])
+        if len(stamps) >= 60:
+            raise APIError(429, "歌詞對時操作過於頻繁，請稍後再試。")
+        stamps.append(now)
+        if len(rates)>1024: rates.pop(next(iter(rates)))
+        player = self.bot.get_player_in(guild)
+        entry = getattr(player, "current_entry", None)
+        key = video_id(entry.url) if entry else ""
+        if not key: raise APIError(409, "目前歌曲無法使用歌詞對時。")
+        token = self.track_token(player)
+        if request.method == "POST":
+            self.lyrics_rate_limit(member)
+            data = await self.payload(request)
+            action = data.get("action")
+            fields = {"set":{"action","offset","track_token"}, "adjust":{"action","delta","track_token"},
+                      "sync":{"action","position","track_token"}, "reset":{"action","track_token"}}
+            if action not in fields or set(data) != fields[action]:
+                raise APIError(400, "歌詞對時資料不正確。")
+            if data["track_token"] != self.track_token(player):
+                raise APIError(409, "歌曲已變更，請重新校正。")
+            async with self.lyrics_offset_locks[(guild.id, key)]:
+                if self.discord_auth: self.authenticate(request)
+                guild, member = self.guild_owner(request)
+                if not await self.lyrics_store.enabled(guild):
+                    raise APIError(403, "這個伺服器已停用歌詞。")
+                if data["track_token"] != self.track_token(self.bot.get_player_in(guild)):
+                    raise APIError(409, "歌曲已變更，請重新校正。")
+                value = None
+                if action == "set": value = data["offset"]
+                elif action == "adjust":
+                    delta = data["delta"]
+                    if type(delta) not in (int,float) or delta not in (-.5,.5):
+                        raise APIError(400, "每次只能調整 0.5 秒。")
+                    value = (await self.lyric_offset_value(guild,key))["offset"] + delta
+                elif action == "sync":
+                    lyrics = await self.lyrics_store.get(key)
+                    lines = [line for line in lyrics.get("lines",[]) if str(line.get("text","")).strip()] if lyrics else []
+                    position = data["position"]
+                    if (not lines or type(position) not in (int,float) or not math.isfinite(position)
+                            or not 0 <= position <= (entry.duration or 0)):
+                        raise APIError(400, "目前無法依第一句歌詞對時。")
+                    value = position - lines[0]["time"]
+                if action != "reset" and (type(value) not in (int,float) or not math.isfinite(value) or not -30 <= value <= 60):
+                    raise APIError(400, "歌詞位移須在 -30 至 +60 秒之間。")
+                await self.lyrics_store.set_manual(guild,key,round(value,2) if value is not None else None)
+                self.record_activity(guild, getattr(member,"display_name",None) or member.name,
+                    "lyrics_offset","web","調整歌詞位移" + ("：重設" if value is None else f"：{value:+.1f} 秒"),"成功")
+        if self.discord_auth: self.authenticate(request)
+        self.guild_owner(request)
+        value = await self.lyric_offset_value(guild,key)
+        if token != self.track_token(self.bot.get_player_in(guild)):
+            raise APIError(409, "歌曲已變更，請重新校正。")
+        return web.json_response(dict(value,video_id=key,track_token=token))
 
     @staticmethod
     def track_token(player):
@@ -636,13 +721,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         return result
 
     def snapshot(self, guild, viewer=None):
-        community = {"capabilities": self.control_capabilities(guild, viewer),
+        community = {"lyrics_available": self.lyrics_store.allowed.get(guild.id, True),
+                     "capabilities": self.control_capabilities(guild, viewer),
                      "listeners": self.listener_snapshot(guild),
                      "activity": self.activity_snapshot(guild)}
         player = self.bot.get_player_in(guild)
         if player is None:
             return {**community, "guild_id": str(guild.id),
-            "lyrics_available": self.lyrics_store.allowed.get(guild.id, True), "status": "disconnected",
+                    "status": "disconnected",
                     "current": None, "progress": 0, "volume": None,
                     "repeat": "off", "queue": [], "revision": ""}
         pending = getattr(player, "_pending_seek", None)

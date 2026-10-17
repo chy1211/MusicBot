@@ -7,6 +7,7 @@ function adminClear() {
   $("admin-permissions")?.replaceChildren();
   $("empty-queue-status").textContent = ""; $("radio-seeds").textContent = "";
   $("empty-queue-mode").value = "autoplaylist";
+  $("admin-lyrics-status").textContent="";
   $("maintenance-details").replaceChildren(); $("maintenance-status").textContent = "";
   if (typeof pendingPermission !== "undefined") pendingPermission = null;
   $("permission-confirm-dialog").close?.();
@@ -52,7 +53,7 @@ async function adminAplChange(data, method = "POST") {
 }
 $("nav-admin").addEventListener("click", () => libraryRun($("nav-admin"), async () => {
   if (!adminOwner) return;
-  libraryView("admin"); await adminMaintenanceLoad(); await adminEmptyQueueLoad(); await adminAplLoad();
+  libraryView("admin"); await adminMaintenanceLoad(); await adminEmptyQueueLoad(); await adminLyricsLoad(); await adminAplLoad();
   if (typeof adminPermissionsLoad === "function") await adminPermissionsLoad();
 }));
 $("admin-apl-search").addEventListener("submit", event => {
@@ -131,4 +132,26 @@ $("empty-queue-form").addEventListener("submit", event => {
     if (epoch !== generation || guild !== selected || !adminOwner) return;
     adminEmptyQueueRender(value); notice("已儲存佇列空時設定。");
   });
+});
+
+
+async function adminLyricsLoad(){
+ if(!adminOwner||!selected)return;
+ const epoch=generation,guild=selected;
+ const value=await api("/api/guilds/"+guild+"/admin/lyrics");
+ if(epoch!==generation||guild!==selected||!adminOwner)return;
+ $("admin-lyrics-enabled").value=String(value.enabled);$("admin-lyrics-status").textContent="";
+}
+$("admin-lyrics-form").addEventListener("submit",event=>{
+ event.preventDefault();
+ return libraryRun($("admin-lyrics-save"),async()=>{
+   if(!adminOwner||!selected)return;
+   const epoch=generation,guild=selected;
+   const value=await api("/api/guilds/"+guild+"/admin/lyrics","POST",{enabled:$("admin-lyrics-enabled").value==="true"});
+   if(epoch!==generation||guild!==selected||!adminOwner)return;
+   $("admin-lyrics-status").textContent="已儲存歌詞設定。";
+   if(state)state.lyrics_available=value.enabled;
+   if(!value.enabled)toggleLyrics(false,false);
+   await refresh();
+ });
 });
