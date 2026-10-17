@@ -1323,7 +1323,7 @@ test("listeners fold above eight and render names as text", async () => {
   assert.match(app.element("listeners-status").textContent,/目前不在語音頻道/);
 });
 
-test("activity displays Taiwan time source result and safe song text", async () => {
+test("activity displays the configured time zone, source, result and safe song text", async () => {
   const app = await setup();
   app.states[1].activity = {activity:[{actor:"Friend",detail:"點歌：<script>",source:"discord_slash",
     result:"成功",time:Date.UTC(2026,0,1,1,2,3)/1000}]};
@@ -1336,7 +1336,7 @@ test("activity displays Taiwan time source result and safe song text", async () 
 const snapshot = (state) => ({state:clone(state),history:{history:[]}});
 test("SSE connects without headers and supersedes periodic fetches", async () => {
   const app = await setup({events:true});
-  assert.equal(app.streams[0].url,"/api/guilds/1/events");
+  assert.equal(app.streams[0].url,"/api/guilds/1/events?lang=zh-TW");
   app.streams[0].emit("snapshot",snapshot(app.states[1]));
   const count = app.requests.length;
   await app.run("poll()");
@@ -1384,7 +1384,7 @@ test("SSE switch guild closes old stream ignores stale callbacks", async () => {
   app.element("guild").value = "2";
   await app.element("guild").listeners.change();
   assert.equal(old.closed,true);
-  assert.equal(app.streams.at(-1).url,"/api/guilds/2/events");
+  assert.equal(app.streams.at(-1).url,"/api/guilds/2/events?lang=zh-TW");
   old.emit("snapshot",snapshot(app.states[1]));
   assert.equal(app.element("bar-title").textContent,"Second");
   app.streams.at(-1).emit("snapshot",snapshot(app.states[2]));

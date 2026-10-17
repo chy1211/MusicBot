@@ -587,5 +587,6 @@
   "message.restored": "Restored \"{p0}\".",
   "punct.colon": ": ",
   "punct.list": ", ",
-  "activity.volume": "Volume: {p0}%"
+  "activity.volume": "Volume: {p0}%",
+  "message.skip": "Skip request submitted. See Discord for vote progress."
 }

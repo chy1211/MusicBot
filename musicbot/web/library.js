@@ -37,6 +37,7 @@ async function libraryLoad() {
   if (epoch !== generation || !(authMode === "owner" || authenticated)) return false;
   libraryData = value; libraryRender(); favoriteRender(); return true;
 }
+function playlistName(item) { return item.id === "favorites" ? t("m0192") : item.name; }
 function libraryRender() {
   $("library-playlists").replaceChildren();
   if (!libraryData) return;
@@ -44,7 +45,7 @@ function libraryRender() {
   for (const item of libraryData.playlists) {
     const row = document.createElement("li"), button = document.createElement("button");
     button.type = "button"; button.className = "library-choice";
-    const title = document.createElement("span"); title.textContent = item.name;
+    const title = document.createElement("span"); title.textContent = playlistName(item);
     const meta = document.createElement("small");
     meta.textContent = item.tracks.length + t("m0191") + (item.source_type === "spotify" ? "Spotify" : item.source_url ? "YouTube" : item.id === "favorites" ? t("m0192") : t("m0193"));
     button.append(title, meta); button.setAttribute("aria-current", String(item.id === libraryActive));
@@ -56,13 +57,13 @@ function libraryRender() {
   }
   const list = libraryData.playlists.find(p => p.id === libraryActive);
   $("library-panel").classList.toggle("detail-open", libraryDetailOpen);
-  $("library-detail-heading").textContent = list.name;
+  $("library-detail-heading").textContent = playlistName(list);
   $("library-meta").textContent = list.tracks.length + t("m0033") + (list.source_url ? " · " + (list.source_type === "spotify" ? "Spotify" : "YouTube") : "");
   $("library-rename-form").hidden = list.id === "favorites";
   $("library-delete").hidden = list.id === "favorites";
   $("library-actions").open = false;
   libraryImportRender(list);
-  $("library-name").value = list.name; $("library-name").disabled = list.id === "favorites";
+  $("library-name").value = playlistName(list); $("library-name").disabled = list.id === "favorites";
   $("library-rename").disabled = $("library-delete").disabled = list.id === "favorites";
   $("library-list").replaceChildren();
   const selectedTracks = new Set();
@@ -114,7 +115,7 @@ async function librarySave(song, favorite = false) {
   libraryPendingSong = track;
   $("playlist-picker").replaceChildren();
   for (const list of libraryData.playlists) {
-    const option = document.createElement("option"); option.value = list.id; option.textContent = list.name;
+    const option = document.createElement("option"); option.value = list.id; option.textContent = playlistName(list);
     $("playlist-picker").append(option);
   }
   $("library-save-dialog").showModal();

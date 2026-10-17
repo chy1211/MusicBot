@@ -31,4 +31,5 @@ test("all five player buttons share a fixed shape; first paint does not animate"
  assert.match(css,/\.page-tabs,\.queue-filters\{overflow:hidden\}/);
  assert.match(source,/document\.fonts\?\.ready\.then\(align\)/);
  assert.match(source,/orientationchange/);
+ assert.match(css,/transition:transform 260ms cubic-bezier\(\.2,\.8,\.2,1\)/);
 });

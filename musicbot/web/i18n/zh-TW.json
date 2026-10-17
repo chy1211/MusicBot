@@ -587,5 +587,6 @@
   "message.restored": "已復原〈{p0}〉。",
   "punct.colon": "：",
   "punct.list": "、",
-  "activity.volume": "音量：{p0}%"
+  "activity.volume": "音量：{p0}%",
+  "message.skip": "已送出跳過請求；投票進度請看 Discord。"
 }

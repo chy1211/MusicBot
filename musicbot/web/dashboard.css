@@ -425,8 +425,10 @@ html[data-glass=opaque] :is(.song-choices,.library-menu,.account-actions>div,dia
 .page-tabs,.queue-filters{overflow:hidden}
 .page-tabs::before,.queue-filters::before{opacity:0;transition:none;border-radius:inherit;box-sizing:border-box}
 .page-tabs[data-seg-ready]::before,.queue-filters[data-seg-ready]::before{opacity:1}
+/* A bounded easing cannot fling the selected pill past the first/last tab.
+   ResizeObserver applies width/height immediately during compact and rotation. */
 .page-tabs[data-seg-animated]::before,.queue-filters[data-seg-animated]::before{
- transition:transform 300ms var(--spring),width 300ms var(--spring),height 300ms var(--spring)
+ transition:transform 260ms cubic-bezier(.2,.8,.2,1)
 }
 @media(max-width:760px){
  .playback-bar{grid-template-columns:40px minmax(0,1fr) repeat(3,52px);column-gap:4px}

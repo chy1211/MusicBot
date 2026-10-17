@@ -79,8 +79,18 @@ class DashboardPermissions:
                                   for uid in sorted(group.user_list) for member in [guild.get_member(uid)]]
             result.append({"name": label, "values": values,
                            "editable": list(FIELDS) if label in existing else []})
+        activity = []
+        for stored in self.admin_records:
+            row = dict(stored)
+            params = row.pop("params", None)
+            if params:
+                def render(value):
+                    return _web_text("m0210" if value else "m0211") if type(value) is bool else str(value)
+                row["detail"] = _web_text("m0572", p0=params["group"], p1=params["field"],
+                                         p2=render(params["old"]), p3=render(params["new"]))
+            activity.append(row)
         return {"groups": result, "limits": {key: limit for key, (_, limit) in FIELDS.items()},
-                "activity": list(self.admin_records)}
+                "activity": activity}
 
     async def admin_permissions(self, request):
         from .web_dashboard_admin import backup_file
@@ -174,5 +184,6 @@ class DashboardPermissions:
                     os.unlink(temp)
             render = lambda v: (_web_text('m0210') if v else _web_text('m0211')) if type(v) is bool else str(v)
             self.admin_records.appendleft({"time": time.time(),
-                "detail": _web_text('m0572', p0=group, p1=field, p2=render(old), p3=render(value))})
+                "detail": _web_text('m0572', p0=group, p1=field, p2=render(old), p3=render(value)),
+                "params":{"group":group,"field":field,"old":old,"new":value}})
             return web.json_response(dict(self.permissions_view(guild), message=_web_text('m0573')))
