@@ -39,7 +39,7 @@ from .web_dashboard_admin import DashboardAdmin
 from .web_dashboard_activity import capture, finish
 from .web_dashboard_extraction import (WEB_EXTRACTION, WEB_LIMITS, RESOLUTION_BUDGET,
     ExtractionBudget, ExtractionBudgetExceeded, UnsupportedDashboardURL, normalize_query,
-    WEB_POOL, DashboardExtractionPool)
+    WEB_POOL, DashboardExtractionPool, youtube_playlist_subject)
 
 ACTIVITY_KEY = web.RequestKey("dashboard_activity", object)
 
@@ -1156,9 +1156,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 canonical, kind = source_url(subject)
             except APIError:
                 canonical = None
-                # Never resolve account-private aliases through bot cookies.
-                if urlsplit(subject).hostname in ("youtube.com", "www.youtube.com", "music.youtube.com", "m.youtube.com") and any(
-                        item in ("WL", "LL", "LM") for item in parse_qs(urlsplit(subject).query).get("list", [])):
+                # Malformed YouTube lists must not fall back to native cookies.
+                if youtube_playlist_subject(subject):
                     raise
             if canonical:
                 imported = await self.import_source(canonical, kind)
@@ -1408,7 +1407,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         reason = self.playlist_restriction(permissions, preview["count"])
         if reason:
             raise APIError(403, reason)
-        chosen = [item for item in preview["entries"]
+        # Validate the entire selection before any provider work or queue change,
+        # including saved tracks written by older dashboard versions.
+        chosen = [dict(item, url=normalize_query(item["url"]))
+                  for item in preview["entries"]
                   if item["item_id"] in data["selected_items"]]
         preview["status"], preview["selection"] = "submitted", data["selected_items"]
         results = []

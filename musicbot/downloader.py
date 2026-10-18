@@ -29,7 +29,7 @@ from .spotify import Spotify
 from .utils import check_extractor
 from .ytdlp_cookies import CookieYtdlClients
 from .web_dashboard_extraction import (WEB_EXTRACTION, DashboardYoutubeDL, check_subject,
-    RESOLUTION_BUDGET, WEB_POOL, new_budget, run_extraction_process)
+    RESOLUTION_BUDGET, WEB_POOL, new_budget, run_extraction_process, youtube_playlist_subject)
 
 if TYPE_CHECKING:
     from multidict import CIMultiDictProxy
@@ -241,6 +241,9 @@ class Downloader:
         return getattr(client, method)(*args, **kwargs)
 
     async def _dashboard_extract(self, subject, kwargs, *, public=False, limit=201):
+        subject = check_subject(subject)
+        # Even a fallback/native web extraction must never open account playlists.
+        public = public or youtube_playlist_subject(subject)
         budget = RESOLUTION_BUDGET.get() or new_budget()
         if public:
             options = {"extract_flat": "in_playlist", "noplaylist": False,
@@ -724,11 +727,9 @@ class Downloader:
         """Verifies local media files and returns suitable data for local entries."""
         filename = song_subject[7:]
         media_path = self.bot.config.media_file_dir.resolve()
-        unclean_path = media_path.joinpath(filename).resolve()
-        if os.path.commonprefix([media_path, unclean_path]) == str(media_path):
-            local_file_path = unclean_path
-        else:
-            local_file_path = media_path.joinpath(pathlib.Path(filename).name)
+        local_file_path = media_path.joinpath(filename).resolve()
+        if not local_file_path.is_relative_to(media_path):
+            raise MusicbotException("The local media file could not be found.")
         corrected_fie_uri = str(local_file_path).replace(str(media_path), "file://")
 
         if not local_file_path.is_file():

@@ -1,7 +1,7 @@
 """Web-only extraction policy; native Discord commands keep their own clients."""
 from contextvars import ContextVar, copy_context
 from functools import lru_cache
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 import re
 import ipaddress
 
@@ -14,6 +14,35 @@ SEARCH = re.compile(r"(?:yt|gv|yv|sc|bili|nico)search[0-9]*:")
 
 class UnsupportedDashboardURL(ValueError):
     """The web entry would require an unrestricted extractor."""
+
+
+# Account-relative aliases resolve against the downloader's signed-in account.
+PRIVATE_YOUTUBE_LISTS = frozenset(("WL", "LL", "LM", "HL", "FL", "FV", "FAVORITES"))
+PRIVATE_YOUTUBE_PATHS = frozenset((
+    "/feed/history", "/feed/watch_later", "/feed/liked_videos",
+    "/feed/library", "/feed/you", "/feed/playlists", "/feed/subscriptions",
+    "/my_playlists", "/my_favorites", "/my_videos", "/@me",
+))
+
+
+def youtube_subject(parsed):
+    host = (parsed.hostname or "").lower().rstrip(".")
+    return (host in ("youtube.com", "youtube-nocookie.com", "youtu.be", "www.youtu.be")
+            or host.endswith((".youtube.com", ".youtube-nocookie.com")))
+
+
+def check_youtube_public(parsed):
+    if youtube_subject(parsed) and (
+            any(ident.upper() in PRIVATE_YOUTUBE_LISTS
+                for ident in parse_qs(parsed.query).get("list", []))
+            or parsed.path.rstrip("/").lower() in PRIVATE_YOUTUBE_PATHS
+            or parsed.path.lower().startswith("/@me/")):
+        raise UnsupportedDashboardURL()
+
+
+def youtube_playlist_subject(value):
+    parsed = urlsplit(value)
+    return youtube_subject(parsed) and bool(parse_qs(parsed.query).get("list"))
 
 
 @lru_cache(maxsize=1)
@@ -34,6 +63,11 @@ def normalize_query(value):
     try:
         parsed = urlsplit(value)
         if parsed.scheme.lower() not in ("http", "https"):
+            if (value.startswith(("/", "./", "../", "~/")) or "\\" in value
+                    or re.match(r"^[A-Za-z]:", value)
+                    or re.fullmatch(r"[^\s:]+/[^\s]+\.[A-Za-z0-9]{1,8}", value)
+                    or re.fullmatch(r"[^/\s]+\.(?i:mp3|mp4|m4a|wav|flac|ogg|opus|aac|webm|m3u8?)", value)):
+                raise UnsupportedDashboardURL()
             if "://" in value or parsed.scheme.lower() in ("file", "data", "javascript", "spotify", "mbapl"):
                 raise UnsupportedDashboardURL()
             return value
@@ -52,6 +86,7 @@ def normalize_query(value):
             raise UnsupportedDashboardURL()
         netloc = host + (":" + str(parsed.port) if parsed.port else "")
         canonical = urlunsplit((parsed.scheme.lower(), netloc, parsed.path, parsed.query, ""))
+        check_youtube_public(parsed)
         if not any(ie.suitable(canonical) for ie in dedicated_extractors()):
             raise UnsupportedDashboardURL()
         return canonical

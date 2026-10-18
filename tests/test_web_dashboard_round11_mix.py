@@ -14,7 +14,8 @@ class MixTests(unittest.IsolatedAsyncioTestCase):
 
     def extraction(self, failure=None):
         async def extract(url, **kw):
-            if not kw.get("public_only"):
+            if "/watch?" in url and "&list=" not in url:
+                assert kw.get("public_only"), "Mix seed must be credential-free"
                 return dict(f.video(1),webpage_url=f.video(1)["url"],extractor="youtube")
             if failure: raise failure
             return {"title":"Mix","entries":[f.video(i) for i in range(2,40)]+[f.video(1)]}

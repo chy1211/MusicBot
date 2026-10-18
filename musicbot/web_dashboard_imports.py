@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from aiohttp import web
 from .web_dashboard_extraction import (WEB_EXTRACTION, RESOLUTION_BUDGET, new_budget,
-    ExtractionBudgetExceeded, UnsupportedDashboardURL)
+    ExtractionBudgetExceeded, UnsupportedDashboardURL, check_youtube_public)
 
 
 def fail(status, message):
@@ -33,6 +33,10 @@ def source_url(value):
             raise ValueError()
     except ValueError:
         fail(400, _web_text('m0500'))
+    try:
+        check_youtube_public(parsed)
+    except UnsupportedDashboardURL:
+        fail(400, _web_text('m0503'))
     if host == "open.spotify.com":
         parts = parsed.path.strip("/").split("/")
         if parts and parts[0].startswith("intl-"):
@@ -44,8 +48,6 @@ def source_url(value):
         ids = parse_qs(parsed.query).get("list", [])
         if len(ids) != 1 or not re.fullmatch(r"[A-Za-z0-9_-]{1,150}", ids[0]):
             fail(400, _web_text('m0502'))
-        if ids[0] in ("WL", "LL", "LM"):
-            fail(400, _web_text('m0503'))
         # Dynamic mixes require their seed watch URL; /playlist?list=RD... is
         # rejected by YouTube as an unviewable playlist.
         videos = parse_qs(parsed.query).get("v", [])
@@ -263,7 +265,8 @@ class DashboardImports:
         seed = None
         if single:
             try:
-                info = await asyncio.wait_for(self.bot.downloader.extract_info(single, download=False, process=True), 5)
+                info = await asyncio.wait_for(self.bot.downloader.extract_info(
+                    single, download=False, process=False, public_only=True), 5)
                 value = getattr(info, "data", info)
                 seed = imported_track(value, "youtube")
             except Exception:
@@ -308,6 +311,7 @@ class DashboardImports:
 
     async def import_source(self, url, kind):
         """Resolve public content only; no login, download or alternative credentials."""
+        url, kind = source_url(url)
         if kind == "youtube" and parse_qs(urlsplit(url).query).get("list", [""])[0].startswith("RD"):
             return await self.import_mix(url)
         tracks = []
@@ -410,7 +414,7 @@ class DashboardImports:
             fail(429, _web_text('m0422'))
         try:
             preview = await self.run_resolution(guild, self.import_source(url, kind))
-        except (APIError, ExtractionBudgetExceeded, UnsupportedDashboardURL):
+        except (APIError, ExtractionBudgetExceeded, UnsupportedDashboardURL, check_youtube_public):
             raise
         except Exception:
             fail(502, _web_text('m0525'))
