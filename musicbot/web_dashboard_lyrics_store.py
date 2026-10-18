@@ -74,10 +74,16 @@ class LyricsStore:
         async with self.lock:
             row = await asyncio.to_thread(self.read, self.path(area, key))
             if row and type(row.get("expires")) in (int, float) and row["expires"] > time.time() and isinstance(row.get("value"), dict):
+                if area == "cache" and row["value"].get("status") == "unavailable":
+                    return None
                 return row["value"]
             return None
 
     async def put(self, key, value, ttl, area="cache"):
+        if area == "cache" and value.get("status") == "unavailable":
+            return
+        if area == "cache" and value.get("status") == "not_found":
+            ttl = min(ttl, 3*3600)
         async with self.lock:
             await asyncio.to_thread(atomic_write, self.path(area, key),
                                     {"expires": time.time()+ttl, "value": value})

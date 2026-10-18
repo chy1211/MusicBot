@@ -5,6 +5,8 @@ import difflib
 import json
 import math
 import re
+import random
+from email.utils import parsedate_to_datetime
 import time
 from collections import OrderedDict
 import aiohttp
@@ -74,7 +76,11 @@ def result(title, artist, item=None, status="not_found"):
 
 
 class LyricsClient:
-    TIMEOUT = 8
+    TIMEOUT = 20
+    REQUEST_TIMEOUT = 6
+    ATTEMPTS = 3
+    FAILURE_TTL = 5
+    NOT_FOUND_TTL = 3 * 3600
     CACHE_TTL = 3600
     CACHE_LIMIT = 200
     MAX_BODY = 1024 * 1024
@@ -84,7 +90,8 @@ class LyricsClient:
         self.cache = OrderedDict()
         self.lock = asyncio.Lock()
         self.last_request = 0
-        self.cooldown_until = 0
+        self.pending = {}
+        self.retry_after = {}
 
     async def lookup(self, title, artist, duration, query=""):
         title, artist = clean_metadata(title, artist)
@@ -101,81 +108,108 @@ class LyricsClient:
             return cached[1]
         if not title and not query:
             return result(title, artist)
-        try:
-            return await asyncio.wait_for(self._lookup_locked(key, title, artist, duration, query), self.TIMEOUT)
-        except (asyncio.TimeoutError, aiohttp.ClientError, ValueError, TypeError, KeyError):
-            # Brief negative caching/cooldown protects a failing provider; successful
-            # and not-found responses remain cached for the normal one-hour TTL.
-            self.cooldown_until = max(self.cooldown_until, time.monotonic() + 30)
-            value = result(title, artist, status="unavailable")
-            self.cache[key] = (time.monotonic() + 30, value)
-            self.cache.move_to_end(key)
-            while len(self.cache) > self.CACHE_LIMIT:
-                self.cache.popitem(last=False)
-            return value
+        task = self.pending.get(key)
+        if task is None:
+            task = asyncio.create_task(self._lookup_bounded(key, title, artist, duration, query))
+            self.pending[key] = task
+            task.add_done_callback(lambda done: self.pending.pop(key, None))
+        return await asyncio.shield(task)
 
-    async def _lookup_locked(self, key, title, artist, duration, query):
-        async with self.lock:
-            cached = self.cache.get(key)
-            if cached and cached[0] > time.monotonic():
-                return cached[1]
-            if self.cooldown_until > time.monotonic():
-                return result(title, artist, status="unavailable")
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=self.TIMEOUT),
-                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-                trust_env=False) as session:
-                item = None
-                if artist and not query:
-                    params = {"track_name": title, "artist_name": artist}
-                    if 1 <= duration <= 3600:
-                        params["duration"] = str(round(duration))
+    def _cache(self, key, value, ttl):
+        self.cache[key] = (time.monotonic() + ttl, value)
+        self.cache.move_to_end(key)
+        while len(self.cache) > self.CACHE_LIMIT:
+            self.cache.popitem(last=False)
+        return value
+
+    async def _lookup_bounded(self, key, title, artist, duration, query):
+        try:
+            value = await asyncio.wait_for(self._lookup(title, artist, duration, query), self.TIMEOUT)
+        except (asyncio.TimeoutError, aiohttp.ClientError, ValueError, TypeError, KeyError):
+            value = result(title, artist, status="unavailable")
+        ttl = self.FAILURE_TTL if value["status"] == "unavailable" else self.NOT_FOUND_TTL if value["status"] == "not_found" else self.CACHE_TTL
+        return self._cache(key, value, ttl)
+
+    async def _lookup(self, title, artist, duration, query):
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT),
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+            trust_env=False) as session:
+            item, failed = None, False
+            if artist and not query:
+                params = {"track_name": title, "artist_name": artist}
+                if 1 <= duration <= 3600:
+                    params["duration"] = str(round(duration))
+                try:
                     item = await self._request(session, "/get", params)
                     if item is not None and not isinstance(item, dict):
                         raise ValueError("invalid lyric item")
-                if item:
-                    item = self._choose([item], title, artist, duration, False)
-                if not item or not (item.get("syncedLyrics") or item.get("plainLyrics") or item.get("instrumental") is True):
+                    item = self._choose([item] if item else [], title, artist, duration)
+                except (asyncio.TimeoutError, aiohttp.ClientError, ValueError, TypeError):
+                    failed = True
+            if not item:
+                try:
                     candidates = await self._request(session, "/search", {"q": query or " ".join((artist, title)).strip()})
                     if candidates is not None and not isinstance(candidates, list):
                         raise ValueError("invalid lyric search")
                     query_title, query_artist = clean_metadata(query) if query else (title, artist)
                     item = self._choose(candidates or [], query_title, query_artist, duration, bool(query))
-                value = result(title, artist, item)
-            self.cache[key] = (time.monotonic() + self.CACHE_TTL, value)
-            self.cache.move_to_end(key)
-            while len(self.cache) > self.CACHE_LIMIT:
-                self.cache.popitem(last=False)
-            return value
+                except (asyncio.TimeoutError, aiohttp.ClientError, ValueError, TypeError):
+                    failed = True
+            return result(title, artist, item, status="unavailable" if failed else "not_found")
+
+    @staticmethod
+    def _retry_delay(value):
+        try:
+            delay = float(value)
+        except (ValueError, TypeError):
+            try:
+                delay = parsedate_to_datetime(value).timestamp() - time.time()
+            except (ValueError, TypeError, OverflowError):
+                return None
+        return max(0, delay) if math.isfinite(delay) else None
 
     async def _request(self, session, path, params):
-        delay = self.MIN_INTERVAL - (time.monotonic() - self.last_request)
-        if delay > 0:
-            await asyncio.sleep(delay)
-        if self.cooldown_until > time.monotonic():
-            raise ValueError("provider cooldown")
-        self.last_request = time.monotonic()
-        async with session.get(LRCLIB_ROOT + path, params=params, allow_redirects=False) as response:
-            if response.status in (429, 503):
-                try:
-                    delay = min(3600, max(1, float(response.headers.get("Retry-After", "60"))))
-                except ValueError:
-                    delay = 60
-                self.cooldown_until = time.monotonic() + delay
-                raise ValueError("provider throttled")
-            if response.status == 404:
-                return None
-            if response.status != 200:
-                raise ValueError("provider failure")
-            if response.content_type != "application/json" and not response.content_type.endswith("+json"):
-                raise ValueError("provider content type")
-            chunks, size = [], 0
-            async for chunk in response.content.iter_chunked(16384):
-                size += len(chunk)
-                if size > self.MAX_BODY:
-                    raise ValueError("provider body too large")
-                chunks.append(chunk)
-            return json.loads(b"".join(chunks))
+        # Retry-After defers this exact query, never all songs.
+        request_key = (path, tuple(sorted(params.items())))
+        if self.retry_after.get(request_key, 0) > time.monotonic():
+            raise ValueError("request deferred")
+        for attempt in range(self.ATTEMPTS):
+            retry_delay = None
+            async with self.lock:
+                delay = self.MIN_INTERVAL - (time.monotonic() - self.last_request)
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                self.last_request = time.monotonic()
+            try:
+                async with session.get(LRCLIB_ROOT + path, params=params, allow_redirects=False) as response:
+                    if response.status == 404:
+                        return None
+                    if response.status in (408, 429, 500, 502, 503, 504):
+                        retry_delay = self._retry_delay(response.headers.get("Retry-After"))
+                        if retry_delay is not None:
+                            self.retry_after = {k:v for k,v in self.retry_after.items() if v > time.monotonic()}
+                            if len(self.retry_after) >= self.CACHE_LIMIT:
+                                self.retry_after.pop(next(iter(self.retry_after)))
+                            self.retry_after[request_key] = time.monotonic() + retry_delay
+                        raise aiohttp.ClientConnectionError("temporary provider failure")
+                    if response.status != 200:
+                        raise ValueError("provider failure")
+                    if response.content_type != "application/json" and not response.content_type.endswith("+json"):
+                        raise ValueError("provider content type")
+                    chunks, size = [], 0
+                    async for chunk in response.content.iter_chunked(16384):
+                        size += len(chunk)
+                        if size > self.MAX_BODY:
+                            raise ValueError("provider body too large")
+                        chunks.append(chunk)
+                    return json.loads(b"".join(chunks))
+            except (asyncio.TimeoutError, aiohttp.ClientError):
+                if attempt + 1 == self.ATTEMPTS or retry_delay is not None and retry_delay > 2:
+                    raise
+                # Never shorten Retry-After or sleep beyond the lookup budget.
+                await asyncio.sleep(max(retry_delay or 0, .4 * 2**attempt + random.uniform(0, .2)))
+        raise ValueError("provider attempts exhausted")
 
     @staticmethod
     def _choose(candidates, title, artist, duration, manual=False):

@@ -181,7 +181,7 @@ async function api(path, method = "GET", data) {
   if (authMode === "owner" && secret) headers.Authorization = "Bearer " + secret;
   if (data !== undefined) headers["Content-Type"] = "application/json";
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), path.endsWith("/resolve") ? 25000
+  const timer = window.setTimeout(() => controller.abort(), (path.endsWith("/resolve") || path.split("?")[0].endsWith("/lyrics")) ? 25000
     : (data?.selected_items || /\/library\/.*\/play$/.test(path)) ? 150000 : 30000);
   let response, body;
   try {
@@ -220,6 +220,7 @@ function controls() {
     $(id).disabled = !lyricsOpen || !lyricsLines.length || lyricsLoading || lyricsTimingBusy || !connected;
   $("favorite").disabled = !hasPlayer || !safeURL(state?.current?.url) || $("favorite").dataset.loading === "1";
   $("lyrics-search").disabled = !usable || lyricsLoading;
+  $("lyrics-retry").disabled = !usable || lyricsLoading;
   $("history-refresh").disabled = !usable || historyLoading;
   document.querySelectorAll("#history-list button").forEach((button) => { button.disabled = !usable; });
   document.querySelectorAll("#preview-results button").forEach((button) => {
@@ -1057,6 +1058,21 @@ function applyHistory(result, guild = selected, epoch = generation) {
   controls();
 }
 
+let lyricsRetryTimer = null, lyricsRetryCount = 0, lyricsRetryQuery = "";
+const LYRICS_RETRY_DELAY = 45000, LYRICS_RETRY_LIMIT = 3;
+function cancelLyricsRetry(reset = false) {
+  window.clearTimeout(lyricsRetryTimer); lyricsRetryTimer = null;
+  if (reset) { lyricsRetryCount = 0; lyricsRetryQuery = ""; }
+}
+function scheduleLyricsRetry(query) {
+  if (lyricsRetryCount >= LYRICS_RETRY_LIMIT) return;
+  const key = currentTrackKey(), epoch = generation, request = lyricsRequest;
+  lyricsRetryTimer = window.setTimeout(() => {
+    lyricsRetryTimer = null;
+    if (!lyricsOpen || key !== currentTrackKey() || epoch !== generation || request !== lyricsRequest) return;
+    ++lyricsRetryCount; loadLyrics(query, true);
+  }, LYRICS_RETRY_DELAY);
+}
 let lyricsOpen = false, lyricsPreference = false, lyricsLoading = false, lyricsRequest = 0, lyricsTrack = "", lyricsLines = [], lyricsActive = -1;
 let lyricsOffset = 0, lyricsVideo = "", lyricsOffsetTimer = null, lyricsOffsetSequence = 0, lyricsTimingBusy = false, lyricsSyncArmed = false;
 let lyricsUserScrollUntil = 0, lyricsAutoScrollUntil = 0, lyricsCenterPending = false;
@@ -1065,6 +1081,7 @@ function readLyricsPreference() {
   catch { lyricsPreference = false; }
 }
 function resetLyrics(close = false) {
+  cancelLyricsRetry(true); $("lyrics-retry").hidden = true;
   ++lyricsRequest; ++lyricsOffsetSequence; lyricsLoading = false; lyricsTrack = ""; lyricsLines = []; lyricsActive = -1;
   lyricsOffset=0;lyricsVideo="";lyricsSyncArmed=false;lyricsTimingBusy=false;
   window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null;
@@ -1107,8 +1124,10 @@ async function pollLyricsOffset() {
       lyricsOffsetTimer=window.setTimeout(pollLyricsOffset,5000);
   }
 }
-async function loadLyrics(query = "") {
+async function loadLyrics(query = "", automatic = false) {
   if (!lyricsOpen || !selected || !connected || !state?.current || state.lyrics_available === false) return;
+  cancelLyricsRetry(!automatic); lyricsRetryQuery = query;
+  $("lyrics-retry").hidden = true;
   const guild = selected, epoch = generation, key = currentTrackKey(), request = ++lyricsRequest;
   lyricsLoading = true; lyricsTrack = key; lyricsLines = []; lyricsActive = -1;
   window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null;lyricsSyncArmed=false;
@@ -1140,12 +1159,16 @@ async function loadLyrics(query = "") {
     } else {
       $("lyrics-status").textContent = result.status === "unavailable" ? t("m0153") : t("m0154");
       $("lyrics-search-form").hidden = false;
+      if (result.status === "unavailable") { $("lyrics-retry").hidden = false; scheduleLyricsRetry(query); }
     }
   } catch (error) {
     if (epoch === generation && request === lyricsRequest && lyricsOpen) {
       $("lyrics-status").textContent = error.message || t("m0155");
       if (error.status===403) { if(state) state.lyrics_available=false;toggleLyrics(false,false); }
-      else $("lyrics-search-form").hidden = false;
+      else {
+        $("lyrics-search-form").hidden = false; $("lyrics-retry").hidden = false;
+        if (!error.status || error.status >= 500) { $("lyrics-status").textContent = t("m0153"); scheduleLyricsRetry(query); }
+      }
       notice(error.message, true);
     }
   } finally { if (epoch === generation && request === lyricsRequest) { lyricsLoading = false; controls(); } }
@@ -1187,7 +1210,7 @@ function toggleLyrics(open = !lyricsOpen, persist = true) {
   lyricsOpen = open; $("lyrics-panel").hidden = !open;
   if (open) lyricsCenterPending=true;
   $("lyrics-toggle").setAttribute("aria-expanded", String(open));
-  if (!open) { ++lyricsRequest;++lyricsOffsetSequence;lyricsLoading=false;window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null; }
+  if (!open) { cancelLyricsRetry(); ++lyricsRequest;++lyricsOffsetSequence;lyricsLoading=false;window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null; }
   else if (lyricsTrack !== currentTrackKey() || !$("lyrics-content").textContent && !lyricsLines.length) return loadLyrics();
   else if(lyricsVideo)lyricsOffsetTimer=window.setTimeout(pollLyricsOffset,5000);
   if (open) syncLyrics();
@@ -1219,6 +1242,7 @@ for(const event of ["wheel","touchstart","pointerdown","keydown"]) $("lyrics-con
 $("lyrics-content").addEventListener("scroll",()=>{if(Date.now()>lyricsAutoScrollUntil)lyricUserScroll();},{passive:true});
 installSeek("progress");
 $("history-refresh").addEventListener("click", () => refreshHistory(true));
+$("lyrics-retry").addEventListener("click", () => { if (!lyricsLoading) return loadLyrics(lyricsRetryQuery); });
 $("lyrics-toggle").addEventListener("click", () => toggleLyrics());
 $("lyrics-close").addEventListener("click", () => { toggleLyrics(false); $("lyrics-toggle").focus?.(); });
 $("lyrics-search-form").addEventListener("submit", (event) => {

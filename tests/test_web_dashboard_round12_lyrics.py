@@ -28,7 +28,7 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
         fresh=LyricsStore(self.temp.name)
         self.assertEqual(await fresh.get(KEY),value)
         raw=json.loads(self.store.path("cache",KEY).read_text())
-        self.assertGreater(raw["expires"]-time.time(),86390)
+        self.assertGreater(raw["expires"]-time.time(),10790)
         await self.store.put(KEY,value,-1)
         self.assertIsNone(await fresh.get(KEY))
     async def test_bounded_cache_oldest_count_and_bytes_and_corruption(self):

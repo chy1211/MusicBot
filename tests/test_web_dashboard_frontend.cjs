@@ -2507,3 +2507,35 @@ test("vote skip catalogs explain immediate skipping and have English equivalents
   assert.match(en["vote_skip.help"],/Skip permission.*immediately/);
   assert.match(zh["vote_skip.help"],/\u95dc\u9589\u5f8c.*\u53ef\u76f4\u63a5\u8df3\u904e/);
 });
+
+test("unavailable lyrics retry at 45 seconds up to three times and manual retry can recover", async () => {
+  const app = await setup();
+  app.hook(url => url.endsWith("/lyrics") ? lyricsResponse({status:"unavailable"}) : null);
+  await app.element("lyrics-toggle").listeners.click();
+  assert.equal(app.element("lyrics-retry").hidden, false);
+  for (let i=0;i<3;i++) {
+    const timer=app.timers.filter(x=>x[1]===45000).at(-1);
+    timer[0](); await flush(); await flush();
+  }
+  assert.equal(app.timers.filter(x=>x[1]===45000).length, 3);
+  assert.equal(app.requests.filter(x=>x.url.endsWith("/lyrics")).length, 4);
+  app.hook(url => url.endsWith("/lyrics") ? lyricsResponse(syncedLyrics) : null);
+  await app.element("lyrics-retry").listeners.click();
+  assert.equal(app.element("lyrics-retry").hidden, true);
+  assert.ok(app.element("lyrics-content").children.length);
+});
+
+test("a cancelled lyric retry cannot request the previous track or a closed panel", async () => {
+  const app = await setup();
+  app.hook(url => url.endsWith("/lyrics") ? lyricsResponse({status:"unavailable"}) : null);
+  await app.element("lyrics-toggle").listeners.click();
+  const old=app.timers.filter(x=>x[1]===45000).at(-1);
+  app.run('state.current={...state.current,title:"Next",url:"https://example.test/next"}; resetLyrics(false)');
+  const before=app.requests.length; old[0](); await flush();
+  assert.equal(app.requests.length,before);
+  await app.run("loadLyrics()");
+  const closed=app.timers.filter(x=>x[1]===45000).at(-1);
+  app.element("lyrics-close").listeners.click();
+  const count=app.requests.length; closed[0](); await flush();
+  assert.equal(app.requests.length,count);
+});

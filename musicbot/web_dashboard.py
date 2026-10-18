@@ -239,7 +239,6 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.lyrics_rate_limits = {}
         self.lyrics_client = LyricsClient()
         self.lyrics_store = LyricsStore(write_path("data/web_dashboard/lyrics"))
-        self.lyrics_lookup_lock = asyncio.Lock()
         self.lyrics_alignment = AlignmentService(self.lyrics_store)
         self.lyrics_offset_locks = defaultdict(asyncio.Lock)
         self.lyrics_offset_rates = {}
@@ -711,13 +710,12 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             artist = re.sub(r"\s*(?:-\s*Topic|VEVO|Official(?: Channel)?)\s*$", "", artist, flags=re.I).strip()[:160]
         track_key = hashlib.sha256(str((entry.url, entry.title, entry.duration)).encode()).hexdigest()
         key = video_id(entry.url)
-        async with self.lyrics_lookup_lock:
-            value = await self.lyrics_store.get(key) if key and not query else None
-            if value is None:
-                value = await self.lyrics_client.lookup(title, artist, entry.duration, query=query)
-                if key and not query:
-                    ttl = 86400 if value["status"] == "not_found" else 30 if value["status"] == "unavailable" else 7*86400
-                    await self.lyrics_store.put(key, value, ttl)
+        value = await self.lyrics_store.get(key) if key and not query else None
+        if value is None:
+            value = await self.lyrics_client.lookup(title, artist, entry.duration, query=query)
+            if key and not query and value["status"] != "unavailable":
+                ttl = 3*3600 if value["status"] == "not_found" else 7*86400
+                await self.lyrics_store.put(key, value, ttl)
         # An expired session/removed member must not receive data after a slow lookup.
         if self.discord_auth:
             self.authenticate(request)

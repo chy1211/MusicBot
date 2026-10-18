@@ -385,7 +385,7 @@ class LyricsTests(unittest.IsolatedAsyncioTestCase):
         await self.client.lookup("Three", "", 180)
         self.assertEqual(len(self.client.cache), 2)
 
-    async def test_http_user_agent_anonymous_fixed_params_and_provider_cooldown(self):
+    async def test_http_user_agent_anonymous_fixed_params_and_per_query_deferral(self):
         calls = []
         async def provider(request):
             calls.append((dict(request.query), dict(request.headers)))
@@ -398,7 +398,7 @@ class LyricsTests(unittest.IsolatedAsyncioTestCase):
             with patch("musicbot.web_dashboard_lyrics.LRCLIB_ROOT", str(server.make_url("/api"))):
                 self.assertEqual((await self.client.lookup("Song", "", 180))["status"], "unavailable")
                 self.assertEqual((await self.client.lookup("Another", "", 180))["status"], "unavailable")
-            self.assertEqual(len(calls), 1)
+            self.assertEqual(len(calls), 2)
             self.assertEqual(calls[0][0], {"q": "Song"})
             self.assertIn("MusicBot-WebDashboard", calls[0][1]["User-Agent"])
             self.assertNotIn("Authorization", calls[0][1])
