@@ -85,7 +85,7 @@ from musicbot.downloader import Downloader
 from musicbot.exceptions import MusicbotException
 from musicbot.web_dashboard import APIError
 from musicbot.web_dashboard_extraction import (
-    WEB_EXTRACTION, WEB_POOL, DashboardYoutubeDL, UnsupportedDashboardURL,
+    WEB_POOL, DashboardYoutubeDL, UnsupportedDashboardURL,
     check_subject, normalize_query,
 )
 from musicbot.web_dashboard_imports import source_url
@@ -301,7 +301,6 @@ class PublicPlaylistCredentials(unittest.IsolatedAsyncioTestCase):
     async def test_public_playlist_still_uses_credential_free_client_outside_web_context(self):
         import asyncio
         from concurrent.futures import ThreadPoolExecutor
-        from musicbot.downloader import YtdlpResponseDict
         with ThreadPoolExecutor(max_workers=1) as executor:
             downloader = NS(bot=NS(loop=asyncio.get_running_loop()), thread_pool=executor)
             with patch("musicbot.downloader.DashboardYoutubeDL") as client_class:
@@ -315,3 +314,69 @@ class PublicPlaylistCredentials(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(options["usenetrc"])
         for key in ("username", "password", "http_headers", "extractor_args"):
             self.assertNotIn(key, options)
+
+
+class BatchSessionAuthorization(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = library_fixtures.LibraryTests.asyncSetUp
+    asyncTearDown = library_fixtures.LibraryTests.asyncTearDown
+    call = fixtures.DiscordTests.call
+    login_as = fixtures.DiscordTests.login_as
+    provider_token = fixtures.DiscordTests.provider_token
+    provider_me = fixtures.DiscordTests.provider_me
+    get = library_fixtures.LibraryTests.get
+    add = library_fixtures.LibraryTests.add
+
+    async def assert_revocation(self, mode):
+        from musicbot.downloader import YtdlpResponseDict
+        query = "https://soundcloud.com/example/list"
+        track = dict(self.bot.info, webpage_url="https://soundcloud.com/example/saved")
+        playlist = dict(self.bot.info, entries=[track], playlist_count=1)
+        async def metadata(subject, **kwargs):
+            return YtdlpResponseDict(playlist if subject == query else track)
+        self.bot.downloader.extract_info = metadata
+        if mode == "library":
+            value = await self.add()
+            path = BASE + "library/favorites/play"
+            data = {"revision": value["revision"]}
+        else:
+            path, data = BASE + "play", {"query": query}
+            if mode == "confirmed_playlist":
+                song = (await self.call(BASE + "resolve", data))["results"][0]
+                data.update(query=song["url"], preview_id=song["preview_id"])
+        started, release = asyncio.Event(), asyncio.Event()
+        calls = 0
+        async def slow(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == (2 if mode == "legacy_playlist_confirmation" else 1):
+                started.set()
+                await release.wait()
+            return await metadata(*args, **kwargs)
+        self.bot.downloader.extract_info = slow
+        before = list(self.bot.player.playlist.entries)
+        pending = asyncio.create_task(self.client.post(path, json=data,
+            headers=dict(HEADERS, Origin=self.origin)))
+        try:
+            await asyncio.wait_for(started.wait(), 2)
+            await self.call("/auth/logout-all", {})
+            release.set()
+            response = await asyncio.wait_for(pending, 2)
+            self.assertEqual(response.status, 401, await response.json())
+            self.assertEqual(list(self.bot.player.playlist.entries), before)
+            self.bot.serialize_queue.assert_not_awaited()
+        finally:
+            release.set()
+            if not pending.done():
+                pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+
+
+def batch_case(mode):
+    async def test(self):
+        await self.assert_revocation(mode)
+    return test
+
+
+for _mode in ("legacy_playlist_preview", "legacy_playlist_confirmation",
+              "confirmed_playlist", "library"):
+    setattr(BatchSessionAuthorization, "test_logout_during_" + _mode, batch_case(_mode))

@@ -17,7 +17,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 from aiohttp import web
 from discord import ChannelType
@@ -1491,6 +1491,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     first_response = response
                 success = True
             except APIError as exc:
+                # A revoked session is an HTTP authentication failure, including
+                # personal-library playback; never hide it in a skipped summary.
+                if exc.status == 401:
+                    raise
                 error = str(exc)
             except exceptions.MusicbotException as exc:
                 error = denial_text(exc.message % exc.fmt_args)

@@ -414,7 +414,7 @@ class DashboardImports:
             fail(429, _web_text('m0422'))
         try:
             preview = await self.run_resolution(guild, self.import_source(url, kind))
-        except (APIError, ExtractionBudgetExceeded, UnsupportedDashboardURL, check_youtube_public):
+        except (APIError, ExtractionBudgetExceeded, UnsupportedDashboardURL):
             raise
         except Exception:
             fail(502, _web_text('m0525'))
