@@ -1305,9 +1305,32 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             self.previews.pop(next(iter(self.previews)))
         return results
 
+    async def compatibility_preview(self, request, data, guild, owner, action):
+        """Old one-request clients use the same preview and guarded confirmation."""
+        query = data["query"]
+        results = await self.run_resolution(guild,
+            self.resolve_options(guild, owner, query, action))
+        if self.discord_auth:
+            self.authenticate(request)
+        guild, owner = self.guild_owner(request)
+        permissions = self.bot.permissions.for_user(owner)
+        self.command_permission(owner, permissions, action, query.split()[0])
+        if self.discord_auth:
+            self.voice_permission(guild, owner, permissions, action)
+        self.addition_checks(self.preview_player(guild), owner, permissions)
+        selected = results[0]  # Legacy keyword requests still choose the first match.
+        if not selected["allowed"]:
+            raise APIError(403, selected["reason"] or _web_text('m0426'))
+        if (selected["kind"] == "playlist" and permissions.max_songs
+                and self.preview_player(guild).playlist.count_for_user(owner)
+                    + selected["eligible_count"] > permissions.max_songs):
+            raise APIError(403, _web_text('m0341'))
+        await self.issue_previews(guild, owner, [selected], query, action)
+        data.update(query=selected["url"], preview_id=selected["preview_id"])
+
     def confirmed_preview(self, data, guild, owner):
         if "preview_id" not in data:
-            return None  # First-version API compatibility; the UI always confirms.
+            raise APIError(409, _web_text('m0425'))
         token = data["preview_id"]
         preview = self.previews.get(token) if isinstance(token, str) else None
         if (not preview or preview.get("retain_until", preview["expires"]) <= time.monotonic()
@@ -1556,6 +1579,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 # Requests can queue behind another command; re-check current membership/session.
                 self.authenticate(request)
                 guild, owner = self.guild_owner(request)
+            if action in ("play", "playnext") and "preview_id" not in data:
+                await self.compatibility_preview(request, data, guild, owner, action)
+                query = data["query"]
             sub = ""
             if self.discord_auth:
                 sub = (query.split()[0] if action in ("play", "playnext") else
@@ -1624,15 +1650,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     if reason:
                         raise APIError(403, reason)
                     return perms
-                check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next)) if action == "playnext" or preview else None
+                check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next))
                 try:
                     response = await self.run_resolution(guild, getattr(self.bot, "cmd_" + action)(
                         message=None, player=player, channel=channel, guild=guild,
                         author=owner, permissions=permissions, leftover_args=[],
                         song_url=query.strip()))
                 finally:
-                    if check_token is not None:
-                        CONFIRMED_ENTRY_CHECK.reset(check_token)
+                    CONFIRMED_ENTRY_CHECK.reset(check_token)
             elif action == "seek":
                 if not player.current_entry:
                     raise APIError(409, _web_text('m0378'))

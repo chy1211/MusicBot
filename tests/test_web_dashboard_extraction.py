@@ -139,7 +139,7 @@ class WebEntrySecurityTests(unittest.IsolatedAsyncioTestCase):
         self.bot.downloader.extract_info = extract
         await self.call(BASE + 'resolve', {'query': 'https://soundcloud.com/example/song'})
         await self.call(BASE + 'play', {'query': 'https://soundcloud.com/example/song'})
-        self.assertEqual(seen, [True, True])
+        self.assertEqual(seen, [True, True, True])
         self.assertFalse(WEB_EXTRACTION.get())
 
 

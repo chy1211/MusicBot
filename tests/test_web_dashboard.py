@@ -212,7 +212,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_play_keyword_uses_existing_search(self):
         await self.call(BASE + "play", {"query": "test song"})
-        self.assertEqual(self.bot.extractions[0][0], "ytsearch:test song")
+        self.assertEqual(self.bot.extractions[0][0], "ytsearch5:test song")
 
     async def test_play_starts_stopped_queue(self):
         self.bot.player.playlist.entries.clear()
@@ -360,16 +360,23 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.bot.player.playlist.entries), 3)
 
     async def test_playlist_real_import_filters_long_songs(self):
-        short = dict(self.bot.info, title="Short", duration=60)
+        short = dict(self.bot.info, title="Short", duration=60,
+                     webpage_url="https://soundcloud.com/example/short")
         long = dict(self.bot.info, title="Long", duration=600)
         self.bot.info = dict(self.bot.info, entries=[short, long], playlist_count=2)
         self.bot.perms.max_song_length = 100
+        original = self.bot.downloader.extract_info
+        async def extract(query, **kwargs):
+            if query == short["webpage_url"]:
+                return YtdlpResponseDict(short)
+            return await original(query, **kwargs)
+        self.bot.downloader.extract_info = extract
         await self.call(BASE + "play", {"query": "https://soundcloud.com/example/list"})
         self.assertEqual([e.title for e in self.bot.player.playlist.entries],
                          ["One", "Two", "Three", "Short"])
 
     async def test_extractor_and_blocklist_restrictions(self):
-        self.bot.blocked.add("ytsearch:blocked")
+        self.bot.blocked.add("ytsearch5:blocked")
         await self.call(BASE + "play", {"query": "blocked"}, status=403)
         def deny(*args):
             raise PermissionsError("Extractor denied")
