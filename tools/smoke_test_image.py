@@ -11,7 +11,6 @@ YouTube/provider failures only warn. No host directories or ports are mounted.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import functools
 import http.server
 import importlib.metadata
@@ -34,10 +33,10 @@ import uuid
 
 # Long-lived public tracks; no credentials, cookies or private playlists.
 SOURCES = (
-    "https://soundcloud.com/ethmusic/lostinreverie",
+    "https://soundcloud.com/ethmusic/lostin-powers-she-so-heavy",
     "https://benprunty.bandcamp.com/track/space-cruise-title",
 )
-YOUTUBE = "https://www.youtube.com/watch?v=BaW_jenozKc"  # yt-dlp's public test video
+YOUTUBE = "https://www.youtube.com/watch?v=dQw4w9WgXc"  # long-lived public music video
 
 
 class SmokeFailure(Exception):
