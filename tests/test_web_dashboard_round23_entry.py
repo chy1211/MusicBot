@@ -1,6 +1,8 @@
 """Web entry authorization regressions with fake providers and real commands."""
 import asyncio
 import unittest
+from types import MethodType
+from musicbot.bot import MusicBot
 
 import test_web_dashboard_discord as fixtures
 from test_web_dashboard import BASE, HEADERS, NS
@@ -15,6 +17,7 @@ class EntryAuthorization(unittest.IsolatedAsyncioTestCase):
     provider_me = fixtures.DiscordTests.provider_me
 
     async def reject_during_resolution(self, action, mode, change):
+        self.bot.cmd_playnext = MethodType(MusicBot.cmd_playnext, self.bot)
         query = "https://soundcloud.com/example/song"
         data = {"query": query}
         if mode == "confirmed":
