@@ -1796,7 +1796,8 @@ class MusicBot(commands.Bot):
 
         # nothing going on.
         else:
-            text = " ~ \U0001f634 ~ "
+            # Optional override, e.g. a server-specific idle status text.
+            text = os.environ.get("MUSICBOT_IDLE_STATUS") or " ~ \U0001f634 ~ "
             if self.config.status_message:
                 text = format_status_msg(None)
 
