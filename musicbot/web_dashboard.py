@@ -1307,6 +1307,14 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
     async def compatibility_preview(self, request, data, guild, owner, action):
         """Old one-request clients use the same preview and guarded confirmation."""
         query = data["query"]
+        # Preserve the old command's voice/text-channel admission before providers.
+        permissions = self.bot.permissions.for_user(owner)
+        self.command_permission(owner, permissions, action, query.split()[0])
+        if self.discord_auth:
+            self.voice_permission(guild, owner, permissions, action)
+        elif not owner.voice or not owner.voice.channel:
+            raise APIError(409, _web_text('m0397'))
+        self.channel_for(guild, owner)
         results = await self.run_resolution(guild,
             self.resolve_options(guild, owner, query, action))
         if self.discord_auth:
@@ -1642,7 +1650,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     self.command_permission(member, perms, action, query.split()[0])
                     if self.discord_auth:
                         self.voice_permission(current_guild, member, perms, action)
-                    self.addition_checks(self.bot.get_player_in(current_guild), member, perms)
+                    # context() may just have summoned this player.
+                    current_player = self.bot.get_player_in(current_guild) or player
+                    self.addition_checks(current_player, member, perms)
                     # Native duration_td.seconds drops complete days and fractions.
                     # Check the fresh selected track using its full duration before
                     # _cmd_play can enqueue; search wrappers may retain child data.
