@@ -273,6 +273,7 @@ class SpotifyNativeSelectionTests(unittest.IsolatedAsyncioTestCase):
             unsafe_ytdl=NS(extract_info=lambda *a, **kw: copy.deepcopy(raw)),
             ytdl=NS(sanitize_info=lambda value: value))
         native._run_ytdl = lambda safe, method, *a, **kw: getattr(native.unsafe_ytdl, method)(*a, **kw)
+        native._extract_with_client = AsyncMock(side_effect=lambda *a, **kw: copy.deepcopy(raw))
         async def extract(query, **kwargs):
             with patch("musicbot.downloader.log.noise", create=True):
                 value = await Downloader._filtered_extract_info(native, query, **kwargs)

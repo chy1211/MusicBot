@@ -13,6 +13,8 @@ from yt_dlp.utils import (  # type: ignore[import-untyped]
     YoutubeDLError,
 )
 
+from .web_dashboard_extraction import playback_context
+
 from .constructs import Serializable
 from .downloader import YtdlpResponseDict
 from .exceptions import ExtractionError, InvalidDataError, MusicbotException
@@ -152,7 +154,7 @@ class BasePlaylistEntry(Serializable):
         else:
             # If we request a ready future, let's ensure that it'll actually resolve at one point.
             self._waiting_futures.append(future)
-            task = asyncio.create_task(self._download(), name="MB_EntryReadyTask")
+            task = playback_context().run(asyncio.create_task, self._download(), name="MB_EntryReadyTask")
             # Make sure garbage collection does not delete the task early...
             self._task_pool.add(task)
             task.add_done_callback(self._task_pool.discard)

@@ -12,6 +12,8 @@ from collections import Counter
 from urllib.parse import parse_qs, urlsplit
 
 from aiohttp import web
+from .web_dashboard_extraction import (WEB_EXTRACTION, RESOLUTION_BUDGET, new_budget,
+    ExtractionBudgetExceeded, UnsupportedDashboardURL)
 
 
 def fail(status, message):
@@ -197,8 +199,11 @@ async def fetch_spotify_embed(session, ident):
         if response.content_length and response.content_length > SPOTIFY_EMBED_LIMIT:
             raise ValueError(SPOTIFY_UNREADABLE)
         chunks, size = [], 0
+        budget = (RESOLUTION_BUDGET.get() or new_budget()) if WEB_EXTRACTION.get() else None
         async for chunk in response.content.iter_chunked(65536):
             size += len(chunk)
+            if budget is not None:
+                budget.consume(len(chunk), size)
             if size > SPOTIFY_EMBED_LIMIT: raise ValueError(SPOTIFY_UNREADABLE)
             chunks.append(chunk)
     return parse_spotify_embed(b"".join(chunks), ident)
@@ -210,10 +215,14 @@ async def spotify_playlist(spotify, ident, api=None):
         value = await (api() if api else spotify.get_playlist(ident))
         if isinstance(value.get("tracks"), dict) and isinstance(value["tracks"].get("items"), list):
             return value
+    except ExtractionBudgetExceeded:
+        raise
     except Exception as exc:
         original = exc
     try:
         return await fetch_spotify_embed(spotify.aiosession, ident)
+    except ExtractionBudgetExceeded:
+        raise
     except Exception:
         if original is not None: raise original
         raise ValueError(SPOTIFY_UNREADABLE) from None
@@ -311,6 +320,8 @@ class DashboardImports:
             # Existing Spotify API/session owns credentials and token handling.
             try:
                 value = await (spotify.get_album(ident) if category == "album" else spotify_playlist(spotify, ident))
+            except ExtractionBudgetExceeded:
+                raise
             except Exception:
                 fail(400, SPOTIFY_UNREADABLE if category == "playlist" else _web_text('m0514'))
             count_is_minimum = bool(value.get("_embed_partial"))
@@ -397,18 +408,9 @@ class DashboardImports:
         self.user_rate_limit(member)
         if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
             fail(429, _web_text('m0422'))
-        task = asyncio.create_task(self.import_source(url, kind))
-        self.resolve_tasks[guild.id] = task
-        def finished(done):
-            self.resolve_tasks.pop(guild.id, None)
-            if not done.cancelled():
-                done.exception()
-        task.add_done_callback(finished)
         try:
-            preview = await asyncio.wait_for(asyncio.shield(task), self.RESOLVE_TIMEOUT)
-        except asyncio.TimeoutError:
-            fail(504, _web_text('m0423'))
-        except APIError:
+            preview = await self.run_resolution(guild, self.import_source(url, kind))
+        except (APIError, ExtractionBudgetExceeded, UnsupportedDashboardURL):
             raise
         except Exception:
             fail(502, _web_text('m0525'))

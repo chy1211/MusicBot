@@ -256,11 +256,12 @@ class ImportTests(unittest.IsolatedAsyncioTestCase):
         self.bot.downloader.extract_info.side_effect = delay
         self.dashboard.RESOLVE_TIMEOUT = 0.01
         await self.preview(status=504)
-        self.assertIn(1, self.dashboard.resolve_tasks)
-        await self.preview(status=429)
-        await self.call("/api/guilds/1/resolve", {"query": YT}, status=429)
+        self.assertNotIn(1, self.dashboard.resolve_tasks)
+        await self.preview(status=504)
+        self.assertNotIn(1, self.dashboard.resolve_tasks)
         waiting.set()
-        await asyncio.sleep(0.02)
+        self.dashboard.RESOLVE_TIMEOUT = 1
+        await self.preview()
         self.assertNotIn(1, self.dashboard.resolve_tasks)
 
     async def test_spotify_stored_url_reaches_existing_cmd_play_and_permission_rechecked(self):
@@ -307,14 +308,14 @@ class PublicDownloaderTests(unittest.IsolatedAsyncioTestCase):
                     return {"title":"Public","playlist_count":999999,"entries":(video(i) for i in range(999999))}
                 def sanitize_info(self,value): return value
             captured={}
-            with patch("musicbot.downloader.youtube_dl.YoutubeDL",FakePublic):
+            with patch("musicbot.downloader.DashboardYoutubeDL",FakePublic):
                 value=await Downloader.extract_info(downloader,YT,download=False,process=False,public_only=True)
             regular.assert_not_awaited();headers.assert_not_awaited()
             self.assertIsNone(captured["cookiefile"]);self.assertIsNone(captured["cookiesfrombrowser"])
             self.assertFalse(captured["usenetrc"]);self.assertFalse(captured["cachedir"])
             self.assertEqual(len(value.data["entries"]),201)
             self.assertEqual(captured["playlistend"],201)
-            with patch("musicbot.downloader.youtube_dl.YoutubeDL",FakePublic):
+            with patch("musicbot.downloader.DashboardYoutubeDL",FakePublic):
                 mix=await Downloader.extract_info(downloader,YT,download=False,process=False,public_only=True,public_limit=25)
             self.assertEqual(len(mix.data["entries"]),25)
             self.assertEqual(captured["playlistend"],25)

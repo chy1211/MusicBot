@@ -289,9 +289,8 @@ queue requests return 409. Volume: integer 1..100. Repeat: off/song/all.
 
 Discord mode allows **12 combined resolve/play/playnext attempts per user per rolling
 60 seconds**, across guilds and sessions; owner mode is unaffected. Additionally
-one resolver per guild, two overall. Resolve deadlines are 20 seconds without
-holding playback mutation locks; timed-out work retains its slot until finished.
-Python cannot kill an executing yt-dlp worker thread.
+one resolver per guild, two overall. See the Round 22 extraction limits below:
+web yt-dlp runs in killable processes and admission is retained until reaping.
 
 Pointer sorting uses a lifted/scaled source, transformed neighbours and FLIP
 reconciliation. A 409 animates back and retains the error toast before refreshing
@@ -2036,3 +2035,49 @@ because input classification performs no DNS or HTTP I/O. Arbitrary provider
 extractor bugs or provider-controlled URLs remain a residual risk.
 Native Discord commands keep their original clients, generic support and HEAD
 behavior; their equivalent SSRF risk remains for a later, separately scoped fix.
+
+
+### Round 22: killable web extraction and read limits
+
+`web_dashboard.ini` accepts these `[WebDashboard]` keys (missing keys keep defaults):
+
+| Key | Default | Valid range |
+| --- | --- | --- |
+| ResolveTimeoutSeconds | 20 | 1..120 seconds, finite |
+| ResolveMaxResponseBytes | 8388608 | 1024..67108864 bytes |
+| ResolveMaxTotalBytes | 33554432 | response limit..268435456 bytes |
+
+See [the Round 22 example](examples/web_dashboard.ini). It is outside `config/`
+so review/test snapshots contain no operational configuration. All external
+hostnames in that example are placeholders. The original example remains
+compatible through defaults; production configuration is not read or changed.
+
+The dashboard warms two local Python subprocesses/process groups at startup.
+Each web yt-dlp extraction recreates its client in an available warm worker,
+using a private stdin/stdout pipe for the current options/cookie snapshot.
+Only imports are reused between jobs. Timed-out workers are killed/replaced.
+No secrets are placed in arguments, logs or temporary files. Public playlist
+imports remain cookie-free. Generic stays disabled in the worker. The web path
+skips the ancillary generic HEAD probe. Native Discord executor/client behavior
+is unchanged. Queued background media downloads explicitly detach the web
+parsing context, so a preview deadline cannot interrupt later audio playback. Web play without preview, renewed previews, selected/library
+tracks and public imports use the same one-per-guild/two-global admission.
+
+The deadline covers resolver work and process startup. On timeout, disconnect
+cancellation or shutdown, SIGKILL terminates the worker group (including ordinary
+JS-runtime descendants); the parent waits/reaps before releasing admission or
+returning 504. There is no executor thread continuing provider extraction after
+that response. Non-yt-dlp Spotify I/O remains asynchronous/cancellable and is
+covered by the same deadline and decoded read counters.
+
+Provider response reads count decoded bytes, stop at the per-response/total
+limits (including chunked bodies without Content-Length), and use bounded read
+chunks. yt-dlp metadata IPC is separately capped by the response limit. Limits
+are shared across nested calls in one resolution. Exceeding the read budget
+returns a localized error. Defaults allow ordinary single-track extraction
+without retry/delay or an added request; preloaded workers avoid per-song Python startup. Warm-worker overhead is
+measured offline with mocks rather than contacting a production provider.
+
+This is a resource boundary for web parsing, not a new global network sandbox.
+Dedicated extractor transport behavior and native Discord SSRF remain the
+explicitly documented limitations of the no-generic policy above.

@@ -4,6 +4,7 @@ import datetime
 import functools
 import hashlib
 import logging
+import json
 import os
 import pathlib
 import time
@@ -27,7 +28,8 @@ from .i18n import _L
 from .spotify import Spotify
 from .utils import check_extractor
 from .ytdlp_cookies import CookieYtdlClients
-from .web_dashboard_extraction import WEB_EXTRACTION, DashboardYoutubeDL, check_subject
+from .web_dashboard_extraction import (WEB_EXTRACTION, DashboardYoutubeDL, check_subject,
+    RESOLUTION_BUDGET, WEB_POOL, new_budget, run_extraction_process)
 
 if TYPE_CHECKING:
     from multidict import CIMultiDictProxy
@@ -238,6 +240,42 @@ class Downloader:
                 return getattr(isolated, method)(*args, **kwargs)
         return getattr(client, method)(*args, **kwargs)
 
+    async def _dashboard_extract(self, subject, kwargs, *, public=False, limit=201):
+        budget = RESOLUTION_BUDGET.get() or new_budget()
+        if public:
+            options = {"extract_flat": "in_playlist", "noplaylist": False,
+                       "playlistend": limit, "ignoreerrors": False}
+            cookies = []
+        else:
+            # Snapshot/refresh is bounded local file I/O, not provider work.
+            client = self._cookie_clients.snapshot(refresh=True)[0]
+            options = dict(self._cookie_clients.options)
+            cookies = []
+            for cookie in client.cookiejar:
+                value = dict(vars(cookie))
+                value['rest'] = value.pop('_rest', {})
+                cookies.append(value)
+        for key in ('logger', 'progress_hooks', 'postprocessor_hooks', 'cookiefile',
+                    'cookiesfrombrowser', 'postprocessors'):
+            options.pop(key, None)
+        options = json.loads(json.dumps(options, default=str))
+        pool = WEB_POOL.get()
+        run = pool.run if pool is not None else run_extraction_process
+        return await run({
+            "subject": check_subject(subject), "options": options, "cookies": cookies,
+            "kwargs": kwargs, "limit": limit,
+            "limits": [max(.001, budget.deadline - time.monotonic()), budget.max_response,
+                       max(0, budget.max_total - budget.used)]}, budget)
+
+    async def _extract_with_client(self, subject, *args, **kwargs):
+        if WEB_EXTRACTION.get():
+            if args:
+                raise ExtractionError("Dashboard extraction requires named arguments.")
+            return await self._dashboard_extract(subject, kwargs)
+        return await self.bot.loop.run_in_executor(
+            self.thread_pool,
+            functools.partial(self._run_ytdl, False, "extract_info", subject, *args, **kwargs))
+
     def randomize_user_agent_string(self) -> None:
         """
         Uses ytdlp utils functions to re-randomize UA strings in YoutubeDL
@@ -375,6 +413,11 @@ class Downloader:
 
     async def extract_public_playlist(self, song_subject: str, limit: int = 201) -> "YtdlpResponseDict":
         """Credential-free flat metadata for dashboard public YouTube imports only."""
+        if WEB_EXTRACTION.get():
+            data = await self._dashboard_extract(song_subject,
+                {"download": False, "process": False}, public=True, limit=limit)
+            data["__input_subject"] = song_subject
+            return YtdlpResponseDict(data)
         from itertools import islice
         def extract():
             # Never clone the ordinary client's cookies, netrc, headers or tokens.
@@ -598,12 +641,7 @@ class Downloader:
 
         # Actually call YoutubeDL extract_info.
         try:
-            data = await self.bot.loop.run_in_executor(
-                self.thread_pool,
-                functools.partial(
-                    self._run_ytdl, False, "extract_info", song_subject, *args, web_only=WEB_EXTRACTION.get(), **kwargs
-                ),
-            )
+            data = await self._extract_with_client(song_subject, *args, **kwargs)
         except DownloadError as e:
             if not as_stream_url:
                 raise ExtractionError(
@@ -639,12 +677,7 @@ class Downloader:
             )
             song_subject = song_subject.replace(":", " ")
             # TODO: maybe this also needs some exception handling...
-            data = await self.bot.loop.run_in_executor(
-                self.thread_pool,
-                functools.partial(
-                    self._run_ytdl, False, "extract_info", song_subject, *args, web_only=WEB_EXTRACTION.get(), **kwargs
-                ),
-            )
+            data = await self._extract_with_client(song_subject, *args, **kwargs)
 
         # make sure the ytdlp data is serializable to make it more predictable.
         data = self.ytdl.sanitize_info(data)
@@ -681,10 +714,11 @@ class Downloader:
             "Called safe_extract_info with:  %(args)s, %(kws)s",
             {"args": args, "kws": kwargs},
         )
+        if WEB_EXTRACTION.get():
+            return await self._dashboard_extract(args[0], kwargs)
         return await self.bot.loop.run_in_executor(
             self.thread_pool,
-            functools.partial(self._run_ytdl, True, "extract_info", *args, web_only=WEB_EXTRACTION.get(), **kwargs),
-        )
+            functools.partial(self._run_ytdl, True, "extract_info", *args, **kwargs))
 
     def _return_local_media(self, song_subject: str) -> "YtdlpResponseDict":
         """Verifies local media files and returns suitable data for local entries."""

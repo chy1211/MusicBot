@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 import aiohttp
 
+from .web_dashboard_extraction import bounded_json
+
 from .exceptions import SpotifyError
 from .i18n import _L
 
@@ -584,7 +586,7 @@ class Spotify:
                         fmt_args={"status": r.status, "reason": r.reason},
                     )
                 # log.everything("Spotify API GET:  %s\nData:  %s", url, await r.text() )
-                data = await r.json()  # type: Dict[str, Any]
+                data = await bounded_json(r)  # type: Dict[str, Any]
                 if not isinstance(data, dict):
                     raise SpotifyError("Response JSON did not decode to a dict!")
 
@@ -620,7 +622,7 @@ class Spotify:
                         fmt_args={"status": r.status, "reason": r.reason},
                     )
 
-                data = await r.json()  # type: Dict[str, Any]
+                data = await bounded_json(r)  # type: Dict[str, Any]
                 if not isinstance(data, dict):
                     raise SpotifyError("Response JSON did not decode to a dict!")
 
@@ -730,7 +732,7 @@ class Spotify:
                         fmt_args={"status": r.status, "reason": r.reason},
                     )
 
-                data = await r.json()  # type: Dict[str, Any]
+                data = await bounded_json(r)  # type: Dict[str, Any]
                 if not isinstance(data, dict):
                     raise SpotifyError("Response JSON did not decode to a dict!")
 

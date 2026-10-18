@@ -130,12 +130,14 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         await self.call(BASE + "resolve", {"query": "song"}, status=403)
         self.assertFalse(self.bot.extractions)
 
-    async def test_timeout_does_not_lock_controls_and_retains_admission_slot(self):
-        started, release = asyncio.Event(), asyncio.Event()
+    async def test_timeout_does_not_lock_controls_and_releases_admission_after_cancel(self):
+        started, cancelled = asyncio.Event(), asyncio.Event()
         async def slow(*_, **__):
             started.set()
-            await release.wait()
-            return YtdlpResponseDict(self.bot.info)
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
         self.bot.downloader.extract_info = slow
         self.dashboard.RESOLVE_TIMEOUT = .03
         resolving = asyncio.create_task(self.call(BASE + "resolve", {"query": "song"}, status=504))
@@ -143,11 +145,10 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(self.call(BASE + "pause", {}), .2)
         self.assertTrue(self.bot.player.is_paused)
         await resolving
-        await self.call(BASE + "resolve", {"query": "song"}, status=429)
-        self.assertFalse(self.dashboard.locks[1].locked())
-        release.set()
-        await asyncio.sleep(.02)
+        self.assertTrue(cancelled.is_set())
         self.assertEqual(self.dashboard.resolve_tasks, {})
+        await self.call(BASE + "resolve", {"query": "song"}, status=504)
+        self.assertFalse(self.dashboard.locks[1].locked())
 
     async def test_same_guild_concurrent_resolve_rejected(self):
         started, release = asyncio.Event(), asyncio.Event()
@@ -268,18 +269,20 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         guilds = {i: NS(id=i, unavailable=False, get_member=lambda _: self.bot.owner)
                   for i in (1, 2, 3)}
         self.bot.get_guild = guilds.get
-        started, release = asyncio.Event(), asyncio.Event()
         async def slow(*_, **__):
-            started.set()
-            await release.wait()
-            return YtdlpResponseDict(self.bot.info)
+            await asyncio.Event().wait()
         self.bot.downloader.extract_info = slow
-        self.dashboard.RESOLVE_TIMEOUT = .02
-        await self.call(BASE + "resolve", {"query": "one"}, status=504)
-        await self.call("/api/guilds/2/resolve", {"query": "two"}, status=504)
+        calls = [asyncio.create_task(self.client.post(path, json={"query": "song"}, headers=HEADERS))
+                 for path in (BASE + "resolve", "/api/guilds/2/resolve")]
+        for _ in range(100):
+            if len(self.dashboard.resolve_tasks) == 2:
+                break
+            await asyncio.sleep(.01)
+        self.assertEqual(len(self.dashboard.resolve_tasks), 2)
         await self.call("/api/guilds/3/resolve", {"query": "three"}, status=429)
         tasks = list(self.dashboard.resolve_tasks.values())
         await self.dashboard.close()
+        await asyncio.gather(*calls, return_exceptions=True)
         self.assertTrue(all(task.cancelled() for task in tasks))
         self.assertFalse(self.dashboard.resolve_tasks)
 

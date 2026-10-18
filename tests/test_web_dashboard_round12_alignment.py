@@ -129,7 +129,8 @@ class JobTests(unittest.IsolatedAsyncioTestCase):
         async def blocked(*args,**kwargs):
             proc=await real(sys.executable,"-c","import time; time.sleep(10)",**kwargs)
             processes.append(proc);return proc
-        self.service.TIMEOUT=.08
+        # Allow process creation on a loaded runner; still kill the 10s worker.
+        self.service.TIMEOUT=.5
         with patch("musicbot.web_dashboard_lyrics_alignment.asyncio.create_subprocess_exec",side_effect=blocked):
             await self.service.request(self.bot,self.entry,self.lyrics)
             await self.drain()

@@ -605,5 +605,6 @@
   "vote_skip.saved": "Skip settings saved.",
   "vote_skip.invalid": "Invalid skip settings.",
   "vote_skip.save_failed": "Could not save skip settings. Try again later.",
-  "m0606": "This URL is not supported by the web dashboard. Use a service with a dedicated extractor (YouTube, Spotify, SoundCloud or Bandcamp); direct media and generic websites are not accepted."
+  "m0606": "This URL is not supported by the web dashboard. Use a service with a dedicated extractor (YouTube, Spotify, SoundCloud or Bandcamp); direct media and generic websites are not accepted.",
+  "m0607": "The source exceeded the dashboard response/read budget. Try a smaller source or another service."
 }

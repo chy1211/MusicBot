@@ -37,7 +37,9 @@ from .web_dashboard_stats import PopularityStore
 from .web_dashboard_library import DashboardLibrary
 from .web_dashboard_admin import DashboardAdmin
 from .web_dashboard_activity import capture, finish
-from .web_dashboard_extraction import WEB_EXTRACTION, UnsupportedDashboardURL, normalize_query
+from .web_dashboard_extraction import (WEB_EXTRACTION, WEB_LIMITS, RESOLUTION_BUDGET,
+    ExtractionBudget, ExtractionBudgetExceeded, UnsupportedDashboardURL, normalize_query,
+    WEB_POOL, DashboardExtractionPool)
 
 ACTIVITY_KEY = web.RequestKey("dashboard_activity", object)
 
@@ -63,6 +65,9 @@ class DashboardConfig:
 
     default_language: str = "en"
     time_zone: str = "UTC"
+    resolve_timeout_seconds: float = 20
+    resolve_max_response_bytes: int = 8 * 1024 * 1024
+    resolve_max_total_bytes: int = 32 * 1024 * 1024
 
     @classmethod
     def load(cls, path: Path) -> DashboardConfig:
@@ -85,6 +90,13 @@ class DashboardConfig:
         if language not in ("en", "zh-TW"): raise ValueError("Invalid DefaultLanguage")
         from zoneinfo import ZoneInfo
         ZoneInfo(zone)
+        timeout = parser.getfloat("WebDashboard", "ResolveTimeoutSeconds", fallback=20)
+        response = parser.getint("WebDashboard", "ResolveMaxResponseBytes", fallback=8388608)
+        total = parser.getint("WebDashboard", "ResolveMaxTotalBytes", fallback=33554432)
+        if (not math.isfinite(timeout) or not 1 <= timeout <= 120
+                or not 1024 <= response <= 64 * 1024 * 1024
+                or not response <= total <= 256 * 1024 * 1024):
+            raise ValueError("Invalid dashboard extraction limits")
         # Ignore Discord-only options in owner mode for backwards compatibility.
         options = {}
         if mode == "discord":
@@ -96,7 +108,9 @@ class DashboardConfig:
                 "session_hours": parser.getfloat("WebDashboard", "SessionHours", fallback=168),
             }
         return cls(True, host, port, parser.get(
-            "WebDashboard", "SharedSecret", fallback="").strip(), auth_mode=mode, default_language=language, time_zone=zone, **options)
+            "WebDashboard", "SharedSecret", fallback="").strip(), auth_mode=mode, default_language=language, time_zone=zone,
+            resolve_timeout_seconds=timeout, resolve_max_response_bytes=response,
+            resolve_max_total_bytes=total, **options)
 
 
 @dataclass
@@ -217,7 +231,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.runner = None
         self.site = None
         self.locks = defaultdict(asyncio.Lock)
+        self.extraction_pool = DashboardExtractionPool()
         self.resolve_tasks = {}
+        self.RESOLVE_TIMEOUT = config.resolve_timeout_seconds
         self.previews = {}
         self.rate_limits = {}
         self.lyrics_rate_limits = {}
@@ -407,10 +423,17 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             token = WEB_EXTRACTION.set(self.request_action(request) in {
                 "resolve", "play", "playnext", "library_play", "library_import",
                 "library_sync", "library_import_preview", "library_sync_preview"})
+            pool_token = WEB_POOL.set(self.extraction_pool if self.extraction_pool.started else None)
+            limits_token = WEB_LIMITS.set((self.RESOLVE_TIMEOUT,
+                self.config.resolve_max_response_bytes, self.config.resolve_max_total_bytes))
             try:
                 response = await handler(request)
             finally:
+                WEB_POOL.reset(pool_token)
+                WEB_LIMITS.reset(limits_token)
                 WEB_EXTRACTION.reset(token)
+        except ExtractionBudgetExceeded:
+            response = web.json_response({"error": _web_text('m0607')}, status=502)
         except UnsupportedDashboardURL:
             response = web.json_response({"error": _web_text('m0606')}, status=400)
         except APIError as exc:
@@ -1196,6 +1219,41 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             raise APIError(404, _web_text('m0414'))
         return results
 
+    async def run_resolution(self, guild, operation, timeout_key="m0423"):
+        """Admission lasts until cancellation has killed and reaped provider work."""
+        if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
+            operation.close()
+            raise APIError(429, _web_text('m0422'))
+
+        entered = False
+        async def bounded():
+            nonlocal entered
+            entered = True
+            token = RESOLUTION_BUDGET.set(ExtractionBudget(self.RESOLVE_TIMEOUT,
+                self.config.resolve_max_response_bytes, self.config.resolve_max_total_bytes))
+            try:
+                return await operation
+            finally:
+                RESOLUTION_BUDGET.reset(token)
+
+        task = asyncio.create_task(bounded())
+        self.resolve_tasks[guild.id] = task
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), self.RESOLVE_TIMEOUT)
+        except asyncio.TimeoutError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            raise APIError(504, _web_text(timeout_key)) from None
+        except asyncio.CancelledError:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            raise
+        finally:
+            if not entered:
+                operation.close()
+            if self.resolve_tasks.get(guild.id) is task:
+                self.resolve_tasks.pop(guild.id, None)
+
     async def resolve(self, request):
         data = await self.payload(request)
         query = self.query(data)
@@ -1204,22 +1262,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             raise APIError(400, _web_text('m0421'))
         guild, owner = self.guild_owner(request)
         self.user_rate_limit(owner)
-        # Admission is separate from mutation locks; timed-out extractions retain
-        # their slot until the coroutine completes (executor work cannot be killed).
-        if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
-            raise APIError(429, _web_text('m0422'))
-        task = asyncio.create_task(self.resolve_options(guild, owner, query, action))
-        self.resolve_tasks[guild.id] = task
-        def finished(done):
-            self.resolve_tasks.pop(guild.id, None)
-            if not done.cancelled():
-                done.exception()
-        task.add_done_callback(finished)
         try:
-            results = await asyncio.wait_for(asyncio.shield(task), self.RESOLVE_TIMEOUT)
-        except asyncio.TimeoutError:
-            raise APIError(504, _web_text('m0423')) from None
-        except (APIError, exceptions.MusicbotException, UnsupportedDashboardURL):
+            results = await self.run_resolution(guild,
+                self.resolve_options(guild, owner, query, action))
+        except (APIError, exceptions.MusicbotException, UnsupportedDashboardURL, ExtractionBudgetExceeded):
             raise
         except Exception:
             log.warning("Dashboard preview extraction failed")
@@ -1301,15 +1347,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         if not query:
             raise APIError(409, _web_text('m0432'))
         self.user_rate_limit(owner)
-        if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
-            raise APIError(429, _web_text('m0433'))
-        task = asyncio.create_task(self.resolve_options(guild, owner, query, action))
-        self.resolve_tasks[guild.id] = task
-        task.add_done_callback(lambda done: self.resolve_tasks.pop(guild.id, None))
-        try:
-            results = await asyncio.wait_for(task, self.RESOLVE_TIMEOUT)
-        except asyncio.TimeoutError:
-            raise APIError(504, _web_text('m0434')) from None
+        results = await self.run_resolution(guild,
+            self.resolve_options(guild, owner, query, action), "m0434")
         if self.discord_auth: self.authenticate(request)
         guild, owner = self.guild_owner(request)
         await self.issue_previews(guild, owner, results, query, action)
@@ -1415,10 +1454,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     raise asyncio.TimeoutError()
                 token = CONFIRMED_ENTRY_CHECK.set(check)
                 try:
-                    response = await asyncio.wait_for(self.bot.cmd_play(
+                    response = await asyncio.wait_for(self.run_resolution(guild, self.bot.cmd_play(
                         message=None, player=player, channel=channel, guild=guild,
                         author=owner, permissions=permissions, leftover_args=[],
-                        song_url=item["url"]), min(self.SONG_TIMEOUT, remaining))
+                        song_url=item["url"])), min(self.SONG_TIMEOUT, remaining))
                 finally:
                     CONFIRMED_ENTRY_CHECK.reset(token)
                 if isinstance(response, ErrorResponse):
@@ -1587,10 +1626,10 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                     return perms
                 check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next)) if action == "playnext" or preview else None
                 try:
-                    response = await getattr(self.bot, "cmd_" + action)(
+                    response = await self.run_resolution(guild, getattr(self.bot, "cmd_" + action)(
                         message=None, player=player, channel=channel, guild=guild,
                         author=owner, permissions=permissions, leftover_args=[],
-                        song_url=query.strip())
+                        song_url=query.strip()))
                 finally:
                     if check_token is not None:
                         CONFIRMED_ENTRY_CHECK.reset(check_token)
@@ -1684,6 +1723,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             return web.json_response({"message": message, "state": self.snapshot(guild, owner), **summary})
 
     async def start(self):
+        await self.extraction_pool.start()
         # Capture a song already playing when an optional dashboard starts.
         for guild in self.bot.guilds:
             player = self.bot.get_player_in(guild)
@@ -1704,6 +1744,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        await self.extraction_pool.close()
         runner, self.runner = self.runner, None
         if runner:
             await runner.cleanup()
