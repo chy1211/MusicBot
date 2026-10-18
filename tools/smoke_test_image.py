@@ -36,7 +36,7 @@ SOURCES = (
     "https://soundcloud.com/ethmusic/lostin-powers-she-so-heavy",
     "https://benprunty.bandcamp.com/track/space-cruise-title",
 )
-YOUTUBE = "https://www.youtube.com/watch?v=dQw4w9WgXc"  # long-lived public music video
+YOUTUBE = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"  # long-lived public music video
 
 
 class SmokeFailure(Exception):
@@ -210,7 +210,7 @@ def inside(args):
 def summary(title, output):
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         lines = [line for line in output.splitlines()
-                 if line.startswith(("VERSION ", "PASS ", "FAIL ", "WARNING "))]
+                 if line.startswith(("VERSION ", "PASS ", "FAIL ", "WARNING ", "ERROR: "))]
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
             stream.write(f"\n### {title}\n\n")
             stream.write("\n".join("- " + line.replace("`", "") for line in lines) + "\n")
