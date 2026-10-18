@@ -181,7 +181,7 @@ async function api(path, method = "GET", data) {
   if (authMode === "owner" && secret) headers.Authorization = "Bearer " + secret;
   if (data !== undefined) headers["Content-Type"] = "application/json";
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), (path.endsWith("/resolve") || path.split("?")[0].endsWith("/lyrics")) ? 25000
+  const timer = window.setTimeout(() => controller.abort(), path.endsWith("/resolve") ? 25000
     : (data?.selected_items || /\/library\/.*\/play$/.test(path)) ? 150000 : 30000);
   let response, body;
   try {
@@ -1147,13 +1147,13 @@ async function loadLyrics(query = "", automatic = false) {
       for (const line of lyricsLines) {
         const row = document.createElement("p"); row.textContent = line.text || "♪"; $("lyrics-content").append(row);
       }
-      $("lyrics-status").textContent = "";
+      $("lyrics-status").textContent = result.match === "cover_original" ? t("m0610") : "";
       $("lyrics-timing-controls").hidden=!lyricsVideo;
       applyLyricsOffset(result);
       if (lyricsVideo) lyricsOffsetTimer=window.setTimeout(pollLyricsOffset,5000);
     } else if (result.status === "plain" && result.plain_lyrics) {
       $("lyrics-content").textContent = result.plain_lyrics;
-      $("lyrics-status").textContent = t("m0151"); $("lyrics-content").classList.toggle("plain-lyrics", true);
+      $("lyrics-status").textContent = result.match === "cover_original" ? t("m0610") : t("m0151"); $("lyrics-content").classList.toggle("plain-lyrics", true);
     } else if (result.status === "instrumental") {
       $("lyrics-status").textContent=t("m0152");
     } else {

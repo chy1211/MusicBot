@@ -46,4 +46,4 @@ for attempt in range(100):
 else:
     raise SystemExit("Isolated demo did not start")
 PY
-node tools/test_dashboard_touch.cjs --url "http://localhost:$port" --output "$root/shots" "$@"
+node tools/test_dashboard_touch.cjs --url "http://localhost:$port" --output "${MUSICBOT_TOUCH_OUTPUT:-$root/shots}" "$@"

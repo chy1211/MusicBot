@@ -25,7 +25,7 @@ from discord import ChannelType
 from . import exceptions, write_path
 from .constructs import ErrorResponse, Response
 from .entry import LocalFilePlaylistEntry, URLPlaylistEntry
-from .web_dashboard_lyrics import LyricsClient, clean_metadata
+from .web_dashboard_lyrics import LyricsClient, clean_metadata, metadata as lyrics_metadata
 from .web_dashboard_lyrics_store import LyricsStore, video_id
 from .web_dashboard_lyrics_alignment import AlignmentService, UNCERTAIN
 from .i18n import _D
@@ -701,9 +701,9 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             raise APIError(409, _web_text('m0378'))
         token = self.track_token(player)
         info = getattr(entry, "info", {}) or {}
-        title, artist = clean_metadata(entry.title, info.get("artist") or info.get("creator") or "")
+        title, artist = entry.title, info.get("artist") or info.get("creator") or ""
         matched = await self.spotify_lookup.lookup(self.bot, entry)
-        if matched.get("mode") == "track" and matched.get("title") and matched.get("artist"):
+        if matched.get("mode") == "track" and matched.get("title") and matched.get("artist") and not lyrics_metadata(title, artist)["cover"]:
             title, artist = matched["title"], matched["artist"]
         elif not artist:
             artist = str(info.get("channel") or info.get("uploader") or "")

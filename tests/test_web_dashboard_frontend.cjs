@@ -2539,3 +2539,10 @@ test("a cancelled lyric retry cannot request the previous track or a closed pane
   const count=app.requests.length; closed[0](); await flush();
   assert.equal(app.requests.length,count);
 });
+
+test("cover original lyrics are labelled in the panel", async () => {
+  const app=await setup();
+  app.hook(url=>url.endsWith("/lyrics")?lyricsResponse({...syncedLyrics,match:"cover_original"}):null);
+  await app.element("lyrics-toggle").listeners.click();
+  assert.equal(app.element("lyrics-status").textContent,t("m0610"));
+});

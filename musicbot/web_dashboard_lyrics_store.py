@@ -76,6 +76,12 @@ class LyricsStore:
             if row and type(row.get("expires")) in (int, float) and row["expires"] > time.time() and isinstance(row.get("value"), dict):
                 if area == "cache" and row["value"].get("status") == "unavailable":
                     return None
+                if area == "cache" and row["value"].get("status") == "not_found":
+                    try:
+                        if self.path(area, key).stat().st_mtime + 3*3600 <= time.time():
+                            return None
+                    except OSError:
+                        return None
                 return row["value"]
             return None
 

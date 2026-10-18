@@ -1,0 +1,947 @@
+{
+  "http_calls": 150,
+  "counts": {
+    "old": {
+      "not_found": 9,
+      "unavailable": 18,
+      "synced": 7
+    },
+    "new": {
+      "unavailable": 15,
+      "synced": 18,
+      "not_found": 1
+    }
+  },
+  "songs": [
+    {
+      "id": 1,
+      "title": "浴室 (DJ锦先森 ProgHouse Remix)",
+      "artist": "Deca joins",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "not_found",
+        "title": "浴室 (DJ锦先森 ProgHouse Remix)",
+        "artist": "Deca joins",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "浴室 (DJ锦先森 ProgHouse Remix)",
+        "artist": "Deca joins",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": [
+          [
+            "/search",
+            {
+              "track_name": "浴室 (DJ锦先森 ProgHouse Remix)",
+              "artist_name": "Deca joins"
+            }
+          ],
+          [
+            "/search",
+            {
+              "track_name": "浴室 (DJ锦先森 ProgHouse Remix)"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "title": "The Next Big Thing 2020 大團誕生：老破麻｜老破麻",
+      "artist": "大團誕生 TheNextBigThingTW",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "not_found",
+        "title": "The Next Big Thing 2020 大團誕生：老破麻｜老破麻",
+        "artist": "大團誕生 TheNextBigThingTW",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "The Next Big Thing 2020 大團誕生：老破麻｜老破麻",
+        "artist": "大團誕生 TheNextBigThingTW",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": [
+          [
+            "/search",
+            {
+              "track_name": "The Next Big Thing 2020 大團誕生：老破麻｜老破麻",
+              "artist_name": "大團誕生 TheNextBigThingTW"
+            }
+          ],
+          [
+            "/search",
+            {
+              "track_name": "The Next Big Thing 2020 大團誕生：老破麻｜老破麻"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "title": "言って。",
+      "artist": "ヨルシカ",
+      "duration": 243,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "言って。",
+        "artist": "ヨルシカ",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "言って。",
+        "artist": "ヨルシカ",
+        "duration": 243.0,
+        "match": null,
+        "first_line": "言って",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "溫蒂漫步 Wendy Wander【你怎麼捨得我難過 How can you allow …】",
+      "artist": "滾石唱片 ROCK RECORDS",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "unavailable",
+        "title": "溫蒂漫步 Wendy Wander【你怎麼捨得我難過 How can you allow …】",
+        "artist": "滾石唱片 ROCK RECORDS",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "你怎麼捨得我難過",
+        "artist": "溫蒂漫步 Wendy Wander",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "氣息",
+      "artist": "溫蒂漫步, 俞曾妮, 俞曾妮",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "unavailable",
+        "title": "氣息",
+        "artist": "溫蒂漫步, 俞曾妮, 俞曾妮",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "氣息",
+        "artist": "溫蒂漫步",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "ハチ MV「マトリョシカ」HACHI / MATORYOSHKA",
+      "artist": "Kenshi Yonezu 米津玄師",
+      "duration": 212,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "not_found",
+        "title": "ハチ MV「マトリョシカ」HACHI / MATORYOSHKA",
+        "artist": "Kenshi Yonezu 米津玄師",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "マトリョシカ",
+        "artist": "ハチ",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Undertale 地域傳說 小品AMV_披著羊皮的狼 Wolf In Sheep's C…",
+      "artist": "SkyWude的翻譯天空",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "unavailable",
+        "title": "Undertale 地域傳說 小品AMV_披著羊皮的狼 Wolf In Sheep's C…",
+        "artist": "SkyWude的翻譯天空",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "Undertale 地域傳說 小品AMV_披著羊皮的狼",
+        "artist": "",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "別",
+      "artist": "BAD MATH",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "synced",
+        "title": "別",
+        "artist": "BAD MATH",
+        "duration": 249.0,
+        "match": null,
+        "first_line": "夜幕下 白日夢 漸霧化",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "別",
+        "artist": "BAD MATH",
+        "duration": 249.0,
+        "match": null,
+        "first_line": "夜幕下 白日夢 漸霧化",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "做了一場夢",
+      "artist": "溫蒂漫步, 江楊順言, 江楊順言",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "unavailable",
+        "title": "做了一場夢",
+        "artist": "溫蒂漫步, 江楊順言, 江楊順言",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "not_found",
+        "title": "做了一場夢",
+        "artist": "溫蒂漫步",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 10,
+      "title": "🧠 ่ :: イルカポリス 海豚刑警『安平之光』Official Music Video",
+      "artist": "イルカポリス 海豚刑警",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "synced",
+        "title": "安平之光",
+        "artist": "イルカポリス 海豚刑警",
+        "duration": 247.0,
+        "match": null,
+        "first_line": "獻給整個悲天憫⼈的台北",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "安平之光",
+        "artist": "イルカポリス 海豚刑警",
+        "duration": 247.0,
+        "match": null,
+        "first_line": "獻給整個悲天憫⼈的台北",
+        "uncaptured_queries": [
+          [
+            "/search",
+            {
+              "track_name": "安平之光",
+              "artist_name": "イルカポリス 海豚刑警"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "title": "美秀集團 Amazing Show－愛情的大壞蛋 Bastards of Love",
+      "artist": "美秀集團 Amazing Show",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "unavailable",
+        "title": "美秀集團 Amazing Show－愛情的大壞蛋 Bastards of Love",
+        "artist": "美秀集團 Amazing Show",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "愛情的大壞蛋",
+        "artist": "美秀集團 Amazing Show",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": [
+          [
+            "/search",
+            {
+              "track_name": "Bastards of Love",
+              "artist_name": "美秀集團 Amazing Show"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "title": "怕胖團PAPUN BAND《 我沒有用，沒辦法給你想要的生活 》",
+      "artist": "怕胖團PAPUN BAND Youtube 官方頻道",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "not_found",
+        "title": "怕胖團PAPUN BAND《 我沒有用，沒辦法給你想要的生活 》",
+        "artist": "怕胖團PAPUN BAND Youtube 官方頻道",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "我沒有用，沒辦法給你想要的生活",
+        "artist": "怕胖團PAPUN BAND",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 13,
+      "title": "Lay On My Shoulder",
+      "artist": "The Hertz, Yuki Lovey",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "unavailable",
+        "title": "Lay On My Shoulder",
+        "artist": "The Hertz, Yuki Lovey",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "Lay On My Shoulder",
+        "artist": "The Hertz",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 14,
+      "title": "少女レイ / 星街すいせい(Cover)",
+      "artist": "Suisei Channel",
+      "duration": 0,
+      "duration_source": "unknown (not provided)",
+      "old": {
+        "status": "unavailable",
+        "title": "少女レイ / 星街すいせい(Cover)",
+        "artist": "Suisei Channel",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "少女レイ",
+        "artist": "星街すいせい",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 15,
+      "title": "周杰倫 Jay Chou【晴天 Sunny Day】Official MV",
+      "artist": "周杰倫 Jay Chou",
+      "duration": 269,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "not_found",
+        "title": "晴天 Sunny Day",
+        "artist": "周杰倫 Jay Chou",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "晴天",
+        "artist": "周杰倫",
+        "duration": 269.0,
+        "match": null,
+        "first_line": "周杰伦 - 晴天",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 16,
+      "title": "周杰倫 - 稻香 (Official MV)",
+      "artist": "周杰倫 - Topic",
+      "duration": 223,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "周杰倫 - 稻香",
+        "artist": "周杰倫 - Topic",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "稻香",
+        "artist": "周杰倫",
+        "duration": 223.0,
+        "match": null,
+        "first_line": "周杰伦 - 稻香",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 17,
+      "title": "五月天 Mayday【倔強 Persistence】Official MV",
+      "artist": "五月天 Mayday",
+      "duration": 260,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "倔強 Persistence",
+        "artist": "五月天 Mayday",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "倔強",
+        "artist": "五月天 (Mayday)",
+        "duration": 269.567167,
+        "match": null,
+        "first_line": "當 我和世界不一樣 那就讓我不一樣",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 18,
+      "title": "告五人 Accusefive【愛人錯過 Somewhere in time】Official MV",
+      "artist": "告五人 Accusefive",
+      "duration": 292,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "not_found",
+        "title": "愛人錯過 Somewhere in time",
+        "artist": "告五人 Accusefive",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "愛人錯過",
+        "artist": "告五人 Accusefive",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": [
+          [
+            "/search",
+            {
+              "track_name": "Somewhere in time",
+              "artist_name": "告五人 Accusefive"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": 19,
+      "title": "田馥甄 Hebe Tien《小幸運》Official MV",
+      "artist": "華研國際 HIM",
+      "duration": 265,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "not_found",
+        "title": "田馥甄 Hebe Tien《小幸運》",
+        "artist": "華研國際 HIM",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "小幸運",
+        "artist": "田馥甄 Hebe Tien",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 20,
+      "title": "陳奕迅 Eason Chan《十年》Official MV",
+      "artist": "陳奕迅 Eason Chan",
+      "duration": 205,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "陳奕迅 Eason Chan《十年》",
+        "artist": "陳奕迅 Eason Chan",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "十年",
+        "artist": "陳奕迅 Eason Chan",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 21,
+      "title": "茄子蛋 EggPlantEgg 浪子回頭 Official Music Video",
+      "artist": "茄子蛋 EggPlantEgg",
+      "duration": 259,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "茄子蛋 EggPlantEgg 浪子回頭",
+        "artist": "茄子蛋 EggPlantEgg",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "浪子回頭",
+        "artist": "茄子蛋 EggPlantEgg",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 22,
+      "title": "富士山下",
+      "artist": "陳奕迅 - Topic",
+      "duration": 259,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "富士山下",
+        "artist": "陳奕迅 - Topic",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "富士山下",
+        "artist": "陳奕迅",
+        "duration": 259.0,
+        "match": null,
+        "first_line": "攔路雨偏似雪花 飲泣的你凍嗎",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 23,
+      "title": "YOASOBI「アイドル」Official Music Video",
+      "artist": "YOASOBI",
+      "duration": 213,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "synced",
+        "title": "アイドル",
+        "artist": "YOASOBI",
+        "duration": 213.0,
+        "match": null,
+        "first_line": "無敵の笑顔で荒らすメディア",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "アイドル",
+        "artist": "YOASOBI",
+        "duration": 213.0,
+        "match": null,
+        "first_line": "無敵の笑顔で荒らすメディア",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 24,
+      "title": "米津玄師 MV「Lemon」",
+      "artist": "Kenshi Yonezu 米津玄師",
+      "duration": 258,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "米津玄師 MV「Lemon」",
+        "artist": "Kenshi Yonezu 米津玄師",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "Lemon",
+        "artist": "米津玄師",
+        "duration": 257.010689,
+        "match": null,
+        "first_line": "夢ならばどれほどよかったでしょう",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 25,
+      "title": "Ado「うっせぇわ」",
+      "artist": "Ado",
+      "duration": 202,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "synced",
+        "title": "うっせぇわ",
+        "artist": "Ado",
+        "duration": 202.0,
+        "match": null,
+        "first_line": "正しさとは 愚かさとは",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "うっせぇわ",
+        "artist": "Ado",
+        "duration": 202.0,
+        "match": null,
+        "first_line": "正しさとは 愚かさとは",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 26,
+      "title": "ただ君に晴れ",
+      "artist": "ヨルシカ - Topic",
+      "duration": 199,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "not_found",
+        "title": "ただ君に晴れ",
+        "artist": "ヨルシカ - Topic",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "ただ君に晴れ",
+        "artist": "ヨルシカ",
+        "duration": 199.0,
+        "match": null,
+        "first_line": "夜に浮かんでいた",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 27,
+      "title": "LiSA『紅蓮華』Official Music Video",
+      "artist": "LiSA Official",
+      "duration": 232,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "LiSA『紅蓮華』",
+        "artist": "LiSA Official",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "紅蓮華",
+        "artist": "Lisa",
+        "duration": 236.042449,
+        "match": null,
+        "first_line": "強くなれる理由を知った 僕を連れて進め",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 28,
+      "title": "Official髭男dism - Pretender (Official Video)",
+      "artist": "Official髭男dism",
+      "duration": 326,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "synced",
+        "title": "Pretender",
+        "artist": "Official髭男dism",
+        "duration": 326.0,
+        "match": null,
+        "first_line": "君とのラブストーリー",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "Pretender",
+        "artist": "Official髭男dism",
+        "duration": 326.0,
+        "match": null,
+        "first_line": "君とのラブストーリー",
+        "uncaptured_queries": [
+          [
+            "/search",
+            {
+              "track_name": "Pretender",
+              "artist_name": "Official髭男dism"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": 29,
+      "title": "Taylor Swift - Blank Space (Official Music Video)",
+      "artist": "TaylorSwiftVEVO",
+      "duration": 231,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "Taylor Swift - Blank Space",
+        "artist": "TaylorSwiftVEVO",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "Blank Space",
+        "artist": "Taylor Swift",
+        "duration": 231.0,
+        "match": null,
+        "first_line": "Nice to meet you, where you been?",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 30,
+      "title": "Adele - Hello (Official Music Video)",
+      "artist": "AdeleVEVO",
+      "duration": 295,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "not_found",
+        "title": "Adele - Hello",
+        "artist": "AdeleVEVO",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "Hello",
+        "artist": "Adele",
+        "duration": 295.0,
+        "match": null,
+        "first_line": "Hello, it's me",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 31,
+      "title": "Ed Sheeran - Shape of You (Official Music Video)",
+      "artist": "Ed Sheeran",
+      "duration": 234,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "synced",
+        "title": "Shape of You",
+        "artist": "Ed Sheeran",
+        "duration": 234.0,
+        "match": null,
+        "first_line": "The club isn't the best place to find a lover",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "Shape of You",
+        "artist": "Ed Sheeran",
+        "duration": 234.0,
+        "match": null,
+        "first_line": "The club isn't the best place to find a lover",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 32,
+      "title": "Blinding Lights",
+      "artist": "The Weeknd - Topic",
+      "duration": 200,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "synced",
+        "title": "Blinding Lights",
+        "artist": "The Weeknd - Topic",
+        "duration": 202.0,
+        "match": null,
+        "first_line": "Yeah",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "Blinding Lights",
+        "artist": "The Weeknd",
+        "duration": 200.0,
+        "match": null,
+        "first_line": "Yeah",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 33,
+      "title": "lovely",
+      "artist": "Billie Eilish, Khalid, Khalid",
+      "duration": 200,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "lovely",
+        "artist": "Billie Eilish, Khalid, Khalid",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "synced",
+        "title": "lovely",
+        "artist": "Billie Eilish",
+        "duration": 200.0,
+        "match": null,
+        "first_line": "Thought I found a way",
+        "uncaptured_queries": []
+      }
+    },
+    {
+      "id": 34,
+      "title": "Rick Astley - Never Gonna Give You Up (Official Music Video)",
+      "artist": "RickAstleyVEVO",
+      "duration": 213,
+      "duration_source": "approximate public recording duration; not production metadata",
+      "old": {
+        "status": "unavailable",
+        "title": "Rick Astley - Never Gonna Give You Up",
+        "artist": "RickAstleyVEVO",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": []
+      },
+      "new": {
+        "status": "unavailable",
+        "title": "Never Gonna Give You Up",
+        "artist": "Rick Astley",
+        "duration": null,
+        "match": null,
+        "first_line": "",
+        "uncaptured_queries": [
+          [
+            "/search",
+            {
+              "track_name": "Never Gonna Give You Up",
+              "artist_name": "Rick Astley"
+            }
+          ],
+          [
+            "/search",
+            {
+              "track_name": "Never Gonna Give You Up"
+            }
+          ],
+          [
+            "/search",
+            {
+              "q": "Rick Astley Never Gonna Give You Up"
+            }
+          ]
+        ]
+      }
+    }
+  ]
+}

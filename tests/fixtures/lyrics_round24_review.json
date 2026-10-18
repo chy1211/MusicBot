@@ -1,0 +1,50 @@
+{
+  "method": "Manual inspection of the first two retained provider lines, song/artist identity and duration. No playback or production data accessed.",
+  "caveat": "This is a sampled provider replay, not proof of complete catalog coverage. Unknown durations were not guessed. Missing query recordings remain unavailable, never empty success.",
+  "observed_false_content": [
+    {
+      "song_id": 34,
+      "provider_record_id": 1009665,
+      "text": "probe",
+      "decision": "reject obvious placeholder despite correct title/artist/duration"
+    }
+  ],
+  "accepted_status_count": 18,
+  "no_identified_mismatch_after_guard": true,
+  "credit_only_not_lyric_verified_song_ids": [
+    15,
+    16
+  ],
+  "historical_root_cause": "The supplied status summary establishes temporary failures for 11 songs. Exact per-song historical HTTP errors are unavailable; today's fixture cannot prove yesterday's catalog absence.",
+  "actual_http_attempts": 150,
+  "minimum_start_interval_seconds": 1.1001723180525005,
+  "unrecorded_new_query_song_ids": [
+    1,
+    2,
+    10,
+    11,
+    18,
+    28,
+    34
+  ],
+  "reviewed_song_ids": [
+    3,
+    8,
+    10,
+    15,
+    16,
+    17,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33
+  ]
+}

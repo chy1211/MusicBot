@@ -8,43 +8,99 @@ import re
 import random
 from email.utils import parsedate_to_datetime
 import time
+import unicodedata
 from collections import OrderedDict
 import aiohttp
 
 USER_AGENT = "MusicBot-WebDashboard/12 (+https://github.com/Just-Some-Bots/MusicBot)"
 LRCLIB_ROOT = "https://lrclib.net/api"
 _NOISE = re.compile(r"(?:official|music\s*video|\bmv\b|\bm/v\b|lyrics?|audio|\bhd\b|\bhq\b|\b4k\b|完整版|官方|字幕)", re.I)
+_COVER = re.compile(r"(?<![a-z])cover(?:ed)?(?:\s+by)?(?![a-z])|翻唱", re.I)
+_VERSION = re.compile(r"remix|remaster|live|acoustic|instrumental|sped\s*up|slowed", re.I)
+_BRACKETS = re.compile(r"[《〈『「【]([^》〉』」】]+)[》〉』」】]")
+
+
+def _norm(value):
+    return "".join(c for c in unicodedata.normalize("NFKC", str(value or "")).casefold() if c.isalnum())
+
+
+def _text(value, limit):
+    return re.sub(r"\s+", " ", "".join(c for c in str(value or "")[:limit]
+                  if c in "|｜" or not unicodedata.category(c).startswith(("C", "S")))).strip()
+
+
+def _artists(value):
+    names = re.split(r"\s*(?:,|，|、|;|；|\s+&\s+|\bfeat\.?\s+|\bft\.?\s+|\bfeaturing\s+)\s*", value, flags=re.I)
+    out = []
+    for name in names:
+        if re.search(r"records?|唱片|翻譯|translation", name, re.I):
+            continue
+        name = re.sub(r"(?:youtube|官方頻道|官方|(?<![\w])official(?![\w])|channel|頻道|\s*-?\s*topic\s*$|vevo)", "", name, flags=re.I).strip(" -|｜")
+        name = re.sub(r"^[\W_]+", "", name)
+        if _norm(name) and _norm(name) not in [_norm(n) for n in out]:
+            out.append(name)
+    return out[:3]
+
+
+def _titles(value):
+    # A CJK title followed by its English translation is a title alias,
+    # not a longer song name. Keep both for conservative exact matching.
+    value = value.strip()
+    if _VERSION.search(value) or re.search(r"[（(\[]", value):
+        return [value]
+    parts = re.split(r"(?<=[\u3040-\u30ff\u3400-\u9fff。！？])\s+(?=[A-Za-z])", value, maxsplit=1)
+    return list(dict.fromkeys(parts + [value]))[:3]
+
+
+def metadata(title, artist=""):
+    title, artist = _text(title, 300), _text(artist, 160)
+    cover = bool(_COVER.search(title))
+    title = _BRACKETS.sub(lambda m: "" if not _NOISE.sub("", m[1]).strip(" -/") else m[0], title)
+    names = _artists(artist)
+    # Drop only presentation brackets; version brackets remain meaningful.
+    title = re.sub(r"[\(（\[]([^\)）\]]*)[\)）\]]",
+                   lambda m: "" if (_NOISE.search(m[1]) or _COVER.search(m[1])) and not _VERSION.search(m[1]) else m[0], title)
+    title = re.sub(r"\s*\b(?:official\s+(?:(?:music\s+)?video|audio|mv)|music\s+video|mv|m/v|lyric\s+video|cover)\s*$", "", title, flags=re.I)
+    title = re.sub(r"\s*[|｜]\s*.*(?:official|\bMV\b|lyrics?|audio).*$", "", title, flags=re.I)
+    title = re.sub(r"\s*[\(（]?\s*\b(?:feat|ft|featuring)\b\.?\s+.*$", "", title, flags=re.I)
+    inferred = ""
+    bracket = _BRACKETS.search(title)
+    if bracket and not _NOISE.fullmatch(bracket[1].strip()):
+        prefix = re.sub(r"\b(?:MV|M/V)\b", "", title[:bracket.start()], flags=re.I).strip(" -－–—|｜:：")
+        if prefix:
+            inferred = prefix
+        title = bracket[1].strip()
+    else:
+        # Separators need whitespace for ASCII '-' and '/', so meaningful
+        # hyphens and titles such as AC/DC are preserved.
+        parts = re.split(r"\s+[\-/–—]\s+|\s*[－｜|]\s*", title, maxsplit=1)
+        if len(parts) == 2:
+            left, right = parts
+            if cover and "/" in title:
+                title, inferred = left, right
+            elif not names or any(_norm(left) == _norm(n) for n in names):
+                inferred, title = left, right
+    if inferred:
+        inferred_names = _artists(inferred)
+        # Explicit title artist takes priority over an unrelated uploader.
+        if inferred_names:
+            names = inferred_names + [n for n in names if _norm(n) not in [_norm(x) for x in inferred_names]]
+    elif names:
+        for name in names:
+            if title.casefold().startswith(name.casefold()) and len(title) > len(name):
+                rest = title[len(name):]
+                if rest[0].isspace() or rest[0] in "-－–—:：":
+                    title = rest.strip(" -－–—:：")
+                    break
+    title = re.sub(r"^[\W_]+", "", title).strip(" -－–—|｜")
+    titles = _titles(title)
+    return {"title": titles[0][:200], "artist": names[0][:160] if names else "",
+            "artists": names[:3], "titles": titles, "cover": cover}
 
 
 def clean_metadata(title, artist=""):
-    """Remove presentation labels while preserving meaningful song-name brackets."""
-    title, artist = str(title or "")[:300], str(artist or "")[:160]
-    title = re.sub(r"[\x00-\x1f\x7f]", "", title)
-    artist = re.sub(r"[\x00-\x1f\x7f]", "", artist)
-    title = re.sub(r"[\(（\[【]([^\)）\]】]*)[\)）\]】]",
-                   lambda m: "" if _NOISE.search(m.group(1)) else m.group(0), title)
-    title = re.sub(r"\s*[|｜]\s*.*(?:official|\bMV\b|lyrics?|audio).*$", "", title, flags=re.I)
-    title = re.sub(r"\s*\b(?:official\s+(?:(?:music\s+)?video|audio|mv)|music\s+video|mv|m/v|lyric\s+video)\s*$", "", title, flags=re.I)
-    if not artist:
-        labeled = re.fullmatch(r"\s*(.+?)[【「『](.+)[】」』]\s*", title)
-        if labeled:
-            artist, title = labeled.groups()
-    if not artist:
-        parts = re.split(r"\s+[-–—]\s+", title, maxsplit=1)
-        if len(parts) == 2:
-            artist, title = parts
-    if artist:
-        norm = lambda value: re.sub(r"[\W_]", "", str(value).casefold())
-        parts = re.split(r"\s+[-–—]\s+", title, maxsplit=1)
-        if len(parts) == 2 and norm(parts[0]) and norm(parts[0]) == norm(artist):
-            title = parts[1]
-        labeled = re.fullmatch(r"\s*(.+?)[【「『](.+)[】」』]\s*", title)
-        if labeled and norm(labeled[1]) == norm(artist):
-            title = labeled[2]
-    title = re.sub(r"\s*[\(（]?\s*\b(?:feat|ft|featuring)\b\.?\s+.*$", "", title, flags=re.I)
-    artist = re.sub(r"\s*\b(?:feat|ft|featuring)\b\.?\s+.*$", "", artist, flags=re.I)
-    return (re.sub(r"\s+", " ", title).strip(" -–—|｜")[:200],
-            re.sub(r"\s+", " ", artist).strip(" -–—|｜")[:160])
+    value = metadata(title, artist)
+    return value["title"], value["artist"]
 
 
 def parse_lrc(value):
@@ -94,14 +150,15 @@ class LyricsClient:
         self.retry_after = {}
 
     async def lookup(self, title, artist, duration, query=""):
-        title, artist = clean_metadata(title, artist)
+        meta = metadata(title, artist)
+        title, artist = meta["title"], meta["artist"]
         try:
             duration = float(duration or 0)
         except (TypeError, ValueError):
             duration = 0
         if not math.isfinite(duration):
             duration = 0
-        key = (title.casefold(), artist.casefold(), round(duration), query.casefold())
+        key = (title.casefold(), tuple(meta["artists"]), meta["cover"], round(duration), query.casefold())
         cached = self.cache.get(key)
         if cached and cached[0] > time.monotonic():
             self.cache.move_to_end(key)
@@ -110,7 +167,7 @@ class LyricsClient:
             return result(title, artist)
         task = self.pending.get(key)
         if task is None:
-            task = asyncio.create_task(self._lookup_bounded(key, title, artist, duration, query))
+            task = asyncio.create_task(self._lookup_bounded(key, title, artist, duration, query, meta))
             self.pending[key] = task
             task.add_done_callback(lambda done: self.pending.pop(key, None))
         return await asyncio.shield(task)
@@ -122,41 +179,85 @@ class LyricsClient:
             self.cache.popitem(last=False)
         return value
 
-    async def _lookup_bounded(self, key, title, artist, duration, query):
+    async def _lookup_bounded(self, key, title, artist, duration, query, meta):
         try:
-            value = await asyncio.wait_for(self._lookup(title, artist, duration, query), self.TIMEOUT)
+            value = await asyncio.wait_for(self._lookup(title, artist, duration, query, meta), self.TIMEOUT)
         except (asyncio.TimeoutError, aiohttp.ClientError, ValueError, TypeError, KeyError):
             value = result(title, artist, status="unavailable")
         ttl = self.FAILURE_TTL if value["status"] == "unavailable" else self.NOT_FOUND_TTL if value["status"] == "not_found" else self.CACHE_TTL
         return self._cache(key, value, ttl)
 
-    async def _lookup(self, title, artist, duration, query):
+    async def _lookup(self, title, artist, duration, query, meta):
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT),
             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
             trust_env=False) as session:
-            item, failed = None, False
-            if artist and not query:
+            failed, pool = False, []
+            async def collect(path, params):
+                nonlocal failed
+                try:
+                    value = await self._request(session, path, params)
+                    if value is None:
+                        return []
+                    if path == "/get":
+                        if not isinstance(value, dict):
+                            raise ValueError("invalid lyric item")
+                        return [value]
+                    if not isinstance(value, list):
+                        raise ValueError("invalid lyric search")
+                    return value
+                except (asyncio.TimeoutError, aiohttp.ClientError, ValueError, TypeError):
+                    failed = True
+                    return []
+
+            def choose():
+                for variant in meta["titles"]:
+                    for name in meta["artists"] or [""]:
+                        found = self._choose(pool, variant, name, duration)
+                        if found:
+                            return found, "matched"
+                if meta["cover"]:
+                    found = self._choose(pool, title, "", duration)
+                    if found:
+                        return found, "cover_original"
+                return None, ""
+
+            if query:
+                title, artist = clean_metadata(query)
+                pool = await collect("/search", {"q": query})
+                item = self._choose(pool, title, artist, duration, True)
+                return result(title, artist, item, status="unavailable" if failed else "not_found")
+            if artist:
                 params = {"track_name": title, "artist_name": artist}
                 if 1 <= duration <= 3600:
                     params["duration"] = str(round(duration))
-                try:
-                    item = await self._request(session, "/get", params)
-                    if item is not None and not isinstance(item, dict):
-                        raise ValueError("invalid lyric item")
-                    item = self._choose([item] if item else [], title, artist, duration)
-                except (asyncio.TimeoutError, aiohttp.ClientError, ValueError, TypeError):
-                    failed = True
-            if not item:
-                try:
-                    candidates = await self._request(session, "/search", {"q": query or " ".join((artist, title)).strip()})
-                    if candidates is not None and not isinstance(candidates, list):
-                        raise ValueError("invalid lyric search")
-                    query_title, query_artist = clean_metadata(query) if query else (title, artist)
-                    item = self._choose(candidates or [], query_title, query_artist, duration, bool(query))
-                except (asyncio.TimeoutError, aiohttp.ClientError, ValueError, TypeError):
-                    failed = True
-            return result(title, artist, item, status="unavailable" if failed else "not_found")
+                responses = await asyncio.gather(
+                    collect("/get", params),
+                    collect("/search", {"track_name": title, "artist_name": artist}))
+                pool = [item for response in responses for item in response]
+            else:
+                pool = await collect("/search", {"track_name": title})
+            item, match = choose()
+            if not item and artist:
+                responses = await asyncio.gather(
+                    collect("/search", {"track_name": title}),
+                    collect("/search", {"q": " ".join((artist, title))}))
+                pool.extend(item for response in responses for item in response)
+                item, match = choose()
+            # Secondary credited artists are candidates, not an artistless bypass.
+            if not item and len(meta["artists"]) > 1:
+                pool.extend(await collect("/search", {"track_name": title, "artist_name": meta["artists"][1]}))
+                item, match = choose()
+            if not item and len(meta["titles"]) > 1 and not re.search(r"[…]|\\.\\.\\.", meta["titles"][1]):
+                params = {"track_name": meta["titles"][1]}
+                if artist:
+                    params["artist_name"] = artist
+                pool.extend(await collect("/search", params))
+                item, match = choose()
+            value = result(title, artist, item, status="unavailable" if failed else "not_found")
+            if match == "cover_original":
+                value["match"] = match
+            return value
 
     @staticmethod
     def _retry_delay(value):
@@ -213,41 +314,57 @@ class LyricsClient:
 
     @staticmethod
     def _choose(candidates, title, artist, duration, manual=False):
-        def norm(value):
-            import unicodedata
-            return "".join(c for c in unicodedata.normalize("NFKC", str(value or "")).casefold() if c.isalnum())
-        choices = []
-        for item in candidates[:30]:
+        def aliases(value):
+            parts = [value] + re.findall(r"[A-Za-z][A-Za-z .'-]*|[\u3040-\u30ff\u3400-\u9fff]+", value)
+            return {_norm(x) for x in parts if len(_norm(x)) >= 3} or {_norm(value)}
+        expected_titles = {_norm(x) for x in _titles(title)}
+        expected_artist = _norm(artist)
+        choices, seen = [], set()
+        for item in candidates[:200]:
             if not isinstance(item, dict) or not (item.get("syncedLyrics") or item.get("plainLyrics") or item.get("instrumental") is True):
                 continue
-            expected, found = norm(title), norm(item.get("trackName"))
-            if not expected or not found:
+            # Public provider records can contain obvious placeholder text even
+            # when identity fields are correct; never show that as song lyrics.
+            samples = [re.sub(r"\[[^\]]*\]", "", line).strip()
+                       for line in str(item.get("syncedLyrics") or item.get("plainLyrics") or "").splitlines()]
+            text = " ".join(line for line in samples if line).strip()
+            if re.fullmatch(r"(?:probe|test(?:ing)?(?: lyrics?)?|placeholder|lyrics? (?:not found|unavailable))", text, re.I):
                 continue
-            similarity = difflib.SequenceMatcher(None, expected, found).ratio()
-            expected_artist, found_artist = norm(artist), norm(item.get("artistName"))
-            artist_score = difflib.SequenceMatcher(None, expected_artist, found_artist).ratio() if expected_artist else 0
-            if similarity < (.90 if expected_artist else .98) or expected_artist and artist_score < .85:
+            found_titles = {_norm(x) for x in _titles(str(item.get("trackName") or ""))}
+            if not expected_titles.intersection(found_titles) or not _norm(title):
                 continue
+            # Versions such as remix/live must never silently become the studio recording.
+            if set(x.casefold() for x in _VERSION.findall(title)) != set(x.casefold() for x in _VERSION.findall(str(item.get("trackName") or ""))):
+                continue
+            artist_score = 0
+            if expected_artist:
+                left, right = aliases(artist), aliases(str(item.get("artistName") or ""))
+                artist_score = 1 if left.intersection(right) else 0
+                if artist_score < .90:
+                    continue
             try:
                 candidate_duration = float(item.get("duration") or 0)
                 if not math.isfinite(candidate_duration) or candidate_duration <= 0:
                     continue
                 delta = abs(candidate_duration - duration)
-                # MV intros can differ by up to 60s, but an unknown artist is
-                # accepted only with an almost-exact title and a 2s duration.
+                # Preserve MV intro allowance only with a known matching artist.
                 if duration > 0 and delta > (60 if expected_artist else 2):
                     continue
                 if not expected_artist and duration <= 0:
                     continue
             except (TypeError, ValueError):
                 continue
-            score = similarity * .60 + artist_score * .30 + max(0, 1-delta/60) * .10
+            identity = (_norm(item.get("trackName")), _norm(item.get("artistName")), candidate_duration)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            score = .60 + artist_score * .30 + max(0, 1-delta/60) * .10
             choices.append((score, item))
         choices.sort(key=lambda pair: pair[0], reverse=True)
         if len(choices) > 1 and choices[0][0]-choices[1][0] < .025:
             first, second = choices[0][1], choices[1][1]
-            same_recording = (norm(first.get("trackName")), norm(first.get("artistName"))) == (
-                    norm(second.get("trackName")), norm(second.get("artistName")))
+            same_recording = (_norm(first.get("trackName")), _norm(first.get("artistName"))) == (
+                _norm(second.get("trackName")), _norm(second.get("artistName")))
             if not same_recording or abs(float(first["duration"])-float(second["duration"])) > 2:
                 return None
         return choices[0][1] if choices else None

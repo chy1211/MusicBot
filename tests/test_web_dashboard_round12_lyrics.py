@@ -61,10 +61,9 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
 class MatchTests(unittest.IsolatedAsyncioTestCase):
     async def test_direct_get_is_validated_and_wrong_match_rejected(self):
         client=LyricsClient();client.MIN_INTERVAL=0
-        client._request=AsyncMock(side_effect=[
-            {"trackName":"Other Song","artistName":"Other","duration":180,"plainLyrics":"Wrong"},[]])
+        client._request=AsyncMock(side_effect=lambda session,path,params: {"trackName":"Other Song","artistName":"Other","duration":180,"plainLyrics":"Wrong"} if path == "/get" else [])
         self.assertEqual((await client.lookup("Song","Singer",180))["status"],"not_found")
-        self.assertEqual(client._request.await_count,2)
+        self.assertEqual(client._request.await_count,4)
     async def test_instrumental_and_confident_mv_duration_and_multi_candidate(self):
         client=LyricsClient();client.MIN_INTERVAL=0
         client._request=AsyncMock(return_value={"trackName":"Song","artistName":"Singer","duration":180,"instrumental":True})

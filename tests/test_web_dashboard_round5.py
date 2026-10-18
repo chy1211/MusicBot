@@ -234,16 +234,33 @@ class Round5API(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(StopAfterObserver):
             await MusicBot.on_player_play(self.bot, self.bot.player, self.bot.player.current_entry)
 
-    async def test_lyrics_api_only_sends_clean_metadata_and_no_identity(self):
+    async def test_lyrics_api_delegates_metadata_cleaning_without_identity(self):
         seek_entry(self.bot)
         lookup = AsyncMock(return_value=result("Song", "Singer", {"plainLyrics": "One\nTwo"}))
         self.dashboard.lyrics_client = NS(lookup=lookup)
         body = await self.call(BASE + "lyrics", method="GET")
         self.assertEqual(body["status"], "plain")
         self.assertTrue(body["track_key"])
-        lookup.assert_awaited_once_with("Song", "Singer", 180, query="")
+        lookup.assert_awaited_once_with("Singer - Song (Official MV)", "", 180, query="")
         await self.call(BASE + "lyrics?query=manual%20song", method="GET")
         self.assertEqual(lookup.call_args.kwargs, {"query": "manual song"})
+
+    async def test_lyrics_api_does_not_persist_transient_failures(self):
+        seek_entry(self.bot)
+        self.dashboard.lyrics_client = NS(lookup=AsyncMock(return_value=result("Song", "", status="unavailable")))
+        self.dashboard.lyrics_store.get = AsyncMock(return_value=None)
+        self.dashboard.lyrics_store.put = AsyncMock()
+        with patch("musicbot.web_dashboard.video_id", return_value="abcdefghijk"):
+            self.assertEqual((await self.call(BASE+"lyrics", method="GET"))["status"], "unavailable")
+        self.dashboard.lyrics_store.put.assert_not_awaited()
+
+    async def test_lyrics_api_retains_cover_identity_after_spotify_match(self):
+        self.bot.player.current_entry = NS(title="Song / Singer (Cover)", info={"artist":"Singer"},
+            url="https://soundcloud.com/example/cover",duration=180)
+        self.dashboard.spotify_lookup.lookup = AsyncMock(return_value={"mode":"track","title":"Song","artist":"Singer"})
+        self.dashboard.lyrics_client = NS(lookup=AsyncMock(return_value=result("Song","Singer")))
+        await self.call(BASE+"lyrics",method="GET")
+        self.dashboard.lyrics_client.lookup.assert_awaited_once_with("Song / Singer (Cover)","Singer",180,query="")
 
     async def test_lyrics_api_rate_limit_and_invalid_query(self):
         self.dashboard.lyrics_client = NS(lookup=AsyncMock(return_value=result("Current", "")))
@@ -329,21 +346,21 @@ class LyricsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["status"], "synced")
         self.assertEqual(body["lines"], [{"time": 1.5, "text": "One"}, {"time": 4, "text": "Two"}])
         await self.client.lookup("Song", "Singer", 180)
-        self.client._request.assert_awaited_once()
-        self.assertEqual(self.client._request.call_args.args[1], "/get")
-        self.assertEqual(self.client._request.call_args.args[2]["duration"], "180")
+        self.assertEqual(self.client._request.await_count, 2)
+        self.assertEqual(self.client._request.call_args_list[0].args[1], "/get")
+        self.assertEqual(self.client._request.call_args_list[0].args[2]["duration"], "180")
         key = next(iter(self.client.cache))
         expiry, value = self.client.cache[key]
         self.client.cache[key] = (expiry - 3601, value)
         await self.client.lookup("Song", "Singer", 180)
-        self.assertEqual(self.client._request.await_count, 2)
+        self.assertEqual(self.client._request.await_count, 4)
 
     async def test_plain_search_and_not_found(self):
         self.client._request = AsyncMock(side_effect=[None, [
             {"trackName": "Song", "artistName": "Singer", "plainLyrics": "Plain only", "duration": 180}]])
         body = await self.client.lookup("Song", "Singer", 180)
         self.assertEqual(body["status"], "plain")
-        self.assertEqual(self.client._request.call_args.args[1:], ("/search", {"q": "Singer Song"}))
+        self.assertEqual(self.client._request.call_args.args[1:], ("/search", {"track_name": "Song", "artist_name": "Singer"}))
         self.client._request = AsyncMock(return_value=[])
         body = await self.client.lookup("Missing", "", 60)
         self.assertEqual(body["status"], "not_found")
@@ -399,7 +416,7 @@ class LyricsTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await self.client.lookup("Song", "", 180))["status"], "unavailable")
                 self.assertEqual((await self.client.lookup("Another", "", 180))["status"], "unavailable")
             self.assertEqual(len(calls), 2)
-            self.assertEqual(calls[0][0], {"q": "Song"})
+            self.assertEqual(calls[0][0], {"track_name": "Song"})
             self.assertIn("MusicBot-WebDashboard", calls[0][1]["User-Agent"])
             self.assertNotIn("Authorization", calls[0][1])
             self.assertNotIn("Cookie", calls[0][1])

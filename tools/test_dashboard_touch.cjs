@@ -93,6 +93,23 @@ async function audit(p,label){
     assert.deepEqual(await p.evaluate(()=>({touch:navigator.maxTouchPoints>0,dpr:devicePixelRatio,width:innerWidth})),{touch:true,dpr:3,width:device.width});
     return {viewport:device.width+"x"+device.height,deviceScaleFactor:3,hasTouch:true,isMobile:true};
   });
+  await run("lyrics-service-unavailable-and-retry",async()=>{
+    const endpoint="**/api/guilds/1/lyrics";
+    await p.route(endpoint,route=>route.fulfill({status:200,contentType:"application/json",
+      body:JSON.stringify({status:"unavailable",title:"Demo",artist:"",lines:[]})}));
+    try{
+      await tap(p,"#lyrics-toggle");
+      await p.waitForFunction(()=>!document.querySelector("#lyrics-retry").hidden&&!document.querySelector("#lyrics-retry").disabled);
+      assert.match(await p.locator("#lyrics-status").textContent(),/unavailable|temporar|暫時/i);
+      await screenshot(p,"lyrics-unavailable",device);
+      await p.unroute(endpoint);
+      await tap(p,"#lyrics-retry");
+      await p.waitForFunction(()=>document.querySelectorAll("#lyrics-content p").length>0);
+      assert.equal(await p.locator("#lyrics-retry").isVisible(),false);
+      await screenshot(p,"lyrics-found",device);
+      return {temporaryFailure:true,manualRetry:true,lyricLines:await p.locator("#lyrics-content p").count()};
+    }finally{await p.unroute(endpoint);}
+  });
   await run("queue-long-press",async()=>{
     await positionQueue(p);
     const initial=await state(p),a=await rect(p,"#queue>li:first-child .drag-handle"),b=await rect(p,"#queue>li:nth-child(2)");
