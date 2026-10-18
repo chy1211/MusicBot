@@ -14,7 +14,7 @@ from musicbot.web_dashboard import CONFIRMED_ENTRY_CHECK, public_url
 
 def playlist(bot, count=5, blocked=()):
     children = [dict(bot.info, title=f"Song {i}", duration=60,
-                     webpage_url=f"https://example.test/song/{i}", id=str(i))
+                     webpage_url=f"https://soundcloud.com/example/song/{i}", id=str(i))
                 for i in range(1, count + 1)]
     for i in blocked:
         children[i - 1]["title"] = "[Private video]"
@@ -34,7 +34,7 @@ class Round4Tests(unittest.IsolatedAsyncioTestCase):
 
     async def preview(self, count=5, blocked=()):
         playlist(self.bot, count, blocked)
-        return (await self.call(BASE + "resolve", {"query": "https://example.test/playlist"}))["results"][0]
+        return (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/playlist"}))["results"][0]
 
     def selection(self, song, ids=None):
         return {"query": song["url"], "preview_id": song["preview_id"],
@@ -73,14 +73,14 @@ class Round4Tests(unittest.IsolatedAsyncioTestCase):
 
     async def test_current_queue_and_cover_links_are_filtered(self):
         for url in ("javascript:evil", "file:///secret", "//example.test/song", "https://u:p@example.test/song",
-                    "http:///broken", "https://[bad", "https://example.test:bad", "https://example.test/\nsecret"):
+                    "http:///broken", "https://[bad", "https://example.test:bad", "https://soundcloud.com/example/\nsecret"):
             self.assertEqual(public_url(url), "", url)
             self.bot.player.current_entry.url = url
             self.bot.player.current_entry.thumbnail_url = url
             result = await self.call(BASE + "state", method="GET")
             self.assertEqual(result["current"]["url"], "")
             self.assertEqual(result["current"]["thumbnail"], "")
-        self.assertEqual(public_url("https://example.test/song"), "https://example.test/song")
+        self.assertEqual(public_url("https://soundcloud.com/example/song"), "https://soundcloud.com/example/song")
 
     async def test_playlist_all_allowed_and_partial_order_is_source_order(self):
         song = await self.preview()
@@ -255,7 +255,7 @@ class Round4DiscordTests(unittest.IsolatedAsyncioTestCase):
     async def test_batch_counts_as_one_play_rate_limit_attempt(self):
         self.dashboard.USER_REQUESTS_PER_MINUTE = 2
         playlist(self.bot, 5)
-        song = (await self.call(BASE + "resolve", {"query": "https://example.test/playlist"}))["results"][0]
+        song = (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/playlist"}))["results"][0]
         result = await self.call(BASE + "play", {"query": song["url"],
             "preview_id": song["preview_id"], "selected_items": ["1", "2", "3", "4", "5"]})
         self.assertEqual(result["added"], 5)
@@ -264,7 +264,7 @@ class Round4DiscordTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_session_revoked_during_batch_does_not_return_state(self):
         playlist(self.bot, 2)
-        song = (await self.call(BASE + "resolve", {"query": "https://example.test/playlist"}))["results"][0]
+        song = (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/playlist"}))["results"][0]
         real = self.bot.downloader.extract_info
         async def revoked(*args, **kwargs):
             self.dashboard.sessions.clear()

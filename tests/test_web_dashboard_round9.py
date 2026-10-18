@@ -76,7 +76,7 @@ class HistoryDedupTests(unittest.IsolatedAsyncioTestCase):
         class Loaded(list):
             loaded = True
         self.bot.config.enable_queue_history_guilds = True
-        self.bot.playlist_mgr = NS(_playlists={"history-1": Loaded(["https://example.test/Same"] * 3)})
+        self.bot.playlist_mgr = NS(_playlists={"history-1": Loaded(["https://soundcloud.com/example/Same"] * 3)})
         self.dashboard.record_play(self.bot.guild, entry("Same"))
         self.assertEqual(len(self.dashboard.history_snapshot(self.bot.guild)["history"]), 1)
 
@@ -187,9 +187,9 @@ class NativeNotificationTests(unittest.IsolatedAsyncioTestCase):
         self.bot.member_perms.allow_playlists = True
         info = dict(self.bot.info)
         self.bot.info = dict(info, entries=[
-            dict(info, title="One", webpage_url="https://example.test/one"),
-            dict(info, title="Two", webpage_url="https://example.test/two")], playlist_count=2)
-        preview = (await self.call(BASE + "resolve", {"query": "https://example.test/list"}))["results"][0]
+            dict(info, title="One", webpage_url="https://soundcloud.com/example/one"),
+            dict(info, title="Two", webpage_url="https://soundcloud.com/example/two")], playlist_count=2)
+        preview = (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/list"}))["results"][0]
         self.bot.info = info
         data = {"query": preview["url"], "preview_id": preview["preview_id"]}
         result = await self.call(BASE + "play", data)
@@ -234,7 +234,7 @@ class LibraryNotificationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_personal_playlist_uses_one_native_summary(self):
         value = await self.add()
-        value = await self.add(track={"title": "Other", "url": "https://example.test/other", "duration": 1})
+        value = await self.add(track={"title": "Other", "url": "https://soundcloud.com/example/other", "duration": 1})
         result = await self.call(BASE + "library/favorites/play", {"revision": value["revision"]})
         self.assertEqual(result["added"], 2)
         self.bot.safe_send_message.assert_awaited_once()

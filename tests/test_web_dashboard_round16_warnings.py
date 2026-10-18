@@ -40,7 +40,7 @@ class Round16CacheWarningsTests(unittest.IsolatedAsyncioTestCase):
     async def cached(self, remote_size):
         with tempfile.TemporaryDirectory(prefix="musicbot-webtest-cache-") as directory:
             cached = Path(directory)/"song.m4a"; cached.write_bytes(b"abc")
-            info = YtdlpResponseDict({"__input_subject":"https://example.test/song",
+            info = YtdlpResponseDict({"__input_subject":"https://soundcloud.com/example/song",
                 "__expected_filename":str(Path(directory)/"song.webm"),
                 "__header_data":{"CONTENT-LENGTH":str(remote_size)},
                 "title":"Synthetic", "duration":180, "extractor":"example"})

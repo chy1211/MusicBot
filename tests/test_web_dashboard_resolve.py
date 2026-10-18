@@ -16,7 +16,7 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
     call = fixtures.DashboardTests.call
     rev = fixtures.DashboardTests.rev
 
-    async def preview(self, query="https://example.test/song"):
+    async def preview(self, query="https://soundcloud.com/example/song"):
         body = await self.call(BASE + "resolve", {"query": query})
         return body["results"]
 
@@ -33,7 +33,7 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(songs[0]["url"].startswith("https://"))
         self.assertTrue(songs[0]["allowed"])
         self.assertEqual(self.bot.extractions, [
-            ("https://example.test/song", {"download": False, "process": True})])
+            ("https://soundcloud.com/example/song", {"download": False, "process": True})])
         self.assertEqual(list(self.bot.player.playlist.entries), before)
         self.bot.get_player.assert_not_awaited()
         self.bot.serialize_queue.assert_not_awaited()
@@ -48,7 +48,7 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         items[12]["duration"] = 600
         self.bot.perms.max_song_length = 100
         self.bot.info = dict(self.bot.info, title="List", entries=items, playlist_count=15)
-        song, = await self.preview("https://example.test/playlist")
+        song, = await self.preview("https://soundcloud.com/example/playlist")
         self.assertEqual((song["kind"], song["title"], song["count"]), ("playlist", "List", 15))
         self.assertEqual(len(song["entries"]), 15)
         self.assertEqual((song["checked_count"], song["eligible_count"]), (15, 14))
@@ -59,7 +59,7 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.bot.info = dict(self.bot.info, entries=[dict(self.bot.info)] * 2, playlist_count=2)
         for name, value in (("allow_playlists", False), ("max_playlist_length", 1)):
             setattr(self.bot.perms, name, value)
-            song, = await self.preview("https://example.test/playlist")
+            song, = await self.preview("https://soundcloud.com/example/playlist")
             self.assertFalse(song["allowed"], name)
             self.assertTrue(song["reason"])
             await self.call(BASE + "play", self.confirm(song), status=403)
@@ -69,7 +69,7 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.bot.perms.allow_playlists = False
         self.bot.info = dict(self.bot.info, extractor="youtube:search",
                              entries=[dict(self.bot.info, title=f"Result {i}",
-                                           webpage_url=f"https://example.test/{i}") for i in range(7)])
+                                           webpage_url=f"https://soundcloud.com/example/{i}") for i in range(7)])
         songs = await self.preview("some song")
         self.assertEqual(len(songs), 5)
         self.assertTrue(all(s["kind"] == "track" and s["allowed"] for s in songs))
@@ -82,8 +82,8 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.bot.extractions[0][0], "ytsearch2:song")
 
     async def test_blocked_input_is_rejected_before_extraction(self):
-        self.bot.blocked.add("https://example.test/song")
-        await self.call(BASE + "resolve", {"query": "https://example.test/song"}, status=403)
+        self.bot.blocked.add("https://soundcloud.com/example/song")
+        await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/song"}, status=403)
         self.assertEqual(self.bot.extractions, [])
 
     async def test_blocked_result_is_visible_but_not_confirmable(self):
@@ -207,7 +207,7 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tampered_unknown_cross_guild_denied_and_expired_renews_same_song(self):
         song, = await self.preview()
-        await self.call(BASE + "play", dict(self.confirm(song), query="https://example.test/other"), status=403)
+        await self.call(BASE + "play", dict(self.confirm(song), query="https://soundcloud.com/example/other"), status=403)
         await self.call(BASE + "play", dict(self.confirm(song), preview_id="unknown"), status=409)
         preview = self.dashboard.previews[song["preview_id"]]
         preview["guild_id"] = 2
@@ -244,11 +244,11 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.dashboard.previews), 100)
 
     async def test_confirmation_of_playlist_uses_real_import_and_filters(self):
-        short = dict(self.bot.info, title="Short", duration=60, webpage_url="https://example.test/short")
-        long = dict(self.bot.info, title="Long", duration=600, webpage_url="https://example.test/long")
+        short = dict(self.bot.info, title="Short", duration=60, webpage_url="https://soundcloud.com/example/short")
+        long = dict(self.bot.info, title="Long", duration=600, webpage_url="https://soundcloud.com/example/long")
         self.bot.info = dict(self.bot.info, entries=[short, long], playlist_count=2)
         self.bot.perms.max_song_length = 100
-        song, = await self.preview("https://example.test/playlist")
+        song, = await self.preview("https://soundcloud.com/example/playlist")
         # Single canonical URLs resolve to one item, as real extractors do.
         self.bot.info = short
         result = await self.call(BASE + "play", self.confirm(song))
@@ -257,12 +257,12 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_selected_second_search_result_url_is_sent_to_play(self):
         self.bot.info = dict(self.bot.info, extractor="youtube:search", entries=[
-            dict(self.bot.info, webpage_url="https://example.test/first"),
-            dict(self.bot.info, webpage_url="https://example.test/second")])
+            dict(self.bot.info, webpage_url="https://soundcloud.com/example/first"),
+            dict(self.bot.info, webpage_url="https://soundcloud.com/example/second")])
         songs = await self.preview("find")
         self.bot.info = dict(self.bot.info["entries"][1])
         await self.call(BASE + "play", self.confirm(songs[1]))
-        self.assertEqual(self.bot.extractions[-1][0], "https://example.test/second")
+        self.assertEqual(self.bot.extractions[-1][0], "https://soundcloud.com/example/second")
 
     async def test_global_resolve_limit_and_shutdown_cancel_pending_tasks(self):
         guilds = {i: NS(id=i, unavailable=False, get_member=lambda _: self.bot.owner)

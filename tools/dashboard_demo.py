@@ -144,9 +144,9 @@ class DemoBot:
     def song(self, index, title=None, duration=None, url=None):
         # Real entry metadata and seek logic; no downloader/cache operation runs.
         info = YtdlpResponseDict({
-            "__input_subject": f"https://example.test/track/{index}",
+            "__input_subject": f"https://soundcloud.com/example/track/{index}",
             "title": title or TITLES[index % len(TITLES)],
-            "webpage_url": url or f"https://example.test/track/{index}",
+            "webpage_url": url or f"https://soundcloud.com/example/track/{index}",
             "thumbnail": f"{self.origin}/demo-cover/{index % 5}.svg",
             "duration": duration if duration is not None else 180 + index * 17,
             "artist": "示範樂團", "extractor": "demo", "id": str(index)})
@@ -316,7 +316,7 @@ class DemoDashboard(Dashboard):
         for guild in bot.guilds:
             tracks = {}
             for index in range(5):
-                url = f"https://example.test/track/{index}"
+                url = f"https://soundcloud.com/example/track/{index}"
                 today = dt.datetime.now(dt.timezone.utc).date()
                 tracks[url] = {"url": url, "title": TITLES[index], "duration": 180 + index * 17,
                     "days": {(today - dt.timedelta(days=index*8)).isoformat(): 15-index,
@@ -336,7 +336,7 @@ class DemoDashboard(Dashboard):
         self.app.on_cleanup.append(cleanup_demo)
         for uid in (42, 43, 44, 45):
             value = self.playlist_store.fresh()
-            value["playlists"].append({"id": "a"*24, "name": "示範歌單", "tracks": [song({"title": TITLES[0], "url": "https://example.test/track/0", "duration": 180})]})
+            value["playlists"].append({"id": "a"*24, "name": "示範歌單", "tracks": [song({"title": TITLES[0], "url": "https://soundcloud.com/example/track/0", "duration": 180})]})
             value["playlists"][-1]["tracks"].extend([
                 song({"title": "很長的歌名用來檢查手機省略號與列寬 " * 7, "url": "https://www.youtube.com/watch?v=demo0000001",
                       "duration": 195, "thumbnail": f"{bot.origin}/demo-cover/1.svg"}),
@@ -353,7 +353,7 @@ class DemoDashboard(Dashboard):
         bot.config.auto_playlist_dir = Path(self.demo_temp.name) / "playlists"
         bot.config.auto_playlist_dir.mkdir()
         apl_path = bot.config.auto_playlist_dir / "default.txt"
-        apl_path.write_text("# Demo only\nhttps://example.test/track/0\nhttps://example.test/track/1\n", encoding="utf-8")
+        apl_path.write_text("# Demo only\nhttps://soundcloud.com/example/track/0\nhttps://soundcloud.com/example/track/1\n", encoding="utf-8")
         apl = AutoPlaylist(apl_path, bot)
         apl.data = apl._read_playlist()
         apl._is_loaded = True
@@ -470,8 +470,8 @@ class DemoDashboard(Dashboard):
                     '<a class="source-link" href="/?demo-queue=filled&amp;demo-query=duplicate">重複單曲範例</a>'
                     '<a class="source-link" href="/?demo-queue=filled&amp;demo-query=batch">重複歌單範例</a>'
                     '<a class="source-link" href="/?demo-queue=live">自動更新示範</a></div>')
-        query = {"duplicate": "https://example.test/track/1",
-                 "batch": "https://example.test/playlist"}.get(request.query.get("demo-query"))
+        query = {"duplicate": "https://soundcloud.com/example/track/1",
+                 "batch": "https://soundcloud.com/example/playlist"}.get(request.query.get("demo-query"))
         if query:
             response.text = response.text.replace('id="query" type="text"', 'id="query" type="text" value="' + query + '"', 1)
         response.text = response.text.replace('<h2 id="request-heading">', controls + '<h2 id="request-heading">', 1)

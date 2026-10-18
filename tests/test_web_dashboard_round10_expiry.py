@@ -25,7 +25,7 @@ class ExpiryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_same_track_never_substitutes_fresh_search_choice(self):
         value=await self.preview();self.expire(value)
-        self.bot.info=dict(self.bot.info,webpage_url="https://example.test/different")
+        self.bot.info=dict(self.bot.info,webpage_url="https://soundcloud.com/example/different")
         count=len(self.bot.player.playlist.entries)
         result=await self.call(base.BASE+"play",{"query":value["url"],"preview_id":value["preview_id"]},status=409)
         self.assertIn("目前搜尋不到",result["error"])
@@ -34,10 +34,10 @@ class ExpiryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_playlist_renewal_counts_missing_and_only_adds_existing_selection(self):
         single=dict(self.bot.info)
-        rows=[dict(single,title="One",webpage_url="https://example.test/one"),
-              dict(single,title="Two",webpage_url="https://example.test/two")]
+        rows=[dict(single,title="One",webpage_url="https://soundcloud.com/example/one"),
+              dict(single,title="Two",webpage_url="https://soundcloud.com/example/two")]
         self.bot.info=dict(single,entries=rows,playlist_count=2)
-        value=await self.preview("https://example.test/list");self.expire(value)
+        value=await self.preview("https://soundcloud.com/example/list");self.expire(value)
         self.bot.downloader.extract_info=AsyncMock(side_effect=[
             YtdlpResponseDict(dict(single,entries=rows[1:],playlist_count=1)),
             YtdlpResponseDict(rows[1])])

@@ -51,11 +51,11 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_owner_and_member_see_distinct_permissions(self):
         self.assertEqual((await self.login("owner"))["id"], "42")
-        owner = await self.call(BASE + "resolve", {"query": "https://example.test/playlist"})
+        owner = await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/playlist"})
         self.assertTrue(owner["results"][0]["allowed"])
         await self.call("/auth/logout", {})
         self.assertEqual((await self.login("member"))["id"], "43")
-        member = await self.call(BASE + "resolve", {"query": "https://example.test/playlist"})
+        member = await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/playlist"})
         self.assertFalse(member["results"][0]["allowed"])
 
     async def test_away_member_can_read_but_cannot_pause(self):
@@ -109,7 +109,7 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
         current = player.current_entry
         old = list(player.playlist.entries)
         preview = await self.call(BASE + "resolve", {
-            "query": "https://example.test/track/0", "action": "playnext"})
+            "query": "https://soundcloud.com/example/track/0", "action": "playnext"})
         choice = preview["results"][0]
         await self.call(BASE + "playnext", {
             "query": choice["url"], "preview_id": choice["preview_id"]})
@@ -180,17 +180,17 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
     async def test_demo_duplicate_examples_are_local_and_selectable(self):
         await self.login("owner")
         page = await (await self.client.get("/?demo-queue=filled&demo-query=duplicate")).text()
-        self.assertIn('value="https://example.test/track/1"', page)
+        self.assertIn('value="https://soundcloud.com/example/track/1"', page)
         self.assertIn("重複歌單範例", page)
         self.dashboard.demo_tick()
         before = await self.call(BASE + "state", method="GET")
-        preview = await self.call(BASE + "resolve", {"query": "https://example.test/track/1"})
+        preview = await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/track/1"})
         item = preview["results"][0]
         self.assertTrue(item["allowed"])
         self.assertEqual(item["url"], before["queue"][0]["url"])
         page = await (await self.client.get("/?demo-queue=filled&demo-query=batch")).text()
-        self.assertIn('value="https://example.test/playlist"', page)
-        preview = await self.call(BASE + "resolve", {"query": "https://example.test/playlist"})
+        self.assertIn('value="https://soundcloud.com/example/playlist"', page)
+        preview = await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/playlist"})
         self.assertTrue(preview["results"][0]["allowed"])
         urls = {entry["url"] for entry in preview["results"][0]["entries"]}
         self.assertIn(before["queue"][0]["url"], urls)
@@ -222,7 +222,7 @@ class Round9DemoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(popular["tracks"]),5)
         await self.call(BASE+"seek",{"position":83.456})
         self.assertIn("Seek: 83 seconds", self.bot.discord_messages[-1]["response"]["description"])
-        await self.call(BASE+"play",{"query":"https://example.test/track/2"})
+        await self.call(BASE+"play",{"query":"https://soundcloud.com/example/track/2"})
         self.assertIn("requested music via the web dashboard",self.bot.discord_messages[-1]["response"]["description"])
         self.assertEqual(self.bot.discord_messages[-1]["channel"],"點歌文字頻道")
 

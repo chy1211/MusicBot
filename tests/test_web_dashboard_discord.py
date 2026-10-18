@@ -476,7 +476,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
     async def test_member_playlist_restriction_rechecked_on_confirmation(self):
         self.bot.info = dict(self.bot.info, entries=[dict(self.bot.info)] * 2, playlist_count=2)
         self.bot.member_perms.allow_playlists = False
-        body = await self.call(BASE + "resolve", {"query": "https://example.test/list"})
+        body = await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/list"})
         song = body["results"][0]
         self.assertFalse(song["allowed"])
         await self.call(BASE + "play", {"query": song["url"], "preview_id": song["preview_id"]},

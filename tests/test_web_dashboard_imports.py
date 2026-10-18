@@ -37,7 +37,7 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(source_url("https://open.spotify.com/intl-zh-TW/album/ABC123?si=ignored"),
                          ("https://open.spotify.com/album/ABC123", "spotify"))
         for bad in (None, "", "file:///tmp/a", "spotify:playlist:abc", "https://spotify.link/abc",
-                    "https://youtube.com.evil.test/playlist?list=abc", "https://example.test/?list=abc",
+                    "https://youtube.com.evil.test/playlist?list=abc", "https://soundcloud.com/example/?list=abc",
                     "https://youtube.com@evil.test/?list=abc", "https://u:p@youtube.com/?list=abc",
                     "https://youtube.com:123/playlist?list=abc", "https://youtube.com:bad/?list=abc",
                     "https://youtube.com/playlist?list=abc&list=other", "https://youtube.com/watch?v=video000001",

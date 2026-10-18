@@ -11,7 +11,7 @@ import test_web_dashboard_discord as identity
 from musicbot.web_dashboard import APIError, CONFIRMED_ENTRY_CHECK
 from musicbot.web_dashboard_library import PlaylistStore, song
 
-TRACK = {"title": "Saved", "url": "https://example.test/saved", "duration": 1}
+TRACK = {"title": "Saved", "url": "https://soundcloud.com/example/saved", "duration": 1}
 
 
 class StoreTests(unittest.IsolatedAsyncioTestCase):
@@ -53,8 +53,8 @@ class StoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(list(Path(self.temp.name).iterdir())), 1)
 
     async def test_url_and_duration_validation(self):
-        for url in ("file:///bad", "javascript:bad", "https://u:p@example.test", "https://example.test/\nsecret",
-                    "http://", "https://example.test/" + "x"*2000):
+        for url in ("file:///bad", "javascript:bad", "https://u:p@example.test", "https://soundcloud.com/example/\nsecret",
+                    "http://", "https://soundcloud.com/example/" + "x"*2000):
             with self.assertRaises(APIError):
                 song(dict(TRACK, url=url))
         for length in (-1, True, float("nan"), float("inf"), "1"):
@@ -109,7 +109,7 @@ class LibraryTests(unittest.IsolatedAsyncioTestCase):
             await self.call("/api/library", {"name": str(i)})
         await self.call("/api/library", {"name": "overflow"}, status=400)
         store = self.dashboard.playlist_store
-        await store.transact(43, lambda v: v["playlists"][0].update(tracks=[song(dict(TRACK,url=f"https://example.test/saved/{i}")) for i in range(200)]))
+        await store.transact(43, lambda v: v["playlists"][0].update(tracks=[song(dict(TRACK,url=f"https://soundcloud.com/example/saved/{i}")) for i in range(200)]))
         v = await self.get()
         await self.call("/api/library/favorites/tracks", {"revision": v["revision"], "track": TRACK}, status=400)
         await self.call("/api/library/favorites", {"revision": "stale", "action": "remove", "index": 0}, "PATCH", 409)
@@ -139,7 +139,7 @@ class LibraryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_full_partial_real_hook_maxsongs_and_length(self):
         await self.add()
-        v = await self.add(track=dict(TRACK, title="Second", url="https://example.test/second"))
+        v = await self.add(track=dict(TRACK, title="Second", url="https://soundcloud.com/example/second"))
         self.bot.member_perms.max_songs = 1
         result = await self.call(BASE + "library/favorites/play", {"revision": v["revision"]})
         self.assertEqual((result["added"], result["skipped"]), (1, 1))

@@ -21,7 +21,7 @@ class AutoTests(unittest.IsolatedAsyncioTestCase):
         await library.LibraryTests.asyncSetUp(self)
         self.login_as(42)
         self.aplpath = Path(self.temp.name) / "default.txt"
-        self.aplpath.write_text("# Keep comment\nhttps://example.test/one\nhttps://example.test/two\n")
+        self.aplpath.write_text("# Keep comment\nhttps://soundcloud.com/example/one\nhttps://soundcloud.com/example/two\n")
         self.bot.filecache = NS(remove_autoplay_cachemap_entry_by_url=lambda _: None)
         self.apl = AutoPlaylist(self.aplpath, self.bot)
         await self.apl.load()
@@ -46,24 +46,24 @@ class AutoTests(unittest.IsolatedAsyncioTestCase):
         original = self.aplpath.read_bytes()
         v = await self.snapshot()
         with patch.object(self.apl, "add_track", wraps=self.apl.add_track) as add:
-            v = await self.call(AUTO, {"revision": v["revision"], "url": "https://example.test/three"})
-            add.assert_awaited_once_with("https://example.test/three")
+            v = await self.call(AUTO, {"revision": v["revision"], "url": "https://soundcloud.com/example/three"})
+            add.assert_awaited_once_with("https://soundcloud.com/example/three")
         backups = list((self.dashboard.backup_root / "autoplaylist").iterdir())
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_bytes(), original)
-        self.assertIn("https://example.test/three", self.apl)
+        self.assertIn("https://soundcloud.com/example/three", self.apl)
         with patch.object(self.apl, "remove_track", wraps=self.apl.remove_track) as remove:
             await self.call(AUTO, {"revision": v["revision"], "index": 2}, "DELETE")
             remove.assert_awaited_once()
             self.assertTrue(remove.call_args.kwargs["delete_from_ap"])
-        self.assertNotIn("https://example.test/three", self.apl)
+        self.assertNotIn("https://soundcloud.com/example/three", self.apl)
         self.assertTrue(self.apl.rmlog_file.exists())
         self.assertIn("# Keep comment", self.aplpath.read_text())
 
     async def test_backup_rotation_and_current(self):
         for i in range(34):
             v = await self.snapshot()
-            await self.call(AUTO, {"revision": v["revision"], "url": "https://example.test/" + str(i)})
+            await self.call(AUTO, {"revision": v["revision"], "url": "https://soundcloud.com/example/" + str(i)})
         self.assertEqual(len(list((self.dashboard.backup_root / "autoplaylist").iterdir())), 30)
         v = await self.snapshot()
         await self.call(AUTO, {"revision": v["revision"], "current": True})
@@ -71,7 +71,7 @@ class AutoTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_search_pagination_validation_and_no_local_path_disclosure(self):
         for i in range(120):
-            await self.apl.add_track("https://example.test/extra/" + str(i))
+            await self.apl.add_track("https://soundcloud.com/example/extra/" + str(i))
         await self.apl.add_track("/private/local/music.mp3")
         v = await self.call(AUTO + "?page=2", method="GET")
         self.assertEqual(len(v["tracks"]), 50)
@@ -85,19 +85,19 @@ class AutoTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_conflict_and_no_bulk_operations(self):
         v = await self.snapshot()
-        await self.call(AUTO, {"revision": "stale", "url": "https://example.test/new"}, status=409)
-        for data in ({"clear": True}, {"tracks": []}, {"url": "file:///secret"}, {"url": "https://example.test/one"}):
+        await self.call(AUTO, {"revision": "stale", "url": "https://soundcloud.com/example/new"}, status=409)
+        for data in ({"clear": True}, {"tracks": []}, {"url": "file:///secret"}, {"url": "https://soundcloud.com/example/one"}):
             await self.call(AUTO, dict(data, revision=v["revision"]), status=400)
         self.assertFalse(self.dashboard.backup_root.exists())
 
     async def test_write_failure_reload_memory_and_no_false_success(self):
         v = await self.snapshot()
         with patch.object(self.apl, "add_track", side_effect=AsyncMock(side_effect=lambda u: self.apl.data.append(u))):
-            await self.call(AUTO, {"revision": v["revision"], "url": "https://example.test/fail"}, status=500)
-        self.assertNotIn("https://example.test/fail", self.apl)
+            await self.call(AUTO, {"revision": v["revision"], "url": "https://soundcloud.com/example/fail"}, status=500)
+        self.assertNotIn("https://soundcloud.com/example/fail", self.apl)
 
     async def test_backup_failure_aborts_native_write(self):
         v = await self.snapshot()
         with patch("musicbot.web_dashboard_admin.backup_file", side_effect=OSError()), patch.object(self.apl, "add_track") as add:
-            await self.call(AUTO, {"revision": v["revision"], "url": "https://example.test/fail"}, status=500)
+            await self.call(AUTO, {"revision": v["revision"], "url": "https://soundcloud.com/example/fail"}, status=500)
             add.assert_not_called()

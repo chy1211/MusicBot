@@ -23,7 +23,7 @@ def seek_entry(bot, stream=False):
     bot.filecache = NS()
     cls = StreamPlaylistEntry if stream else URLPlaylistEntry
     current = cls(bot.player.playlist, YtdlpResponseDict(dict(
-        bot.info, url="https://example.test/current", title="Singer - Song (Official MV)", duration=180)),
+        bot.info, url="https://soundcloud.com/example/current", title="Singer - Song (Official MV)", duration=180)),
         author=bot.owner, channel=bot.channel)
     bot.player.current_entry = current
     bot.cmd_seek = MethodType(MusicBot.cmd_seek, bot)
@@ -107,9 +107,9 @@ class Round5API(unittest.IsolatedAsyncioTestCase):
 
     async def test_playnext_real_command_front_and_play_appends(self):
         seek_entry(self.bot)
-        await self.call(BASE + "playnext", {"query": "https://example.test/next"})
+        await self.call(BASE + "playnext", {"query": "https://soundcloud.com/example/next"})
         self.assertEqual(self.bot.player.playlist.entries[0].title, "Added")
-        await self.call(BASE + "play", {"query": "https://example.test/last"})
+        await self.call(BASE + "play", {"query": "https://soundcloud.com/example/last"})
         self.assertEqual(self.bot.player.playlist.entries[-1].title, "Added")
         self.assertIsNone(CONFIRMED_ENTRY_CHECK.get())
 
@@ -134,7 +134,7 @@ class Round5API(unittest.IsolatedAsyncioTestCase):
             self.assertIn("長度", body["error"])
             self.assertEqual(len(self.bot.player.playlist.entries), 3)
         self.bot.info["duration"] = 100
-        preview = (await self.call(BASE + "resolve", {"query": "https://example.test/song"}))["results"][0]
+        preview = (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/song"}))["results"][0]
         self.bot.info["duration"] = 86500
         await self.call(BASE + "playnext", {"query": preview["url"], "preview_id": preview["preview_id"]}, status=403)
         self.assertEqual(len(self.bot.player.playlist.entries), 3)
@@ -162,7 +162,7 @@ class Round5API(unittest.IsolatedAsyncioTestCase):
 
     async def test_playnext_rejects_playlist_after_fresh_extraction(self):
         seek_entry(self.bot)
-        preview = (await self.call(BASE + "resolve", {"query": "https://example.test/song"}))["results"][0]
+        preview = (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/song"}))["results"][0]
         self.bot.info = dict(self.bot.info, entries=[dict(self.bot.info)] * 2)
         await self.call(BASE + "playnext", {"query": preview["url"], "preview_id": preview["preview_id"]}, status=403)
         self.assertIsNone(CONFIRMED_ENTRY_CHECK.get())
@@ -170,7 +170,7 @@ class Round5API(unittest.IsolatedAsyncioTestCase):
 
     async def test_playnext_accepts_play_preview_and_is_idempotent(self):
         seek_entry(self.bot)
-        preview = (await self.call(BASE + "resolve", {"query": "https://example.test/song"}))["results"][0]
+        preview = (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/song"}))["results"][0]
         data = {"query": preview["url"], "preview_id": preview["preview_id"]}
         await self.call(BASE + "playnext", data)
         await self.call(BASE + "playnext", data)
@@ -178,7 +178,7 @@ class Round5API(unittest.IsolatedAsyncioTestCase):
 
     async def test_playnext_playlist_preview_explicitly_disabled(self):
         self.bot.info = dict(self.bot.info, entries=[dict(self.bot.info)] * 2)
-        preview = (await self.call(BASE + "resolve", {"query": "https://example.test/list", "action": "playnext"}))["results"][0]
+        preview = (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/list", "action": "playnext"}))["results"][0]
         self.assertFalse(preview["allowed"])
         self.assertIn("單曲", preview["reason"])
         await self.call(BASE + "resolve", {"query": "song", "action": "playnow"}, status=400)
@@ -211,14 +211,14 @@ class Round5API(unittest.IsolatedAsyncioTestCase):
         class Loaded(list):
             loaded = True
         self.bot.config.enable_queue_history_guilds = True
-        self.bot.playlist_mgr = NS(_playlists={"history-1": Loaded(["https://example.test/old"])})
+        self.bot.playlist_mgr = NS(_playlists={"history-1": Loaded(["https://soundcloud.com/example/old"])})
         body = await self.call(BASE + "history", method="GET")
         self.assertIn("guild_queue_history", body["source"])
-        self.assertEqual(body["history"][0]["url"], "https://example.test/old")
+        self.assertEqual(body["history"][0]["url"], "https://soundcloud.com/example/old")
         self.assertIsNone(body["history"][0]["played_at"])
         self.bot.config.enable_queue_history_guilds = False
         self.bot.config.enable_queue_history_global = True
-        self.bot.playlist_mgr.global_history = Loaded(["https://example.test/private-other-guild"])
+        self.bot.playlist_mgr.global_history = Loaded(["https://soundcloud.com/example/private-other-guild"])
         body = await self.call(BASE + "history", method="GET")
         self.assertEqual(body["history"], [])
 
@@ -284,7 +284,7 @@ class Round5Discord(unittest.IsolatedAsyncioTestCase):
     async def test_playnext_permission_is_independent_of_play(self):
         seek_entry(self.bot)
         self.bot.member_perms.can_use_command.side_effect = lambda command, sub: command == "playnext"
-        preview = (await self.call(BASE + "resolve", {"query": "https://example.test/song", "action": "playnext"}))["results"][0]
+        preview = (await self.call(BASE + "resolve", {"query": "https://soundcloud.com/example/song", "action": "playnext"}))["results"][0]
         await self.call(BASE + "play", {"query": preview["url"]}, status=403)
         await self.call(BASE + "playnext", {"query": preview["url"], "preview_id": preview["preview_id"]})
         self.assertEqual(self.bot.player.playlist.entries[0].author.id, 43)
@@ -295,7 +295,7 @@ class Round5Discord(unittest.IsolatedAsyncioTestCase):
             self.bot.member_perms.can_use_command.return_value = False
             return YtdlpResponseDict(self.bot.info)
         self.bot.downloader.extract_info = extract
-        await self.call(BASE + "playnext", {"query": "https://example.test/song"}, status=403)
+        await self.call(BASE + "playnext", {"query": "https://soundcloud.com/example/song"}, status=403)
         self.assertEqual(len(self.bot.player.playlist.entries), 3)
 
     async def test_history_nonmember_403_and_replay_checks_current_member_play_permission(self):

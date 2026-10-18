@@ -37,6 +37,7 @@ from .web_dashboard_stats import PopularityStore
 from .web_dashboard_library import DashboardLibrary
 from .web_dashboard_admin import DashboardAdmin
 from .web_dashboard_activity import capture, finish
+from .web_dashboard_extraction import WEB_EXTRACTION, UnsupportedDashboardURL, normalize_query
 
 ACTIVITY_KEY = web.RequestKey("dashboard_activity", object)
 
@@ -403,7 +404,15 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
                 if api and (not self.bot.is_ready() or not self.bot.init_ok
                             or self.bot.logout_called):
                     raise APIError(503, _web_text('m0362'))
-            response = await handler(request)
+            token = WEB_EXTRACTION.set(self.request_action(request) in {
+                "resolve", "play", "playnext", "library_play", "library_import",
+                "library_sync", "library_import_preview", "library_sync_preview"})
+            try:
+                response = await handler(request)
+            finally:
+                WEB_EXTRACTION.reset(token)
+        except UnsupportedDashboardURL:
+            response = web.json_response({"error": _web_text('m0606')}, status=400)
         except APIError as exc:
             response = web.json_response({"error": str(exc), **exc.details}, status=exc.status)
         except exceptions.MusicbotException as exc:
@@ -1086,6 +1095,11 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
         self.addition_checks(player, owner, permissions)
         if self.discord_auth:
             self.command_permission(owner, permissions, action, query.split()[0])
+        try:
+            self.bot._do_song_blocklist_check(query)
+        except exceptions.MusicbotException:
+            raise APIError(403, _web_text('m0411')) from None
+        query = normalize_query(query)
         parsed = urlsplit(query)
         if (parsed.scheme and parsed.scheme not in ("http", "https")
                 and ("://" in query or parsed.scheme in ("file", "data", "javascript", "spotify"))):
@@ -1205,7 +1219,7 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             results = await asyncio.wait_for(asyncio.shield(task), self.RESOLVE_TIMEOUT)
         except asyncio.TimeoutError:
             raise APIError(504, _web_text('m0423')) from None
-        except (APIError, exceptions.MusicbotException):
+        except (APIError, exceptions.MusicbotException, UnsupportedDashboardURL):
             raise
         except Exception:
             log.warning("Dashboard preview extraction failed")
@@ -1469,7 +1483,8 @@ class Dashboard(DashboardAuth, DashboardEvents, DashboardLibrary, DashboardAdmin
             if "selected_items" in data and "preview_id" not in data:
                 raise APIError(400, _web_text('m0445'))
             self.user_rate_limit(owner)
-            query = self.query(data)
+            query = normalize_query(self.query(data))
+            data["query"] = query
         elif action == "seek":
             position = data.get("position")
             try:

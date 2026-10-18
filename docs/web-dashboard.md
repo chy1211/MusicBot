@@ -2016,3 +2016,23 @@ English translation, mobile width, and re-enable. No page errors. Screenshots:
 
 No deployment, production config/data reads, production container access or cookie
 sync was needed. No additional reviewer or acceptance subagent was used.
+
+
+### Round 22: web-only source policy
+
+Web resolve/play/playnext and library playback accept HTTP(S) URLs with an
+installed, enabled, dedicated yt-dlp extractor. URLs are normalized before use;
+YouTube/YouTube Music, Spotify, SoundCloud and Bandcamp remain supported.
+Generic websites, raw media URLs, literal addresses, credentials in URLs and
+nonstandard ports are rejected before network I/O. Nested extraction cannot
+re-enable GenericIE. Ancillary generic HEAD probes are skipped for web requests.
+The localized error is available in English and Traditional Chinese.
+
+This round deliberately uses the no-generic fallback, rather than claiming a
+DNS-pinned transport sandbox. Dedicated extractors are trusted provider code:
+their own network requests/HTTP redirects are not an address-filtering boundary.
+DNS rebinding and redirects of rejected generic input cannot trigger a request,
+because input classification performs no DNS or HTTP I/O. Arbitrary provider
+extractor bugs or provider-controlled URLs remain a residual risk.
+Native Discord commands keep their original clients, generic support and HEAD
+behavior; their equivalent SSRF risk remains for a later, separately scoped fix.

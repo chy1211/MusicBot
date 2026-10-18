@@ -25,7 +25,7 @@ class Round16AutoplayTests(unittest.IsolatedAsyncioTestCase):
         self.bot.downloader.extract_info.assert_not_awaited()
 
     async def test_last_failed_native_song_disables_without_dashboard(self):
-        self.bot.server_data[1].autoplaylist = MemoryAutoplaylist(["https://example.test/unplayable"])
+        self.bot.server_data[1].autoplaylist = MemoryAutoplaylist(["https://soundcloud.com/example/unplayable"])
         self.bot.config.song_blocklist_enabled = False
         self.bot.config.remove_ap = False
         self.bot.downloader.extract_info.side_effect = ExtractionError("synthetic failure")

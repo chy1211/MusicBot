@@ -27,6 +27,7 @@ from .i18n import _L
 from .spotify import Spotify
 from .utils import check_extractor
 from .ytdlp_cookies import CookieYtdlClients
+from .web_dashboard_extraction import WEB_EXTRACTION, DashboardYoutubeDL, check_subject
 
 if TYPE_CHECKING:
     from multidict import CIMultiDictProxy
@@ -227,10 +228,14 @@ class Downloader:
         """For auxiliary workers that need the current authenticated client."""
         return self._cookie_clients.snapshot(refresh=True)[0]
 
-    def _run_ytdl(self, safe: bool, method: str, *args: Any, **kwargs: Any) -> Any:
+    def _run_ytdl(self, safe: bool, method: str, *args: Any, web_only=False, **kwargs: Any) -> Any:
         # Runs in the executor: filesystem I/O/client construction never blocks
         # the event loop during ordinary extraction or download.
         client = self._cookie_clients.snapshot(refresh=True)[int(safe)]
+        if web_only:
+            with DashboardYoutubeDL(client.params) as isolated:
+                isolated.cookiejar = copy.deepcopy(client.cookiejar)
+                return getattr(isolated, method)(*args, **kwargs)
         return getattr(client, method)(*args, **kwargs)
 
     def randomize_user_agent_string(self) -> None:
@@ -378,7 +383,7 @@ class Downloader:
                        "cookiefile": None, "cookiesfrombrowser": None,
                        "usenetrc": False, "cachedir": False, "playlistend": limit,
                        "socket_timeout": 15, "retries": 1}
-            with youtube_dl.YoutubeDL(options) as public:
+            with DashboardYoutubeDL(options) as public:
                 data = public.extract_info(song_subject, download=False, process=False)
                 if not isinstance(data, dict):
                     raise ExtractionError("Public playlist returned no metadata.")
@@ -423,6 +428,8 @@ class Downloader:
         :raises: yt_dlp.networking.exceptions.RequestError
             as a base exception for any networking errors raised by yt_dlp.
         """
+        if WEB_EXTRACTION.get():
+            song_subject = check_subject(song_subject)
         if kwargs.pop("public_only", False):
             limit = kwargs.pop("public_limit", 201)
             if limit not in (25, 201):
@@ -468,7 +475,9 @@ class Downloader:
             raise ExtractionError("Song info extraction returned no data.")
 
         # always get headers for our downloadable.
-        headers = await self.get_url_headers(data.get("url", song_subject))
+        # Dedicated extractors already provide media metadata. Do not follow an
+        # arbitrary result URL with an additional generic HEAD in the web path.
+        headers = {} if WEB_EXTRACTION.get() else await self.get_url_headers(data.get("url", song_subject))
 
         # if we made it here, put our request data into the extraction.
         data["__input_subject"] = song_subject
@@ -592,7 +601,7 @@ class Downloader:
             data = await self.bot.loop.run_in_executor(
                 self.thread_pool,
                 functools.partial(
-                    self._run_ytdl, False, "extract_info", song_subject, *args, **kwargs
+                    self._run_ytdl, False, "extract_info", song_subject, *args, web_only=WEB_EXTRACTION.get(), **kwargs
                 ),
             )
         except DownloadError as e:
@@ -633,7 +642,7 @@ class Downloader:
             data = await self.bot.loop.run_in_executor(
                 self.thread_pool,
                 functools.partial(
-                    self._run_ytdl, False, "extract_info", song_subject, *args, **kwargs
+                    self._run_ytdl, False, "extract_info", song_subject, *args, web_only=WEB_EXTRACTION.get(), **kwargs
                 ),
             )
 
@@ -674,7 +683,7 @@ class Downloader:
         )
         return await self.bot.loop.run_in_executor(
             self.thread_pool,
-            functools.partial(self._run_ytdl, True, "extract_info", *args, **kwargs),
+            functools.partial(self._run_ytdl, True, "extract_info", *args, web_only=WEB_EXTRACTION.get(), **kwargs),
         )
 
     def _return_local_media(self, song_subject: str) -> "YtdlpResponseDict":

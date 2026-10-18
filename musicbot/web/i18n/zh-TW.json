@@ -604,5 +604,6 @@
   "vote_skip.help": "僅套用於此伺服器。關閉後，有跳過權限的人可直接跳過。",
   "vote_skip.saved": "已儲存跳過設定。",
   "vote_skip.invalid": "跳過設定格式不正確。",
-  "vote_skip.save_failed": "無法儲存跳過設定，請稍後再試。"
+  "vote_skip.save_failed": "無法儲存跳過設定，請稍後再試。",
+  "m0606": "網頁控制台不支援此網址。請使用 YouTube、Spotify、SoundCloud、Bandcamp 等有專屬解析器的服務；不接受直接音訊或一般網站。"
 }

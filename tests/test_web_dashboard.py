@@ -26,8 +26,8 @@ BASE = "/api/guilds/1/"
 
 
 def entry(title="Track", duration=180, author=None, channel=None):
-    return NS(title=title, url="https://example.test/" + title,
-              thumbnail_url="https://example.test/cover.jpg", duration=duration,
+    return NS(title=title, url="https://soundcloud.com/example/" + title,
+              thumbnail_url="https://soundcloud.com/example/cover.jpg", duration=duration,
               author=author, channel=channel, is_downloading=False, is_downloaded=True)
 
 
@@ -116,7 +116,7 @@ class FakeBot:
         self.server_data = {1: None}
         self.aiolocks = defaultdict(asyncio.Lock)
         self.info = {"__input_subject": "test", "title": "Added",
-                     "webpage_url": "https://example.test/added", "duration": 120,
+                     "webpage_url": "https://soundcloud.com/example/added", "duration": 120,
                      "extractor": "youtube", "id": "added"}
         self.extractions = []
         self.downloader = NS(extract_info=self.extract,
@@ -204,8 +204,8 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result["current"])
 
     async def test_play_url_real_command_and_owner(self):
-        await self.call(BASE + "play", {"query": "https://example.test/song"})
-        self.assertEqual(self.bot.extractions[0], ("https://example.test/song",
+        await self.call(BASE + "play", {"query": "https://soundcloud.com/example/song"})
+        self.assertEqual(self.bot.extractions[0], ("https://soundcloud.com/example/song",
                                                   {"download": False, "process": True}))
         self.assertIs(self.bot.player.playlist.entries[-1].author, self.bot.owner)
         self.bot.get_player.assert_awaited_with(self.bot.channel, create=True)
@@ -355,7 +355,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
                                    ("max_songs", 4)):
             with self.subTest(permission=permission):
                 setattr(self.bot.perms, permission, value)
-                await self.call(BASE + "play", {"query": "https://example.test/list"}, status=403)
+                await self.call(BASE + "play", {"query": "https://soundcloud.com/example/list"}, status=403)
                 setattr(self.bot.perms, permission, True if permission == "allow_playlists" else 0)
         self.assertEqual(len(self.bot.player.playlist.entries), 3)
 
@@ -364,7 +364,7 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         long = dict(self.bot.info, title="Long", duration=600)
         self.bot.info = dict(self.bot.info, entries=[short, long], playlist_count=2)
         self.bot.perms.max_song_length = 100
-        await self.call(BASE + "play", {"query": "https://example.test/list"})
+        await self.call(BASE + "play", {"query": "https://soundcloud.com/example/list"})
         self.assertEqual([e.title for e in self.bot.player.playlist.entries],
                          ["One", "Two", "Three", "Short"])
 
