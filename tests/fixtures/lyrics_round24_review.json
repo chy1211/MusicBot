@@ -12,8 +12,7 @@
   "accepted_status_count": 18,
   "no_identified_mismatch_after_guard": true,
   "credit_only_not_lyric_verified_song_ids": [
-    15,
-    16
+    15
   ],
   "historical_root_cause": "The supplied status summary establishes temporary failures for 11 songs. Exact per-song historical HTTP errors are unavailable; today's fixture cannot prove yesterday's catalog absence.",
   "actual_http_attempts": 150,
@@ -46,5 +45,9 @@
     31,
     32,
     33
-  ]
+  ],
+  "plain_first_lines_checked_when_synced_started_with_credits": [
+    16
+  ],
+  "manual_check_limit": "18 selected matches inspected; song 15's selected sample contains credits only. Other provider versions have the expected verse, but this selected record's lyric opening cannot be verified within the exhausted HTTP budget."
 }

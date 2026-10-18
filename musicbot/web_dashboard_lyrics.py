@@ -231,10 +231,21 @@ class LyricsClient:
                 params = {"track_name": title, "artist_name": artist}
                 if 1 <= duration <= 3600:
                     params["duration"] = str(round(duration))
-                responses = await asyncio.gather(
-                    collect("/get", params),
-                    collect("/search", {"track_name": title, "artist_name": artist}))
-                pool = [item for response in responses for item in response]
+                tasks = [
+                    asyncio.create_task(collect("/get", params)),
+                    asyncio.create_task(collect("/search", {"track_name": title, "artist_name": artist}))]
+                try:
+                    for response in asyncio.as_completed(tasks):
+                        pool.extend(await response)
+                        # A validated success must not be lost because the
+                        # parallel request is still retrying when time runs out.
+                        if choose()[0]:
+                            break
+                finally:
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
             else:
                 pool = await collect("/search", {"track_name": title})
             item, match = choose()

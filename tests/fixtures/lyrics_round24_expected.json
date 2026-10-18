@@ -792,7 +792,7 @@
         "status": "synced",
         "title": "Blank Space",
         "artist": "Taylor Swift",
-        "duration": 231.0,
+        "duration": 232.0,
         "match": null,
         "first_line": "Nice to meet you, where you been?",
         "uncaptured_queries": []
@@ -817,7 +817,7 @@
         "status": "synced",
         "title": "Hello",
         "artist": "Adele",
-        "duration": 295.0,
+        "duration": 296.0,
         "match": null,
         "first_line": "Hello, it's me",
         "uncaptured_queries": []

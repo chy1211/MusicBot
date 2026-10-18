@@ -183,3 +183,17 @@ class BilingualStrategyTests(unittest.IsolatedAsyncioTestCase):
         client=LyricsClient();client._request=request
         self.assertEqual((await client.lookup("Singer【中文歌名 English Title】","Singer",180))["status"],"plain")
         self.assertIn({"track_name":"English Title","artist_name":"Singer"},calls)
+
+
+class FastSuccessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_valid_get_is_not_lost_to_slow_parallel_search(self):
+        cancelled=asyncio.Event()
+        async def request(session,path,params):
+            if path=="/get":
+                return {"trackName":"Song","artistName":"Singer","duration":180,"plainLyrics":"A valid first lyric line"}
+            try: await asyncio.sleep(1)
+            finally: cancelled.set()
+        client=LyricsClient();client.TIMEOUT=.05;client._request=request
+        self.assertEqual((await client.lookup("Song","Singer",180))["status"],"plain")
+        self.assertTrue(cancelled.is_set())
+        self.assertEqual(client.pending,{})
