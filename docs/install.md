@@ -153,6 +153,8 @@ To build locally, clone/download the repository and uncomment `build: .` in
 the shared Compose definition; set MUSICBOT_IMAGE to your own local image name,
 then use `docker compose build && docker compose up -d`.
 
+Images must pass automatic dashboard startup, runtime and public audio-download tests before publication. The YouTube download check is informational because GitHub datacenter IPs may be blocked.
+
 The weekly image workflow rebuilds with current yt-dlp and provider plugin
 packages. Startup auto-update is **off** for repeatability and fast starts.
 With YTDLP_AUTO_UPDATE=true, pip installs upgraded packages under

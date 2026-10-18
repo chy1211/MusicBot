@@ -47,6 +47,8 @@ docker compose logs --tail 50 config-init musicbot
 缺變數時會以非零退出碼列出英文＋中文提示及取得憑證的步驟；MusicBot 等待
 初始化成功，避免缺設定造成無限重啟。補齊 .env 後再跑 up -d 即可。
 
+映像發佈前會自動測試控制台啟動、執行環境與公開音訊下載，通過後才發佈。YouTube 下載測試因 GitHub 機房 IP 可能被擋，僅供參考，不影響發佈。
+
 ## 服務、連接埠與資料
 
 - musicbot：機器人與控制台；只綁 127.0.0.1:8080，公開使用請放 HTTPS 反向代理。
