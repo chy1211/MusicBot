@@ -183,6 +183,7 @@ async function setup(options = {}) {
     close() { this.closed = true; }
     emit(name, data) { return this.listeners[name]?.({data: JSON.stringify(data)}); }
   }
+  document.getElementById("lyrics-timing-menu").hidden=true;
   const context = vm.createContext({t,dashboardLocale,dashboardTimeZone,dashboardI18nReady,document, fetch, URL, AbortController,
     EventSource: options.events ? FakeEventSource : undefined, window: {localStorage:options.storage, setTimeout: (...args) => timers.push(args), clearTimeout() {},
     requestAnimationFrame: (fn) => frames.push(fn), cancelAnimationFrame() {},
@@ -2095,11 +2096,11 @@ test("round12 offset controls send small deltas and two-click sync position with
  app.hook((url,options)=>url.endsWith("/lyrics/offset")?lyricsResponse({offset:7.5,offset_source:"manual"}):
    url.endsWith("/lyrics")?lyricsResponse(timed):null);
  await app.element("lyrics-toggle").listeners.click();
- assert.match(app.element("lyrics-offset").textContent,/自動比對/);
+ assert.equal(app.element("lyrics-offset").textContent, "");
  await app.element("lyrics-plus").listeners.click();
  const added=app.requests.find(r=>r.url.endsWith("/lyrics/offset")&&r.method==="POST");
  assert.deepEqual(added.data,{action:"adjust",track_token:"token",delta:.5});
- assert.match(app.element("lyrics-offset").textContent,/手動校正/);
+ assert.equal(app.element("lyrics-offset").textContent, "");
  app.run('state.progress=31.25;state.status="paused"');
  app.element("lyrics-sync").listeners.click();
  assert.equal(app.element("lyrics-sync-prompt").hidden,false);
@@ -2190,6 +2191,7 @@ test("round14 manual scrolling pauses centering and resumes on the same current 
   const app=await lyricScrollApp();
   for(const event of ["wheel","touchstart","pointerdown","keydown","scroll"]) {
     app.run("lyricsAutoScrollUntil=0");
+    if (event === "scroll") app.box.listeners.pointerdown();
     app.box.listeners[event]();app.box.scrollTop=0;
     const count=app.box.scrollCalls.length;
     app.run("syncLyrics()");
@@ -2545,4 +2547,25 @@ test("cover original lyrics are labelled in the panel", async () => {
   app.hook(url=>url.endsWith("/lyrics")?lyricsResponse({...syncedLyrics,match:"cover_original"}):null);
   await app.element("lyrics-toggle").listeners.click();
   assert.equal(app.element("lyrics-status").textContent,t("m0610"));
+});
+
+test("round26 delayed automatic mobile scroll cannot suspend lyrics following",async()=>{
+ const app=await lyricScrollApp();app.run("lyricsAutoScrollUntil=0;lyricsUserScrollUntil=0;lyricsCenterPending=false");
+ app.box.listeners.scroll();
+ assert.equal(app.run("lyricsUserScrollUntil"),0);
+ app.run("state.progress=75;syncLyrics()");
+ assert.ok(app.box.children.some(row=>row.classes.has("active")));
+ assert.equal(app.run("lyricsCenterPending"),false);
+});
+test("round26 hidden song chooser retains pending center until restored",async()=>{
+ const app=await lyricScrollApp();
+ app.element("lyrics-panel").hidden=true;app.element("song-choices").hidden=false;
+ app.run("state.progress=75;syncLyrics()");
+ assert.equal(app.run("lyricsCenterPending"),true);
+ app.run("closeSongChoices()");assert.equal(app.run("lyricsCenterPending"),false);
+});
+test("round26 offset status row is absent from real shell",()=>{
+ const html=fs.readFileSync(path.join(__dirname,"../musicbot/web/index.html"),"utf8");
+ assert.doesNotMatch(html,/id="lyrics-offset"/);
+ assert.doesNotMatch(code,/\$\("lyrics-offset"\)/);
 });

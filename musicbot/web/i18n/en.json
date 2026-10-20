@@ -608,5 +608,9 @@
   "m0606": "This URL is not supported by the web dashboard. Use a service with a dedicated extractor (YouTube, Spotify, SoundCloud or Bandcamp); direct media and generic websites are not accepted.",
   "m0607": "The source exceeded the dashboard response/read budget. Try a smaller source or another service.",
   "m0609": "Retry lyrics",
-  "m0610": "Original song lyrics (cover recording)"
+  "m0610": "Original song lyrics (cover recording)",
+  "m0611": "Timing adjustments",
+  "m0612": "Add to Queue",
+  "m0613": "No playable result was found.",
+  "m0614": "Another action is in progress. Please try again."
 }

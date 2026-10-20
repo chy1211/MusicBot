@@ -12,14 +12,14 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title data-i18n="m0223">Music dashboard</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/dashboard.css?v=r24-lyrics">
-  <script src="/i18n.js?v=r24-lyrics" defer></script>
-  <script src="/dashboard.js?v=r24-lyrics" defer></script>
-  <script src="/library.js?v=r24-lyrics" defer></script>
-  <script src="/popular.js?v=r24-lyrics" defer></script>
-  <script src="/admin.js?v=r24-lyrics" defer></script>
-  <script src="/permissions.js?v=r24-lyrics" defer></script>
-  <script src="/pwa.js?v=r24-lyrics" defer></script>
+  <link rel="stylesheet" href="/dashboard.css?v=r26-lyrics-popular">
+  <script src="/i18n.js?v=r26-lyrics-popular" defer></script>
+  <script src="/dashboard.js?v=r26-lyrics-popular" defer></script>
+  <script src="/library.js?v=r26-lyrics-popular" defer></script>
+  <script src="/popular.js?v=r26-lyrics-popular" defer></script>
+  <script src="/admin.js?v=r26-lyrics-popular" defer></script>
+  <script src="/permissions.js?v=r26-lyrics-popular" defer></script>
+  <script src="/pwa.js?v=r26-lyrics-popular" defer></script>
 </head>
 <body>
 <div class="language-preference"><label for="dashboard-language" data-i18n="language">Language</label>
@@ -190,9 +190,11 @@
 <p id="lyrics-status" class="hint" role="status" aria-live="polite"></p>
 <button id="lyrics-retry" type="button" hidden><span data-i18n="m0609">Retry lyrics</span></button>
 <div id="lyrics-timing-controls" class="lyrics-timing-controls" hidden>
+<button id="lyrics-timing-toggle" type="button" aria-expanded="false" aria-controls="lyrics-timing-menu"><span data-i18n="m0611">Timing adjustments</span> <span aria-hidden="true">▾</span></button>
+<div id="lyrics-timing-menu" class="lyrics-timing-menu" role="group" aria-label="Timing adjustments" data-i18n-aria-label="m0611" hidden>
 <button id="lyrics-minus" type="button"><span data-i18n="m0322">−0.5 s</span></button><button id="lyrics-plus" type="button"><span data-i18n="m0323">+0.5 s</span></button>
-<button id="lyrics-sync" type="button"><span data-i18n="m0142">Sync</span></button><button id="lyrics-reset" type="button"><span data-i18n="m0324">Reset</span></button></div>
-<p id="lyrics-offset" class="hint"></p><p id="lyrics-sync-prompt" class="hint" hidden></p>
+<button id="lyrics-sync" type="button"><span data-i18n="m0142">Sync</span></button><button id="lyrics-reset" type="button"><span data-i18n="m0324">Reset</span></button>
+<p id="lyrics-sync-prompt" class="hint" hidden></p></div></div>
 <div id="lyrics-content" class="lyrics-content" tabindex="0" aria-label="Lyrics content" data-i18n-aria-label="m0325"></div>
 <form id="lyrics-search-form" class="lyrics-search" hidden><label for="lyrics-query"><span data-i18n="m0326">Track and artist</span></label><input id="lyrics-query" maxlength="200"><button id="lyrics-search"><span data-i18n="m0327">Search lyrics</span></button></form>
 </section>

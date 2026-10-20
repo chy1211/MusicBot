@@ -453,3 +453,17 @@ html[data-glass=opaque] :is(.song-choices,.library-menu,.account-actions>div,dia
  .sidebar .page-tabs.nav-compact{height:54px}
  .sidebar .page-tabs.nav-compact button{height:44px}
 }
+
+/* Round 26: stable mobile reading viewport and a persistent timing popover. */
+.lyrics-content{height:min(150px,28dvh);max-height:none;padding-block:55px;overflow-anchor:none}
+.lyrics-content .active{color:var(--green);font-weight:750;background:var(--raised);border-radius:8px}
+.lyrics-timing-controls{position:relative;display:block;margin:4px 0}
+.lyrics-timing-controls button{min-height:44px;min-width:44px}
+.lyrics-timing-menu{position:absolute;z-index:2;right:0;bottom:calc(100% + 56px);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:min(300px,calc(100vw - 56px));padding:10px;border:1px solid var(--line);border-radius:18px;background:var(--popover,var(--opaque));box-shadow:var(--glass-shadow)}
+.lyrics-timing-menu .hint{grid-column:1/-1}
+@media(max-width:760px),(pointer:coarse){
+ .lyrics-content{height:min(150px,28dvh);max-height:none;padding:55px 6px}
+}
+
+.lyrics-timing-menu{max-height:40dvh;overflow:auto;overscroll-behavior:contain}
+.lyrics-panel .section-top button{min-height:44px}

@@ -446,6 +446,9 @@ function shortcutsHelp() {
     $("shortcuts-dialog").showModal();
 }
 function keyboardShortcut(event) {
+  if (event.key === "Escape" && !$("lyrics-timing-menu").hidden) {
+    closeLyricsTiming(true);return;
+  }
   if (event.key === "Escape") {
     if ($("shortcuts-dialog").open) { event.preventDefault(); $("shortcuts-dialog").close(); }
     closeSongChoices(); cancelDrag(t("m0073")); cancelSeek(); noSelection("volume", false);
@@ -669,7 +672,7 @@ function render(next, force = false) {
   lyricsOpen = lyricsPreference && !!state.current && state.lyrics_available !== false;
   $("lyrics-panel").hidden = !lyricsOpen || !$("song-choices").hidden;
   $("lyrics-toggle").setAttribute("aria-expanded", String(lyricsOpen));
-  if (!lyricsOpen) { window.clearTimeout(lyricsOffsetTimer); lyricsOffsetTimer = null; }
+  if (!lyricsOpen) { closeLyricsTiming(); window.clearTimeout(lyricsOffsetTimer); lyricsOffsetTimer = null; }
   if (lyricsOpen && state.current && lyricsTrack !== currentTrackKey() && !lyricsLoading) loadLyrics();
   syncLyrics();
   for (const id of ["volume"]) if ((force || document.activeElement !== $(id)) && state.volume !== null) {
@@ -820,7 +823,10 @@ async function poll() {
 function closeSongChoices(restore = true) {
   const wasOpen = !$("song-choices").hidden;
   $("song-choices").hidden = true;
-  if (typeof lyricsOpen !== "undefined") $("lyrics-panel").hidden = !lyricsOpen;
+  if (typeof lyricsOpen !== "undefined") {
+    $("lyrics-panel").hidden = !lyricsOpen;
+    if (lyricsOpen && wasOpen) { lyricsCenterPending=true; syncLyrics(); }
+  }
   $("bar-title").setAttribute("aria-expanded", "false");
   if (wasOpen && restore) $("bar-title").focus();
 }
@@ -828,7 +834,7 @@ $("bar-title").addEventListener("click", () => {
   if (!state?.current) return;
   const open = $("song-choices").hidden;
   closeSongChoices(false);
-  if (open) { $("lyrics-panel").hidden = true; $("song-choices").hidden = false; $("bar-title").setAttribute("aria-expanded", "true"); $("source-link").focus(); }
+  if (open) { closeLyricsTiming(); $("lyrics-panel").hidden = true; $("song-choices").hidden = false; $("bar-title").setAttribute("aria-expanded", "true"); $("source-link").focus(); }
 });
 document.addEventListener("pointerdown", event => {
   if (!event.target.closest?.(".bar-copy")) closeSongChoices(false);
@@ -1089,7 +1095,7 @@ function resetLyrics(close = false) {
   $("lyrics-content").classList.toggle("plain-lyrics", false);
   $("lyrics-status").textContent = ""; $("lyrics-search-form").hidden = true;
   $("lyrics-query").value = ""; $("lyrics-heading").textContent = t("m0141");
-  $("lyrics-offset").textContent="";$("lyrics-sync-prompt").hidden=true;$("lyrics-sync").textContent=t("m0142");
+  closeLyricsTiming();$("lyrics-sync-prompt").hidden=true;$("lyrics-sync").textContent=t("m0142");
   $("lyrics-timing-controls").hidden=true;
   lyricsUserScrollUntil=0;lyricsAutoScrollUntil=0;lyricsCenterPending=false;
   if (close) {
@@ -1099,9 +1105,6 @@ function resetLyrics(close = false) {
 }
 function applyLyricsOffset(value) {
   lyricsOffset = Number.isFinite(Number(value.offset)) ? Number(value.offset) : 0;
-  const source = {matched:t("m0143"),silence:t("m0144"),manual:t("m0145"),duration:t("m0146")}[value.offset_source];
-  $("lyrics-offset").textContent = (source ? source+" · "+(lyricsOffset>=0?"+":"")+lyricsOffset.toFixed(1)+t("m0147") :
-    t("m0148")) + (value.analysis_pending ? t("m0149") : "");
   lyricsActive=-2;syncLyrics();
 }
 async function pollLyricsOffset() {
@@ -1129,6 +1132,8 @@ async function loadLyrics(query = "", automatic = false) {
   cancelLyricsRetry(!automatic); lyricsRetryQuery = query;
   $("lyrics-retry").hidden = true;
   const guild = selected, epoch = generation, key = currentTrackKey(), request = ++lyricsRequest;
+  closeLyricsTiming();
+  lyricsUserScrollUntil=0;lyricsCenterPending=true;
   lyricsLoading = true; lyricsTrack = key; lyricsLines = []; lyricsActive = -1;
   window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null;lyricsSyncArmed=false;
   $("lyrics-content").replaceChildren(); $("lyrics-content").textContent = "";
@@ -1140,7 +1145,7 @@ async function loadLyrics(query = "", automatic = false) {
     if (!lyricsOpen || epoch !== generation || guild !== selected || key !== currentTrackKey() || request !== lyricsRequest) return;
     $("lyrics-heading").textContent = result.artist ? result.title + " · " + result.artist : result.title || t("m0141");
     lyricsVideo=result.video_id || "";
-    $("lyrics-offset").textContent="";
+    closeLyricsTiming();
     if (result.status === "synced" && Array.isArray(result.lines) && result.lines.length) {
       lyricsLines = result.lines.map((line) => ({time: Number(line.time), text: String(line.text || "")}))
         .filter((line) => Number.isFinite(line.time)).sort((a, b) => a.time - b.time);
@@ -1182,6 +1187,7 @@ function syncLyrics() {
     lyricsActive = index;lyricsCenterPending=true;
     Array.from($("lyrics-content").children).forEach((row, i) => {
       row.classList.toggle("current-line", i === index);
+      row.classList.toggle("active", i === index);
       if (i === index) row.setAttribute("aria-current", "true");
       else row.removeAttribute("aria-current");
     });
@@ -1189,7 +1195,7 @@ function syncLyrics() {
   if (lyricsCenterPending && Date.now()>=lyricsUserScrollUntil && index>=0) {
     const box=$("lyrics-content"),row=box.children[index];
     // Hidden panels have no layout yet. Keep the pending center until visible.
-    if (!row || !box.clientHeight) return;
+    if (!row || $("lyrics-panel").hidden || !box.clientHeight) return;
     const rowRect=row.getBoundingClientRect(),boxRect=box.getBoundingClientRect();
     // Both rectangles use viewport coordinates, independent of offsetParent.
     // Measure after highlighting: the larger active font can wrap onto more lines.
@@ -1210,7 +1216,7 @@ function toggleLyrics(open = !lyricsOpen, persist = true) {
   lyricsOpen = open; $("lyrics-panel").hidden = !open;
   if (open) lyricsCenterPending=true;
   $("lyrics-toggle").setAttribute("aria-expanded", String(open));
-  if (!open) { cancelLyricsRetry(); ++lyricsRequest;++lyricsOffsetSequence;lyricsLoading=false;window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null; }
+  if (!open) { closeLyricsTiming(); cancelLyricsRetry(); ++lyricsRequest;++lyricsOffsetSequence;lyricsLoading=false;window.clearTimeout(lyricsOffsetTimer);lyricsOffsetTimer=null; }
   else if (lyricsTrack !== currentTrackKey() || !$("lyrics-content").textContent && !lyricsLines.length) return loadLyrics();
   else if(lyricsVideo)lyricsOffsetTimer=window.setTimeout(pollLyricsOffset,5000);
   if (open) syncLyrics();
@@ -1227,6 +1233,30 @@ async function changeLyricsOffset(action, extra = {}) {
   } catch(error){if(epoch===generation&&key===currentTrackKey())notice(error.message,true);}
   finally {if(epoch===generation&&key===currentTrackKey()){lyricsTimingBusy=false;controls();}}
 }
+function closeLyricsTiming(focus = false) {
+  $("lyrics-timing-menu").hidden = true;
+  $("lyrics-timing-toggle").setAttribute("aria-expanded", "false");
+  if (focus) $("lyrics-timing-toggle").focus();
+}
+$("lyrics-timing-toggle").addEventListener("click", () => {
+  const open = $("lyrics-timing-menu").hidden;
+  $("lyrics-timing-menu").hidden = !open;
+  $("lyrics-timing-toggle").setAttribute("aria-expanded", String(open));
+});
+document.addEventListener("click", event => {
+  if (!event.target.closest?.("#lyrics-timing-controls")) closeLyricsTiming();
+});
+// Mobile layout changes and BFCache/foreground restoration need another center,
+// even when the active line index did not change while the panel had no layout.
+function restoreLyricsLayout() {
+  if (!lyricsOpen) return;
+  lyricsUserScrollUntil=0;lyricsCenterPending=true;syncLyrics();
+}
+window.addEventListener?.("pageshow", restoreLyricsLayout);
+window.addEventListener?.("resize", restoreLyricsLayout);
+if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => {
+  if (lyricsOpen) { lyricsCenterPending=true;syncLyrics(); }
+}).observe($("lyrics-content"));
 $("lyrics-minus").addEventListener("click",()=>changeLyricsOffset("adjust",{delta:-.5}));
 $("lyrics-plus").addEventListener("click",()=>changeLyricsOffset("adjust",{delta:.5}));
 $("lyrics-reset").addEventListener("click",()=>changeLyricsOffset("reset"));
@@ -1239,7 +1269,9 @@ $("lyrics-sync").addEventListener("click",()=>{
 });
 function lyricUserScroll() { lyricsUserScrollUntil=Date.now()+5000;lyricsCenterPending=true; }
 for(const event of ["wheel","touchstart","pointerdown","keydown"]) $("lyrics-content").addEventListener(event,lyricUserScroll,{passive:true});
-$("lyrics-content").addEventListener("scroll",()=>{if(Date.now()>lyricsAutoScrollUntil)lyricUserScroll();},{passive:true});
+$("lyrics-content").addEventListener("scroll",()=>{
+  if (Date.now()>lyricsAutoScrollUntil && Date.now()<lyricsUserScrollUntil) lyricUserScroll();
+},{passive:true});
 installSeek("progress");
 $("history-refresh").addEventListener("click", () => refreshHistory(true));
 $("lyrics-retry").addEventListener("click", () => { if (!lyricsLoading) return loadLyrics(lyricsRetryQuery); });
@@ -1422,6 +1454,7 @@ $("queue-mine").addEventListener("click", () => setQueueFilter(true));
 document.addEventListener("visibilitychange", async () => {
   stopEvents();
   if (!document.hidden && selected) {
+    restoreLyricsLayout();
     if (Date.now() - statePolledAt >= FALLBACK_POLL_MS) await refresh();
     startEvents(false);
   }

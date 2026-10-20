@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$(mktemp -d /tmp/musicbot-webtest-touch-XXXXXX)
-name="musicbot-webtest-touch-$(basename "$root" | tr '[:upper:]' '[:lower:]')"
+name="${MUSICBOT_TOUCH_PREFIX:-musicbot-webtest-touch}-$(basename "$root" | tr '[:upper:]' '[:lower:]')"
 relay_pid=""
 cleanup() {
   if [ -n "$relay_pid" ]; then
@@ -47,3 +47,5 @@ else:
     raise SystemExit("Isolated demo did not start")
 PY
 node tools/test_dashboard_touch.cjs --url "http://localhost:$port" --output "${MUSICBOT_TOUCH_OUTPUT:-$root/shots}" "$@"
+
+node tools/test_dashboard_round26.cjs --url "http://localhost:$port" --output "${MUSICBOT_TOUCH_OUTPUT:-$root/shots}"
