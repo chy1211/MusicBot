@@ -17,7 +17,7 @@ assert.equal(origin.hostname,"localhost");assert.equal(origin.protocol,"http:");
   await p.waitForSelector("#lyrics-toggle:enabled");
   // Actual short timed lines advance solely from playback's shared clock.
   await p.route("**/api/guilds/1/lyrics",async route=>{
-    const response=await route.fetch(),data=await response.json();
+    const response=await route.fetch();assert.equal(response.status(),200,"demo lyrics must be available, not rate limited");const data=await response.json();
     const current=await p.evaluate(()=>localProgress());
     data.lines=Array.from({length:45},(_,i)=>({time:current-12+i*.75,text:"\u540c\u6b65\u6b4c\u8a5e \u00b7 "+(i+1)}));data.offset=0;data.offset_source="matched";
     await route.fulfill({response,json:data});
@@ -39,10 +39,13 @@ assert.equal(origin.hostname,"localhost");assert.equal(origin.protocol,"http:");
   assert.equal(await p.locator("#lyrics-timing-menu").isVisible(),false);
   await p.screenshot({path:path.join(out,device+"-lyrics-collapsed.png")});
   await click("#lyrics-timing-toggle");assert.equal(await p.locator("#lyrics-timing-toggle").getAttribute("aria-expanded"),"true");
-  for(const id of ["lyrics-minus","lyrics-minus","lyrics-plus","lyrics-plus","lyrics-sync","lyrics-sync","lyrics-reset"]){
+  const timingResponses=[];p.on("response",response=>{if(response.url().endsWith("/lyrics/offset")&&response.request().method()==="POST")timingResponses.push(response.status());});
+  for(const id of ["lyrics-minus","lyrics-plus","lyrics-sync","lyrics-sync","lyrics-reset"]){
     await p.waitForSelector("#"+id+":enabled");await click("#"+id);
     await p.waitForSelector("#"+id+":enabled");assert.equal(await p.locator("#lyrics-timing-menu").isVisible(),true,id);
   }
+  assert.deepEqual(timingResponses,[200,200,200,200]);
+  await p.waitForTimeout(450);await p.waitForSelector("#lyrics-content .active");
   await p.screenshot({path:path.join(out,device+"-lyrics-expanded.png")});
   const targets=await p.locator("#lyrics-timing-menu button").evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return {w:r.width,h:r.height};}));
   assert.ok(targets.every(r=>r.w>=44&&r.h>=44));

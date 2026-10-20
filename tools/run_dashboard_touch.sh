@@ -48,4 +48,19 @@ else:
 PY
 node tools/test_dashboard_touch.cjs --url "http://localhost:$port" --output "${MUSICBOT_TOUCH_OUTPUT:-$root/shots}" "$@"
 
+# The existing touch suite deliberately exhausts some per-member request limits.
+# Restart only this disposable demo so the next suite has a fresh in-memory store.
+docker restart "$name" >/dev/null
+python3 - "$port" <<'PYREADY'
+import sys,time,urllib.request
+for attempt in range(100):
+    try:
+        with urllib.request.urlopen("http://localhost:"+sys.argv[1]+"/",timeout=1) as response:
+            if response.status==200:
+                break
+    except OSError:
+        time.sleep(.2)
+else:
+    raise SystemExit("Isolated demo did not restart")
+PYREADY
 node tools/test_dashboard_round26.cjs --url "http://localhost:$port" --output "${MUSICBOT_TOUCH_OUTPUT:-$root/shots}"
