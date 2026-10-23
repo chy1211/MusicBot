@@ -56,6 +56,7 @@ input[type=range]{accent-color:var(--green)}
 #queue>li{border-radius:14px;padding-block:12px;min-height:82px}
 .queue-cover{border-radius:10px}.queue-head{padding-inline:8px;font-size:11px;letter-spacing:.03em}
 .hint{font-size:12px;line-height:1.7}.song small,.history-info small{font-size:12px}
+.history-list button,#queue-recommendations button,.library-track button{white-space:nowrap;min-width:64px;min-height:44px;flex-shrink:0}
 .playback-bar{left:max(16px,var(--safe-left));right:max(16px,var(--safe-right));bottom:calc(var(--safe-bottom) + 16px);border-radius:var(--r-sheet)}
 .notice{top:calc(var(--safe-top) + 16px);left:max(16px,var(--safe-left));right:max(16px,var(--safe-right));margin-inline:auto;width:fit-content;max-width:min(540px,calc(100vw - var(--safe-left) - var(--safe-right) - 32px));transform:translateY(-8px);border-radius:18px;padding:14px 20px;color:var(--text);background:var(--panel);z-index:80}
 .notice.visible{transform:none}.notice.error{color:var(--error)}
