@@ -4,8 +4,10 @@ import {useRouter,useRoute} from 'vue-router'
 import {dashboard} from '../store'
 import {selectGuild,connect} from '../composables/useDashboard'
 import {t} from '../composables/useLocale'
+import {useLibrary} from '../composables/useLibrary'
+const library=useLibrary()
 const router=useRouter(),route=useRoute(),secret=ref('')
-const owner=computed(()=>dashboard.authMode==='owner'||dashboard.me?.can_manage===true)
+const owner=computed(()=>dashboard.authMode==='owner'||library.payload.value?.owner===true)
 const pages=computed(()=>[{id:'play',key:'m0231'},{id:'library',key:'m0232'},{id:'popular',key:'m0233'},...(owner.value?[{id:'admin',key:'m0234'}]:[])])
 const selected=computed(()=>route.path.slice(1)||'play')
 function refresh(){window.location.reload()}

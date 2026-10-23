@@ -140,6 +140,9 @@ html[data-glass=clear]{--surface:rgba(37,47,40,.82);--panel:rgba(34,43,37,.96);-
 .art>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .art>span{font-size:22px;color:var(--green)}
 .queue-art{width:40px;height:40px}
+.listener>img{width:24px;height:24px;flex:0 0 24px;border-radius:50%;object-fit:cover}
+.skip-link{position:fixed;top:calc(var(--safe-top) + 8px);left:16px;z-index:110;padding:10px 16px;background:var(--flat);color:var(--text);transform:translateY(-200%)}
+.skip-link:focus{transform:none}
 .history-list .art{width:44px;height:44px}
 .permission-row{grid-template-columns:minmax(0,1fr) minmax(80px,120px)}
 .permission-row>label{font-size:13px;overflow-wrap:anywhere}
