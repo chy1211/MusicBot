@@ -403,6 +403,7 @@ class DemoDashboard(Dashboard):
         self.demo_step = 0
         self.app.cleanup_ctx.append(self.demo_updates)
         self.app.router.add_post("/demo-login/{user}", self.fake_callback)
+        self.app.router.add_get("/demo-worker/legacy.js", self.legacy_worker)
 
 
     async def fake_spotify_search(self, path):
@@ -443,6 +444,12 @@ class DemoDashboard(Dashboard):
                 "tracks": tracks, "count": count, "truncated": count > 200,
                 "source_url": url, "source_type": kind}
 
+    async def legacy_worker(self, _request):
+        # Credential-free fixture for real installed-worker upgrade regressions.
+        source = Path(__file__).resolve().parents[1] / "musicbot/web/sw.js"
+        return web.Response(text=source.read_text(encoding="utf-8"),content_type="text/javascript",
+            headers={"Service-Worker-Allowed":"/","Cache-Control":"no-cache"})
+
     async def index(self, request):
         # Demo-only switches; no production API or configuration is involved.
         scenario = request.query.get("demo-lyrics")
@@ -474,7 +481,12 @@ class DemoDashboard(Dashboard):
                  "batch": "https://soundcloud.com/example/playlist"}.get(request.query.get("demo-query"))
         if query:
             response.text = response.text.replace('id="query" type="text"', 'id="query" type="text" value="' + query + '"', 1)
-        response.text = response.text.replace('<h2 id="request-heading">', controls + '<h2 id="request-heading">', 1)
+        if '<h2 id="request-heading">' in response.text:
+            response.text = response.text.replace('<h2 id="request-heading">', controls + '<h2 id="request-heading">', 1)
+        else:
+            # Vue owns the request view; keep isolated demo controls outside its root.
+            seed = ('<input id="demo-query-value" type="hidden" value="' + query + '">') if query else ''
+            response.text = response.text.replace('</body>', '<aside class="demo-controls">' + controls + seed + '</aside></body>', 1)
         return response
 
     def demo_tick(self):

@@ -218,7 +218,7 @@ def summary(title, output):
 
 def host(args):
     source = Path(__file__).read_text(encoding="utf-8")
-    prefix = "musicbot-webtest-smoke-" + uuid.uuid4().hex[:12]
+    prefix = args.name_prefix + "-" + uuid.uuid4().hex[:12]
     names = [prefix + suffix for suffix in ("-required", "-bgutil", "-youtube")]
     docker_platform = ["--platform", args.platform] if args.platform else []
 
@@ -270,6 +270,7 @@ def host(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", nargs="?")
+    parser.add_argument("--name-prefix", default="musicbot-webtest-smoke")
     parser.add_argument("--platform", choices=("linux/amd64", "linux/arm64"))
     parser.add_argument("--network", choices=("bridge", "none"), default="bridge")
     parser.add_argument("--basic-only", action="store_true", help="Offline checks only, e.g. arm64 under QEMU")
@@ -278,6 +279,8 @@ def main():
     parser.add_argument("--attempt-timeout", type=int, choices=range(30, 181), default=90)
     parser.add_argument("--inside", choices=("basic", "required", "youtube"), help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if not re.fullmatch(r"musicbot-webtest-[a-zA-Z0-9_.-]+", args.name_prefix):
+        parser.error("name-prefix must name a disposable musicbot-webtest container")
     if not args.inside and not args.image:
         parser.error("image is required")
     try:

@@ -21,8 +21,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 mkdir "$root/src"
 git archive HEAD | tar -x -C "$root/src"
-printf 'FROM musicbot:ytdlp-base\nUSER 0:0\nWORKDIR /musicbot\nCOPY . /musicbot/\nENTRYPOINT []\n' > "$root/src/Dockerfile.touch"
-docker build --network none -q -t "$name" -f "$root/src/Dockerfile.touch" "$root/src"
+# Build the actual Vue distribution, rather than exercising the old source fallback.
+# Only the build stage needs registry access; the running demo remains network-none.
+docker build -q -t "$name" "$root/src"
 npm install --prefix "$root/deps" --no-audit --no-fund playwright@1.58.2
 export NODE_PATH="$root/deps/node_modules"
 export PLAYWRIGHT_BROWSERS_PATH="$root/browsers"

@@ -515,41 +515,10 @@ class Dashboard(
         return response
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     LYRICS_REQUESTS_PER_MINUTE = 12
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     USER_REQUESTS_PER_MINUTE = 12
-
 
 
     RESOLVE_TIMEOUT = 20
@@ -558,23 +527,6 @@ class Dashboard(
     BATCH_TIMEOUT = 120
     SONG_TIMEOUT = 20
     SEARCH_LIMIT = 5
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     async def start(self):

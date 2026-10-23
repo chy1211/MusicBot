@@ -17,5 +17,15 @@ def check():
     for file in base.glob("*.js"):
         for key in re.findall(r'\bt\("([^"]+)"',file.read_text()):
             assert key in en,(file.name,key)
+    source = ROOT / "frontend/src"
+    for file in [*source.rglob("*.vue"), *source.rglob("*.ts")]:
+        if file.name == "env.d.ts": continue
+        text = file.read_text()
+        assert not re.search(r"[\u3400-\u9fff]", text), f"Hardcoded CJK text: {file}"
+        for key in re.findall(r'(?:data-i18n(?:-[a-z-]+)?=|\bt\()[\"\']([^\"\']+)[\"\']', text):
+            assert key in en, (file.name, key)
+    for locale in ("en", "zh-TW"):
+        public = ROOT / "frontend/public/i18n" / (locale + ".json")
+        assert json.loads(public.read_text()) == json.loads((base/"i18n"/(locale+".json")).read_text()), "Public catalog drift"
     return len(en)
 if __name__=="__main__":print(f"Dashboard catalogs: {check()} matching, translated keys; frontend CJK literals: 0")

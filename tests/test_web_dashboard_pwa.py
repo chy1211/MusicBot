@@ -30,8 +30,17 @@ class PWATests(unittest.IsolatedAsyncioTestCase):
 
     async def test_html_worker_and_offline_assets(self):
         page = await (await self.client.get("/")).text()
-        for item in ("apple-mobile-web-app-capable", "apple-touch-icon", "manifest.webmanifest", "/pwa.js"):
+        for item in ("apple-mobile-web-app-capable", "apple-touch-icon", "manifest.webmanifest"):
             self.assertIn(item, page)
+        if '/assets/' in page:
+            self.assertIn('type="module"', page)
+            from musicbot.web_dashboard import STATIC
+            scripts = list((STATIC / "dist/assets").glob("*.js"))
+            self.assertTrue(scripts)
+            self.assertIn("serviceWorker", scripts[0].read_text())
+            self.assertIn("/sw.js", scripts[0].read_text())
+        else:
+            self.assertIn("/pwa.js", page)
         for path in ("/sw.js", "/pwa.js", "/offline.html", "/library.js", "/admin.js", "/permissions.js"):
             response = await self.client.get(path)
             self.assertEqual(response.status, 200)
