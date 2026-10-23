@@ -48,7 +48,7 @@ module.exports = ({test, assert, openDashboard, baseURL}) => {
     const app = await openDashboard(); t.after(() => app.context.close());
     await app.page.locator("#lyrics-toggle").click();
     await app.page.locator("#lyrics-content > p").first().waitFor({state: "visible"});
-    const reads = () => app.requests.filter(r => /\/lyrics$/.test(r.url)).length;
+    const reads = () => app.requests.filter(r => /^\/api\/guilds\/[^/]+\/lyrics$/.test(r.url)).length;
     const count = reads();
     await app.page.locator("#lyrics-timing-toggle").click();
     await app.page.locator("#lyrics-sync").click();
