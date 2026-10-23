@@ -117,7 +117,7 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
 .notice::before{content:'';width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:var(--green);color:var(--green)}
 .notice.error::before{background:var(--error);color:var(--error)}
 .notice.visible::before{animation:notice-blink 1.2s ease-in-out infinite}
-@keyframes notice-blink{0%,100%{opacity:1;box-shadow:0 0 2px currentColor}50%{opacity:.25;box-shadow:0 0 7px currentColor}}
+@keyframes notice-blink{0%,100%{opacity:1;box-shadow:0 0 7px currentColor}50%{opacity:.25;box-shadow:0 0 0 transparent}}
 @media(min-width:761px){.sidebar .page-tabs{grid-template-columns:1fr;border-radius:18px;background:transparent;gap:8px}.sidebar .page-tabs button{height:48px;text-align:left;padding-inline:18px}.sidebar .page-tabs::before{border-radius:14px}}
 @media(max-width:760px){
  .language-preference{position:absolute;top:calc(var(--safe-top) + 12px);right:max(16px,var(--safe-right));margin:0;z-index:22}
