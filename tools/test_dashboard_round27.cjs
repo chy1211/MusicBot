@@ -10,13 +10,13 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i += 2) {
     const key = argv[i];
     if (!["--url", "--output", "--round"].includes(key) || i + 1 >= argv.length) {
-      throw new Error("Usage: node tools/test_dashboard_round27.cjs --url URL --output DIR --round 1..4");
+      throw new Error("Usage: node tools/test_dashboard_round27.cjs --url URL --output DIR --round 1..99");
     }
     values[key.slice(2)] = argv[i + 1];
   }
   const round = Number(values.round);
-  if (!values.url || !values.output || !Number.isInteger(round) || round < 1 || round > 4) {
-    throw new Error("Usage: node tools/test_dashboard_round27.cjs --url URL --output DIR --round 1..4");
+  if (!values.url || !values.output || !Number.isInteger(round) || round < 1 || round > 99) {
+    throw new Error("Usage: node tools/test_dashboard_round27.cjs --url URL --output DIR --round 1..99");
   }
   const url = new URL(values.url);
   if (url.protocol !== "http:" || url.hostname !== "localhost" || url.username || url.password) throw new Error("Only isolated http://localhost is allowed");
@@ -58,7 +58,7 @@ async function capture(page, output, scope, scene, standalone, errorLog) {
       .filter(el => !el.hidden && el.getClientRects().length);
     const targets = nav.map(el => ({ id: el.id, ...rect(el) }));
     const overlays = [...document.querySelectorAll(
-      "#lyrics-panel:not([hidden]), #song-choices:not([hidden]), #shortcuts-dialog[open], #library-save-dialog[open], #permission-confirm-dialog[open], #notice.visible"
+      "#lyrics-panel:not([hidden]), #lyrics-timing-menu:not([hidden]), #song-choices:not([hidden]), #shortcuts-dialog[open], #library-save-dialog[open], #permission-confirm-dialog[open], #notice.visible"
     )].filter(el => el.getClientRects().length).map(el => ({ id: el.id, ...rect(el) }));
     return {
       width, height, scrollWidth: document.documentElement.scrollWidth,
