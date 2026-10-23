@@ -1184,3 +1184,48 @@ test("R36 favorites menu shows a hint instead of rename", async t => {
     assert.deepEqual(app.errors, []);
   }
 });
+
+test('R37 track list select-all toggle uses select and deselect labels', async t => {
+  const key = 'library.deselectAll';
+  const en = require(path.join(frontend, 'public', 'i18n', 'en.json'));
+  const zh = require(path.join(frontend, 'public', 'i18n', 'zh-TW.json'));
+  assert.equal(en[key], 'Deselect all');
+  assert.equal(zh[key], '\u53d6\u6d88\u5168\u9078');
+  for (const width of [390, 1440]) {
+    const mobile = width === 390;
+    const app = await openDashboard({ width, height: mobile ? 844 : 900 }, {
+      context: mobile ? { isMobile: true, hasTouch: true, colorScheme: 'dark' } : {},
+      setup: r30Library
+    });
+    t.after(() => app.context.close());
+    await app.page.locator('#nav-library').click();
+    await app.page.locator('.library-choice').first().click();
+    const tracks = app.page.locator('#library-list input[type=checkbox]');
+    const count = await tracks.count();
+    assert.ok(count > 0, 'favorites track list has songs');
+    const playSelected = app.page.locator('#library-play-selected');
+    const toggle = app.page.locator('.library-track-tools button');
+    assert.equal((await toggle.textContent()).trim(), '\u5168\u9078');
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+    if (mobile && await app.page.locator('#notice-dismiss').isVisible()) await app.page.locator('#notice-dismiss').click();
+    if (mobile && process.env.R37_SCREENSHOTS_DIR) {
+      await toggle.scrollIntoViewIfNeeded();
+      require('node:fs').mkdirSync(process.env.R37_SCREENSHOTS_DIR, { recursive: true });
+      await app.page.screenshot({ path: path.join(process.env.R37_SCREENSHOTS_DIR, 'r37-select-all-mobile-dark.png'), fullPage: true });
+    }
+    await toggle.click();
+    await app.page.waitForFunction(() => document.querySelectorAll('#library-list input[type=checkbox]:checked').length > 0);
+    assert.equal(await tracks.evaluateAll(items => items.filter(item => item.checked).length), count);
+    assert.equal((await toggle.textContent()).trim(), zh[key]);
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+    assert.match((await playSelected.textContent()).trim(), new RegExp('\\u00b7\\s*' + count + '$'));
+    if (mobile && process.env.R37_SCREENSHOTS_DIR) {
+      await app.page.screenshot({ path: path.join(process.env.R37_SCREENSHOTS_DIR, 'r37-deselect-all-mobile-dark.png'), fullPage: true });
+    }
+    await toggle.click();
+    assert.equal(await tracks.evaluateAll(items => items.filter(item => item.checked).length), 0);
+    assert.equal((await toggle.textContent()).trim(), '\u5168\u9078');
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+    assert.deepEqual(app.errors, []);
+  }
+});

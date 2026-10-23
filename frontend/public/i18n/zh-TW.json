@@ -714,5 +714,6 @@
   "admin.maintenance.sync.unknown": "未知",
   "theme.light": "目前為淺色模式，切換為深色。",
   "theme.dark": "目前為深色模式，切換為淺色。",
-  "library.favorites.builtinHint": "收藏是內建歌單，不能改名或刪除。"
+  "library.favorites.builtinHint": "收藏是內建歌單，不能改名或刪除。",
+  "library.deselectAll": "\u53d6\u6d88\u5168\u9078"
 }
