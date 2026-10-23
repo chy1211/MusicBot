@@ -362,6 +362,7 @@ test("queue empty state remains visible when the fixture has no queued tracks", 
   t.after(() => app.context.close());
   await app.page.goto(baseURL + "/?demo-queue=empty");
   await app.page.waitForFunction(() => document.querySelectorAll("#queue > li").length === 0);
+  await app.page.locator("#queue-empty").waitFor({ state: "visible" });
   assert.ok(await app.page.locator("#queue-empty").isVisible());
   assert.equal(await app.page.locator("#queue-count").textContent(), "0");
   assert.ok(await app.page.locator("#queue-heading").textContent());
