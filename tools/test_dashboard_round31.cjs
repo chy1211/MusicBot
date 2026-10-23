@@ -750,7 +750,7 @@ test("R30 account avatar name and action share a vertical center", async t => {
         await page.route("**/auth/session", async route => {
           const response = await route.fetch();
           const data = await response.json();
-          if (data.authenticated) data.user = { ...data.user, name: "XiaoYi", avatar: baseURL + "/demo-cover/0.svg" };
+          if (data.authenticated) data.user = { ...data.user, name: "DemoUser", avatar: baseURL + "/demo-cover/0.svg" };
           await route.fulfill({ response, json: data });
         });
       }
