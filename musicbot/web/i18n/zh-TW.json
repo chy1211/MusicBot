@@ -713,5 +713,6 @@
   "admin.maintenance.sync.running": "執行中",
   "admin.maintenance.sync.unknown": "未知",
   "theme.light": "目前為淺色模式，切換為深色。",
-  "theme.dark": "目前為深色模式，切換為淺色。"
+  "theme.dark": "目前為深色模式，切換為淺色。",
+  "library.favorites.builtinHint": "收藏是內建歌單，不能改名或刪除。"
 }

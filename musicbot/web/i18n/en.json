@@ -713,5 +713,6 @@
   "admin.maintenance.sync.running": "Running",
   "admin.maintenance.sync.unknown": "Unknown",
   "theme.light": "Current theme: light. Switch to dark.",
-  "theme.dark": "Current theme: dark. Switch to light."
+  "theme.dark": "Current theme: dark. Switch to light.",
+  "library.favorites.builtinHint": "Favorites is a built-in playlist and can't be renamed or deleted."
 }

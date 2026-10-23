@@ -1136,3 +1136,51 @@ test("R34 mobile playlist detail back button and row alignment", async t => {
     await app.context.close();
   }
 });
+
+
+test("R36 favorites menu shows a hint instead of rename", async t => {
+  const key = "library.favorites.builtinHint";
+  const en = require(path.join(frontend, "public", "i18n", "en.json"));
+  const zh = require(path.join(frontend, "public", "i18n", "zh-TW.json"));
+  assert.equal(en[key], "Favorites is a built-in playlist and can't be renamed or deleted.");
+  assert.equal(zh[key], "\u6536\u85cf\u662f\u5167\u5efa\u6b4c\u55ae\uff0c\u4e0d\u80fd\u6539\u540d\u6216\u522a\u9664\u3002");
+  for (const width of [390, 1440]) {
+    const mobile = width === 390;
+    const app = await openDashboard({ width, height: mobile ? 844 : 900 }, {
+      context: mobile ? { isMobile: true, hasTouch: true, colorScheme: "dark" } : {},
+      setup: r30Library
+    });
+    t.after(() => app.context.close());
+    await app.page.locator("#nav-library").click();
+    await app.page.locator(".library-choice").first().click();
+    await app.page.locator("#library-actions>summary").click();
+    assert.equal(await app.page.locator("#library-name").count(), 0);
+    assert.equal(await app.page.locator("#library-rename").count(), 0);
+    assert.equal(await app.page.locator('label[for="library-name"]').count(), 0);
+    const hint = app.page.locator(".library-favorites-hint");
+    await hint.waitFor({ state: "visible" });
+    assert.equal((await hint.textContent()).trim(), zh[key]);
+    if (mobile) {
+      const dir = process.env.R36_SCREENSHOTS_DIR;
+      if (dir) {
+        require("node:fs").mkdirSync(dir, { recursive: true });
+        await app.page.evaluate(() => {
+          const menu = document.querySelector("#library-actions");
+          if (menu) window.scrollBy(0, menu.getBoundingClientRect().top - 190);
+        });
+        await app.page.screenshot({ path: path.join(dir, "r36-favorites-menu-mobile-dark.png") });
+      }
+    }
+    await app.page.locator("#library-actions>summary").click();
+    if (mobile) await app.page.locator("#library-back").click();
+    await app.page.locator(".library-choice").nth(1).click();
+    await app.page.locator("#library-actions>summary").click();
+    const input = app.page.locator("#library-name");
+    const button = app.page.locator("#library-rename");
+    await input.waitFor({ state: "visible" });
+    assert.equal(await input.isEnabled(), true);
+    await button.waitFor({ state: "visible" });
+    assert.equal(await button.isEnabled(), true);
+    assert.deepEqual(app.errors, []);
+  }
+});
