@@ -71,7 +71,7 @@ dialog{max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 48px);max
  .sidebar{top:auto;left:auto;margin:8px max(16px,var(--safe-right)) 12px max(16px,var(--safe-left));padding:0;gap:8px}
  .sidebar .brand{justify-content:flex-start;padding:0;margin:0 0 8px;font-size:18px}
  .sidebar>#guild{max-width:240px}.sidebar>.badge{font-size:10px}
- main{padding:8px max(16px,var(--safe-right)) calc(var(--bar) + var(--safe-bottom) + 116px) max(16px,var(--safe-left))}
+ main{padding:8px max(16px,var(--safe-right)) calc(var(--dock-player-height, var(--bar)) + 56px + 20px + var(--safe-bottom)) max(16px,var(--safe-left))}
  .page-heading{margin:12px 0 22px}.page-heading h1{font-size:30px;line-height:1.25}.user-profile{gap:6px}
  .card{padding:20px 16px;border-radius:22px;margin-bottom:18px}
  .listening-stage{gap:18px;padding:20px;margin-bottom:18px;border-radius:22px}
@@ -168,3 +168,4 @@ html[data-glass=clear]{--surface:rgba(37,47,40,.82);--panel:rgba(34,43,37,.96);-
  #play-view .song a,.history-list a,.popular-row a,.demo-controls a{display:inline-flex;align-items:center;min-height:44px;min-width:44px}
  #admin-apl-search{flex-wrap:wrap}#admin-apl-query{flex:1 1 12rem;min-width:88px}
 }
+@media(max-width:760px){#app::after{content:"";position:fixed;z-index:9;left:0;right:0;bottom:0;height:calc(var(--dock-player-height,110px) + 76px + var(--safe-bottom));background:var(--opaque);pointer-events:none}}
