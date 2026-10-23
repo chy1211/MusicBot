@@ -102,7 +102,7 @@ dialog{max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 48px);max
 }
 @supports not (backdrop-filter:blur(1px)){.sidebar,.playback-bar,.lyrics-panel,.song-choices,.library-menu,.account-actions>div,dialog,.notice,.page-tabs.mobile-glass{background:var(--opaque)}}
 @media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.sidebar,.playback-bar,.lyrics-panel,.song-choices,.library-menu,.account-actions>div,dialog,.notice,.page-tabs.mobile-glass{background:var(--opaque);backdrop-filter:none;-webkit-backdrop-filter:none}}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.notice.visible::before{animation:none!important}}
 
 /* Review 1: optical hierarchy, compact mobile masthead and material fidelity. */
 html[data-glass=clear]{--surface:rgba(37,42,47,.78);--panel:rgba(34,39,44,.92);--dim:1;--glass-blur:22px}
@@ -114,8 +114,10 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
 .page-tabs button[aria-pressed=true],.queue-filters button[aria-pressed=true]{color:var(--accent-ink)}
 .playback-bar,.page-tabs.mobile-glass{box-shadow:inset 0 1px 0 #ffffff70,0 8px 24px -12px #0b0d0f40}
 .notice{display:flex;align-items:center;gap:10px;box-shadow:inset 0 1px 0 #ffffff70,0 8px 24px -12px #0b0d0f50}
-.notice::before{content:'';width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:var(--green)}
-.notice.error::before{background:var(--error)}
+.notice::before{content:'';width:6px;height:6px;flex:0 0 6px;border-radius:50%;background:var(--green);color:var(--green)}
+.notice.error::before{background:var(--error);color:var(--error)}
+.notice.visible::before{animation:notice-blink 1.2s ease-in-out infinite}
+@keyframes notice-blink{0%,100%{opacity:1;box-shadow:0 0 2px currentColor}50%{opacity:.25;box-shadow:0 0 7px currentColor}}
 @media(min-width:761px){.sidebar .page-tabs{grid-template-columns:1fr;border-radius:18px;background:transparent;gap:8px}.sidebar .page-tabs button{height:48px;text-align:left;padding-inline:18px}.sidebar .page-tabs::before{border-radius:14px}}
 @media(max-width:760px){
  .language-preference{position:absolute;top:calc(var(--safe-top) + 12px);right:max(16px,var(--safe-right));margin:0;z-index:22}

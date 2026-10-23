@@ -947,3 +947,64 @@ test("R31 theme toggle sits before the language label and select", async t => {
     }
   }
 });
+
+
+test("R32 notice dot blinks and respects reduced motion", async t => {
+  for (const scenario of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844, mobile: true }
+  ]) {
+    const { width, height, mobile = false } = scenario;
+    const app = await openDashboard({ width, height }, {
+      context: { colorScheme: "dark", isMobile: mobile, hasTouch: mobile }
+    });
+    t.after(() => app.context.close());
+    const notice = app.page.locator("#notice");
+    if (await notice.isVisible()) await app.page.locator("#notice-dismiss").click();
+
+    const successResponse = app.page.waitForResponse(response => ["/api/guilds/1/pause", "/api/guilds/1/resume"].includes(new URL(response.url()).pathname));
+    await app.page.locator("#toggle").click();
+    assert.ok((await successResponse).ok());
+    await notice.waitFor({ state: "visible" });
+    let style = await app.page.evaluate(() => {
+      const dot = getComputedStyle(document.querySelector("#notice"), "::before");
+      return { animationName: dot.animationName, iterationCount: dot.animationIterationCount, width: dot.width, height: dot.height };
+    });
+    assert.notEqual(style.animationName, "none");
+    assert.equal(style.iterationCount, "infinite");
+    assert.equal(style.width, "6px");
+    assert.equal(style.height, "6px");
+
+    const screenshotDir = process.env.R32_SCREENSHOTS_DIR;
+    if (screenshotDir) {
+      require("node:fs").mkdirSync(screenshotDir, { recursive: true });
+      await notice.evaluate(el => { const animation = el.getAnimations().find(item => item.effect?.pseudoElement === "::before"); if (animation) animation.currentTime = 0; });
+      await app.page.waitForTimeout(30);
+      const box = await notice.boundingBox();
+      await app.page.screenshot({ path: path.join(screenshotDir, "r32-notice-dark-" + width + ".png"), clip: box });
+    }
+
+    await app.page.route("**/api/guilds/1/pause", route => route.fulfill({ status: 500, json: { error: "fixture failure" } }));
+    await app.page.route("**/api/guilds/1/resume", route => route.fulfill({ status: 500, json: { error: "fixture failure" } }));
+    const failedResponse = app.page.waitForResponse(response => ["/api/guilds/1/pause", "/api/guilds/1/resume"].includes(new URL(response.url()).pathname));
+    await app.page.locator("#toggle").click();
+    assert.equal((await failedResponse).status(), 500);
+    await app.page.locator("#notice.error").waitFor({ state: "visible" });
+    style = await app.page.evaluate(() => {
+      const dot = getComputedStyle(document.querySelector("#notice"), "::before");
+      return { animationName: dot.animationName, iterationCount: dot.animationIterationCount, width: dot.width, height: dot.height };
+    });
+    assert.notEqual(style.animationName, "none");
+    assert.equal(style.iterationCount, "infinite");
+    assert.equal(style.width, "6px");
+    assert.equal(style.height, "6px");
+
+    await app.page.emulateMedia({ reducedMotion: "reduce" });
+    const reduced = await app.page.evaluate(() => {
+      const dot = getComputedStyle(document.querySelector("#notice"), "::before");
+      return { animationName: dot.animationName, duration: dot.animationDuration };
+    });
+    assert.ok(reduced.animationName === "none" || reduced.duration === "0s", JSON.stringify(reduced));
+    assert.deepEqual(app.errors.filter(error => !error.includes("Failed to load resource: the server responded with a status of 500")), []);
+  }
+});
