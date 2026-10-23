@@ -44,8 +44,10 @@ async function openDashboard(viewport = { width: 1440, height: 1000 }, options =
   page.on("pageerror", error => errors.push(String(error)));
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   if (options.setup) await options.setup(page);
+  const sessionResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/auth/session");
   await page.goto(baseURL + "/?demo-queue=filled&demo-lyrics=synced", { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => document.querySelector("#dashboard")?.getClientRects().length || document.querySelector("#discord-login")?.getClientRects().length);
+  await (await sessionResponse).finished();
+  await page.waitForFunction(skip => document.querySelector("#dashboard")?.getClientRects().length || document.querySelector(skip ? "#login-screen" : "#discord-login")?.getClientRects().length, options.authenticate === false);
   if (options.authenticate === false) return { context, page, requests, errors };
   if (await page.locator("#discord-login").isVisible().catch(() => false)) await page.locator("#discord-login").click();
   await page.waitForFunction(() => {
@@ -380,3 +382,4 @@ test("session logout clears the rendered dashboard and sends the protected reque
 
 require("./dashboard_round31_regressions.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_async.cjs")({test, assert, openDashboard, baseURL});
+require("./dashboard_round31_auth_cases.cjs")({test, assert, openDashboard, baseURL});
