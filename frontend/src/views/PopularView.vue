@@ -22,7 +22,7 @@ const statusText = computed(() => {
 <template>
   <section id="popular-panel" class="card popular-page" :hidden="!visible" aria-labelledby="popular-heading">
     <header class="section-top popular-heading">
-      <div><p class="eyebrow">{{ t('m0233') }}</p><h2 id="popular-heading">{{ t('m0233') }}</h2></div>
+      <div><h2 id="popular-heading">{{ t('m0233') }}</h2></div>
       <button id="popular-refresh" type="button" class="subtle" :disabled="popular.loading.value || !popular.hasGuild.value" :aria-busy="popular.loading.value" @click="popular.load()">{{ t('m0269') }}</button>
     </header>
     <div class="popular-toolbar"><label for="popular-period">{{ t('m0271') }}</label><select id="popular-period" :value="popular.period.value" @change="popular.setPeriod(($event.target as HTMLSelectElement).value)"><option value="7">{{ t('m0272') }}</option><option value="30">{{ t('m0273') }}</option><option value="all">{{ t('m0274') }}</option></select></div>
