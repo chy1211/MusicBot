@@ -5,6 +5,8 @@ import { dashboard } from '../store'
 import { t } from '../composables/useLocale'
 import { useLibrary } from '../composables/useLibrary'
 import PlaylistCover from '../components/PlaylistCover.vue'
+import TrackArt from '../components/TrackArt.vue'
+import { trackThumbnail } from '../composables/useTrack'
 
 const route = useRoute()
 const router = useRouter()
@@ -121,8 +123,7 @@ watch(library.saveDialogOpen, async open => {
           <ol id="library-list" class="library-list">
             <li v-for="(song, index) in active.tracks" :key="song.url + index" class="library-track">
               <input type="checkbox" :checked="library.selected.value.includes(index)" :aria-label="t('m0095') + song.title" @change="library.toggleTrack(index, ($event.target as HTMLInputElement).checked)">
-              <img v-if="library.safeUrl(song.thumbnail)" class="library-track-cover" :src="library.safeUrl(song.thumbnail)" alt="" loading="lazy" referrerpolicy="no-referrer" @error="($event.target as HTMLImageElement).hidden = true">
-              <span v-else class="library-track-cover library-track-cover-empty" aria-hidden="true">♫</span>
+              <TrackArt class="library-track-cover" :track="{ thumbnail: trackThumbnail(song) }" />
               <div class="song"><p><a v-if="library.safeUrl(song.url)" :href="library.safeUrl(song.url)" target="_blank" rel="noopener noreferrer">{{ song.title }}</a><span v-else>{{ song.title }}</span></p><small>{{ library.formatDuration(song.duration) }}</small></div>
               <button type="button" class="subtle library-remove" :aria-label="t('m0194') + song.title" :disabled="library.busy.value" @click="library.removeTrack(index)">{{ t('m0004') }}</button>
             </li>

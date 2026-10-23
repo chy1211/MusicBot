@@ -835,3 +835,37 @@ test("R30 theme toggle persists overrides and tolerates blocked localStorage", a
   assert.deepEqual(blocked.errors, []);
   console.log("R30_STORAGE_BLOCKED_ERRORS=" + JSON.stringify(blocked.errors));
 });
+
+
+test("R30 saved YouTube tracks derive the same artwork as playlist covers", async t => {
+  const app = await openDashboard({ width: 390, height: 844 }, {
+    context: { isMobile: true, hasTouch: true }, setup: r30Library
+  });
+  t.after(() => app.context.close());
+  await app.page.locator("#nav-library").click();
+  await app.page.locator(".library-choice").first().click();
+  const first = app.page.locator("#library-list>li").first();
+  await first.waitFor({ state: "visible" });
+  const expected = "https://i.ytimg.com/vi/demo0000001/mqdefault.jpg";
+  assert.equal(await first.locator("img").getAttribute("src"), expected);
+  await first.scrollIntoViewIfNeeded();
+  await app.page.waitForFunction(() => document.querySelector("#library-list>li img")?.naturalWidth > 0);
+  assert.ok(await app.page.locator(".playlist-cover-hero img").evaluateAll((els, src) => els.some(el => el.src === src), expected));
+  assert.equal(await app.page.locator("#library-list>li").nth(1).locator("img").getAttribute("src"), baseURL + "/demo-cover/2.svg");
+  assert.equal(await app.page.locator("#library-list>li").nth(2).locator("img").count(), 0);
+  assert.equal(await app.page.locator("#library-list>li").nth(2).locator(".art>span").isVisible(), true);
+  await app.page.locator("#library-list").evaluate(el => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 160));
+  await r30Shot(app.page, "issue5-mobile-covers.png");
+  await app.page.locator("#library-back").click();
+  await app.page.locator(".library-choice").nth(1).click();
+  assert.equal(await app.page.locator("#library-list img").first().getAttribute("src"), "https://i.ytimg.com/vi/demo0000002/mqdefault.jpg");
+  await app.page.setViewportSize({ width: 1440, height: 1000 });
+  await app.page.evaluate(() => window.scrollTo(0, 0));
+  await app.page.locator(".library-choice").first().click();
+  await app.page.waitForFunction(() => {
+    const images = [...document.querySelectorAll("#library-list .art img,.playlist-cover-hero img")];
+    return images.length === 4 && images.every(img => img.naturalWidth > 0);
+  });
+  await r30Shot(app.page, "issue5-desktop-covers.png");
+  assert.deepEqual(app.errors, []);
+});
