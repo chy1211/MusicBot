@@ -477,3 +477,78 @@ require("./dashboard_round31_sse.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_spotify.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_media_gestures.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_sse_fallback.cjs")({test, assert, openDashboard, baseURL});
+
+test("search preview actions stay in the action column on desktop and mobile", async t => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    const app = await openDashboard(viewport);
+    t.after(() => app.context.close());
+    assert.equal(await app.page.locator("#request-action").count(), 0, "request purpose select must be removed");
+    await app.page.locator("#query").fill("Sunset");
+    await app.page.locator("#enqueue").click();
+    await app.page.locator("#preview-panel").waitFor({ state: "visible" });
+    const measured = await app.page.locator("#preview-results .preview-item").evaluateAll(items => items.map(item => {
+      const art = item.firstElementChild.getBoundingClientRect();
+      const buttons = [...item.querySelectorAll(".preview-actions button")].map(button => {
+        const rect = button.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        const lines = new Set([...range.getClientRects()].filter(r => r.width > 0 && r.height > 0).map(r => Math.round(r.top))).size;
+        return { text: button.innerText, x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, lines };
+      });
+      let overlaps = 0;
+      for (let i = 0; i < buttons.length; i++) for (let j = i + 1; j < buttons.length; j++) {
+        if (Math.min(buttons[i].right, buttons[j].right) - Math.max(buttons[i].x, buttons[j].x) > .5 &&
+            Math.min(buttons[i].bottom, buttons[j].bottom) - Math.max(buttons[i].y, buttons[j].y) > .5) overlaps++;
+      }
+      return { artRight: art.right, buttons, overlaps };
+    }));
+    console.log("R28_PREVIEW_" + viewport.width + "=" + JSON.stringify(measured));
+    assert.ok(measured.length > 0);
+    for (const item of measured) {
+      assert.ok(item.buttons.length >= 1);
+      assert.equal(item.overlaps, 0, JSON.stringify(item));
+      for (const button of item.buttons) {
+        assert.equal(button.lines, 1, "button label must stay on one line: " + JSON.stringify(button));
+        assert.ok(button.x >= item.artRight, "button must not sit in the cover column: " + JSON.stringify(item));
+      }
+    }
+    assert.deepEqual(app.errors, []);
+  }
+});
+
+test("mobile queue long-press drag follows the finger without re-rendering rows", async t => {
+  const app = await openDashboard({ width: 390, height: 844 }, { context: { hasTouch: true, isMobile: true } });
+  t.after(() => app.context.close());
+  await app.page.locator("#queue > li").nth(2).waitFor({ state: "visible" });
+  await app.page.locator("#queue").scrollIntoViewIfNeeded();
+  const cdp = await app.context.newCDPSession(app.page);
+  const touch = (type, x, y) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1, radiusX: 3, radiusY: 3, force: 1 }] });
+  const handle = await app.page.locator("#queue > li:first-child .drag-handle").boundingBox();
+  const third = await app.page.locator("#queue > li:nth-child(3)").boundingBox();
+  await app.page.evaluate(() => {
+    window.__r28 = { added: 0, removed: 0, samples: [] };
+    new MutationObserver(list => { for (const m of list) { window.__r28.added += [...m.addedNodes].filter(n => n.nodeName === "LI").length; window.__r28.removed += [...m.removedNodes].filter(n => n.nodeName === "LI").length; } })
+      .observe(document.querySelector("#queue"), { childList: true });
+    const tick = () => { const row = document.querySelector("#queue > li.drag-active"); if (row) window.__r28.samples.push(row.getBoundingClientRect().top); if (!window.__r28.stop) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  });
+  const x = handle.x + handle.width / 2, y0 = handle.y + handle.height / 2, y1 = third.y + Math.min(third.height / 2, 50);
+  await touch("touchStart", x, y0);
+  await app.page.waitForTimeout(520);
+  assert.equal(await app.page.locator("body").evaluate(e => e.classList.contains("queue-dragging")), true, "long press should activate");
+  for (let i = 1; i <= 16; i++) { await touch("touchMove", x, y0 + (y1 - y0) * i / 16); await app.page.waitForTimeout(32); }
+  await app.page.waitForTimeout(100);
+  const result = await app.page.evaluate(() => { window.__r28.stop = true; return window.__r28; });
+  await touch("touchEnd");
+  await app.page.waitForFunction(() => !document.body.classList.contains("queue-dragging"));
+  let backJumps = 0, maxBack = 0;
+  for (let i = 1; i < result.samples.length; i++) { const d = result.samples[i] - result.samples[i - 1]; if (d < -8) { backJumps++; } maxBack = Math.min(maxBack, d); }
+  console.log("R28_DRAG=" + JSON.stringify({ samples: result.samples.length, added: result.added, removed: result.removed, backJumps, maxBack }));
+  assert.ok(result.samples.length >= 10, "dragged row should be sampled while moving");
+  assert.equal(result.added + result.removed, 0, "queue rows must not be replaced during drag");
+  assert.equal(backJumps, 0, "dragged row must not jump back more than 8px");
+  await app.page.waitForFunction(() => true);
+  await app.page.waitForTimeout(650);
+  assert.equal(app.requests.filter(r => /\/queue\/move$/.test(r.url)).length, 1);
+  assert.deepEqual(app.errors, []);
+});

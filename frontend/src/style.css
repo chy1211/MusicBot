@@ -195,3 +195,15 @@ html[data-glass=clear]{--surface:rgba(37,42,47,.78);--panel:rgba(34,39,44,.92);-
  #history-list .history-actions{grid-column:2;width:auto;justify-content:flex-start;flex-wrap:nowrap}
  #history-list .history-actions button{min-width:64px;white-space:nowrap}
 }
+
+/* Keep both confirmation actions in the action column, including narrow screens. */
+.preview-item{grid-template-columns:64px minmax(0,1fr) auto}
+.preview-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;min-width:0}
+.preview-actions button{white-space:nowrap;flex:0 0 auto}
+@media(max-width:760px){
+ .preview-item{grid-template-columns:48px minmax(0,1fr)}
+ .preview-actions{grid-column:2;justify-content:flex-start}
+ .preview-actions button{padding-inline:12px}
+}
+/* A pointer-controlled row must not interpolate behind the finger. */
+#queue>li.drag-active{transition:none;z-index:4;background:var(--opaque);outline:1px solid var(--green);will-change:transform}
