@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#17201b">
+  <title data-i18n="offline.title">Offline · Music dashboard</title>
+  <link rel="stylesheet" href="/offline.css">
+  <script src="/offline.js" defer></script>
+</head>
+<body>
+  <main class="offline-shell">
+    <section class="offline-card" aria-labelledby="offline-heading">
+      <div class="offline-mark" aria-hidden="true"><span></span></div>
+      <p class="offline-eyebrow">MUSIC DASHBOARD</p>
+      <h1 id="offline-heading" data-i18n="offline.heading">You are offline</h1>
+      <p class="offline-copy" data-i18n="offline.body">Open the dashboard again when your connection returns.</p>
+      <a class="offline-retry" href="/" data-i18n="m0239">Reconnect</a>
+      <div class="offline-language-row">
+        <label for="offline-language" data-i18n="language">Language</label>
+        <select id="offline-language" aria-label="Language" data-i18n-aria-label="language">
+          <option value="en" data-i18n="language.en">English</option>
+          <option value="zh-TW" data-i18n="language.zh-TW">Traditional Chinese</option>
+        </select>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

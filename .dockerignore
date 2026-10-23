@@ -23,3 +23,6 @@ Dockerfile.ytdlp*
 .idea
 .vscode
 .env*/
+
+frontend/node_modules
+musicbot/web/dist

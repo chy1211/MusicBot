@@ -31,3 +31,7 @@ i18n/*/LC_MESSAGES/*.mo
 !.env.example
 
 /env*/
+
+# Dashboard toolchain
+frontend/node_modules/
+musicbot/web/dist/

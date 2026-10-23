@@ -25,6 +25,7 @@ function libraryClear() {
   $("library-panel").hidden = true; $("library-save-dialog").close?.();
 }
 function libraryView(page) {
+  if (page !== libraryPage) window.scrollTo?.(0, 0);
   libraryPage = page;
   window.dispatchEvent?.(new CustomEvent("musicbot:navigate", {detail: page}));
   $("play-view").hidden = page !== "play"; $("library-panel").hidden = page !== "library";

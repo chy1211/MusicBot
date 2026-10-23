@@ -1,4 +1,12 @@
 # syntax=docker/dockerfile:1
+FROM node:22-alpine AS frontend
+WORKDIR /build/frontend
+COPY frontend/package*.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+COPY musicbot/web/ /build/musicbot/web/
+RUN npm run build
+
 FROM python:3.12-alpine AS wheels
 RUN apk add --no-cache build-base libffi-dev libsodium-dev
 WORKDIR /build
@@ -16,6 +24,7 @@ COPY --from=wheels /wheels /wheels
 RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/*.whl && rm -rf /wheels
 WORKDIR /musicbot
 COPY . .
+COPY --from=frontend /build/musicbot/web/dist /musicbot/musicbot/web/dist
 # Only public examples enter the image (also enforced by .dockerignore).
 RUN mkdir -p sample_config audio_cache config data logs \
     && cp config/example_* sample_config/ \

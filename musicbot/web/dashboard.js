@@ -648,6 +648,7 @@ function renderPreviewResults(results, action = "play") {
 }
 
 function render(next, force = false) {
+  window.dispatchEvent?.(new CustomEvent("musicbot:state", {detail: next}));
   const previousTrack = currentTrackKey();
   state = next; stateAt = Date.now();
   if (seekDrag && seekDrag.track !== currentTrackKey()) cancelSeek();
