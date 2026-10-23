@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, "..");
 const { chromium } = require("playwright");
 const http = require("node:http");
 const frontend = path.join(root, "frontend");
-const baseURL = "http://localhost:18310";
+const baseURL = process.env.ROUND31_BASE_URL || "http://localhost:18310";
 let serverProcess;
 let browser;
 
@@ -1006,5 +1006,133 @@ test("R32 notice dot blinks and respects reduced motion", async t => {
     });
     assert.ok(reduced.animationName === "none" || reduced.duration === "0s", JSON.stringify(reduced));
     assert.deepEqual(app.errors.filter(error => !error.includes("Failed to load resource: the server responded with a status of 500")), []);
+  }
+});
+
+
+test("R34 mobile playlist detail back button and row alignment", async t => {
+  for (const { width, height, mode, mobile } of [
+    { width: 390, height: 844, mode: "dark", mobile: true },
+    { width: 390, height: 844, mode: "light", mobile: true },
+    { width: 1440, height: 900, mode: "dark", mobile: false }
+  ]) {
+    const longTitle = "\u9577".repeat(80);
+    const app = await openDashboard({ width, height }, {
+      context: { colorScheme: mode, isMobile: mobile, hasTouch: mobile, reducedMotion: "reduce" },
+      setup: async page => {
+        await r30Library(page);
+        await page.route("**/auth/session", async route => {
+          const response = await route.fetch();
+          const data = await response.json();
+          if (data.authenticated) data.user = { ...data.user, name: "DemoUser" };
+          await route.fulfill({ response, json: data });
+        });
+        await page.route("**/api/library", async route => {
+          await route.fulfill({ json: { revision: "r34-1", owner: true, playlists: [
+            { id: "favorites", name: "Favorites", tracks: [
+              { title: longTitle, url: "https://youtu.be/demo0000001", duration: 296 },
+              { title: "DemoUser track", url: "https://youtu.be/demo0000002", duration: 216 },
+              { title: "Owner track without artwork", url: "https://soundcloud.com/example/no-art", duration: 60 }
+            ] }
+          ] } });
+        });
+        await page.route("**/api/guilds/1/resolve", route => route.fulfill({ json: { results: [
+          { kind: "playlist", title: "Owner import preview", url: "https://example.com/playlist", thumbnail: baseURL + "/demo-cover/2.svg",
+            allowed: true, preview_id: "r34-preview", count: 2, checked_count: 2, eligible_count: 2,
+            entries: [
+              { item_id: "one", title: longTitle, url: "https://example.com/one", duration: 120, allowed: true },
+              { item_id: "two", title: "DemoUser preview track", url: "https://example.com/two", duration: 60, allowed: true, default_selected: false }
+            ] }
+        ] } }));
+      }
+    });
+    t.after(() => app.context.close());
+    if (await app.page.locator(".notice-dismiss").isVisible()) await app.page.locator(".notice-dismiss").click();
+    await app.page.locator("#nav-library").click();
+    await app.page.locator(".library-choice").first().click();
+    await app.page.locator("#library-list > li").first().waitFor({ state: "visible" });
+    await app.page.locator('#library-list input[type="checkbox"]').first().check();
+    await app.page.locator("#library-detail").scrollIntoViewIfNeeded();
+    const result = await app.page.evaluate(() => {
+      const rect = el => {
+        const b = el.getBoundingClientRect();
+        return { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width, height: b.height, cx: (b.left + b.right) / 2, cy: (b.top + b.bottom) / 2 };
+      };
+      const clippedBy = el => {
+        const b = el.getBoundingClientRect(), clipped = [];
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const s = getComputedStyle(p), r = p.getBoundingClientRect();
+          if (/(hidden|clip|auto|scroll)/.test(s.overflowX) && (b.left < r.left + p.clientLeft - .5 || b.right > r.left + p.clientLeft + p.clientWidth + .5)) clipped.push(p.id || p.className);
+        }
+        return clipped;
+      };
+      const back = document.querySelector("#library-back"), range = document.createRange();
+      range.selectNodeContents(back);
+      const b = range.getBoundingClientRect();
+      return {
+        back: rect(back), content: { cx: (b.left + b.right) / 2, cy: (b.top + b.bottom) / 2 },
+        cover: rect(document.querySelector(".playlist-cover-hero")), play: rect(document.querySelector("#library-play-all")),
+        backRadius: getComputedStyle(back).borderRadius, playRadius: getComputedStyle(document.querySelector("#library-play-all")).borderRadius,
+        rows: [...document.querySelectorAll("#library-list > li")].map(row => {
+          const [check, art, song, remove] = row.children, s = getComputedStyle(check), p = song.querySelector("p");
+          return { row: rect(row), boxes: [check, art, song, remove].map(rect), checked: check.checked,
+            border: parseFloat(s.borderTopWidth), shadow: s.boxShadow, borderColor: s.borderTopColor, background: s.backgroundColor,
+            clipped: clippedBy(remove), title: p.textContent, titleHeight: p.getBoundingClientRect().height,
+            lineHeight: parseFloat(getComputedStyle(p).lineHeight), ellipsis: getComputedStyle(p).textOverflow,
+            nowrap: getComputedStyle(p).whiteSpace, textOverflow: p.scrollWidth > p.clientWidth };
+        })
+      };
+    });
+    console.log("R34_LAYOUT_" + width + "_" + mode + "=" + JSON.stringify(result));
+    if (mobile) {
+      assert.ok(Math.abs(result.back.cx - result.content.cx) <= 2, "back horizontal center");
+      assert.ok(Math.abs(result.back.cy - result.content.cy) <= 2, "back vertical center");
+      assert.ok(Math.abs(result.back.left - result.cover.left) <= 2, "back and cover left edge");
+      assert.ok(Math.abs(result.back.left - result.play.left) <= 2, "back and toolbar left edge");
+      assert.ok(Math.abs(result.back.height - result.play.height) <= 2, "back and toolbar height");
+      assert.equal(result.backRadius, result.playRadius);
+    }
+    for (const row of result.rows) {
+      for (let i = 0; i < 3; i++) assert.ok(row.boxes[i].right <= row.boxes[i + 1].left, "overlap: " + JSON.stringify(row));
+      const centers = row.boxes.map(b => b.cy);
+      assert.ok(Math.max(...centers) - Math.min(...centers) <= 2, "row vertical centers");
+      assert.ok(row.boxes[0].left >= row.row.left && row.boxes[3].right <= row.row.right, "row containment");
+      assert.deepEqual(row.clipped, [], "delete button clipped by ancestor");
+      if (!row.checked) {
+        assert.ok(row.border > 0 || row.shadow !== "none", "unchecked checkbox outline");
+        const luminance = color => {
+          const rgb = color.match(/[\d.]+/g).slice(0, 3).map(v => Number(v) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+          return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
+        };
+        const a = luminance(row.borderColor), b = luminance(row.background);
+        const contrast = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+        assert.ok(contrast >= 3, "checkbox contrast " + contrast);
+        console.log("R34_CHECKBOX_CONTRAST_" + width + "_" + mode + "=" + contrast.toFixed(2));
+      }
+    }
+    const long = result.rows[0];
+    assert.equal(long.title.length, 80);
+    assert.equal(long.nowrap, "nowrap");
+    assert.equal(long.ellipsis, "ellipsis");
+    assert.ok(long.textOverflow && long.titleHeight <= long.lineHeight + 1, "80-character title stays on one truncated line");
+    const dir = process.env.R34_SCREENSHOTS_DIR;
+    if (dir) {
+      require("node:fs").mkdirSync(dir, { recursive: true });
+      await app.page.screenshot({ path: path.join(dir, "r34-playlist-" + width + "-" + mode + ".png") });
+    }
+    // Import preview has one article cover, and text-only selectable entries (no per-entry cover).
+    await app.page.locator("#nav-play").click();
+    await app.page.locator("#query").fill("https://example.com/playlist");
+    await app.page.locator("#enqueue").click();
+    await app.page.locator(".playlist-selection input").first().waitFor({ state: "visible" });
+    const preview = await app.page.locator(".playlist-selection label").evaluateAll(labels => labels.map(label => {
+      const [check, text] = label.children, a = check.getBoundingClientRect(), b = text.getBoundingClientRect(), r = label.getBoundingClientRect();
+      return { checkRight: a.right, textLeft: b.left, textRight: b.right, rowRight: r.right, centerDelta: Math.abs((a.top + a.bottom - b.top - b.bottom) / 2), width: a.width, height: a.height };
+    }));
+    assert.equal(preview.length, 2);
+    for (const row of preview) assert.ok(row.checkRight <= row.textLeft && row.textRight <= row.rowRight && row.centerDelta <= 2 && row.width === 24 && row.height === 24, JSON.stringify(row));
+    console.log("R34_IMPORT_PREVIEW_" + width + "_" + mode + "=" + JSON.stringify(preview));
+    assert.deepEqual(app.errors, []);
+    await app.context.close();
   }
 });

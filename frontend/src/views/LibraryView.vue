@@ -98,7 +98,7 @@ watch(library.saveDialogOpen, async open => {
       </aside>
 
       <section id="library-detail" class="library-detail" aria-labelledby="library-detail-heading">
-        <button id="library-back" type="button" class="subtle library-back" @click="backToLists">← <span>{{ t('m0279') }}</span></button>
+        <button id="library-back" type="button" class="subtle library-back" @click="backToLists"><span>← {{ t('m0279') }}</span></button>
         <template v-if="active">
           <div class="library-detail-title-row">
             <PlaylistCover :tracks="active.tracks" :size="72" :label="library.playlistLabel(active)" class="playlist-cover-hero" />

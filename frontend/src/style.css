@@ -254,3 +254,33 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
  .sidebar .brand{margin-right:0;max-width:calc(100% - 184px);white-space:normal;line-height:1.25}
 }
 @media(prefers-reduced-motion:reduce){#theme-toggle svg{transition:none}}
+
+
+/* R34: the Vue row has four cells; override the legacy five-column ID rule. */
+#library-list>.library-track{
+ grid-template-columns:24px 42px minmax(0,1fr) auto;
+ align-items:center;gap:12px;min-width:0;
+}
+#library-list .song>p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#library-list .library-remove{border:1px solid var(--line);padding:9px 12px;min-height:44px}
+
+/* Keep selection controls independent of the generic text-input padding. */
+#library-list input[type=checkbox],.playlist-selection input[type=checkbox]{
+ appearance:none;-webkit-appearance:none;position:relative;
+ flex:0 0 24px;width:24px;height:24px;min-width:24px;min-height:24px;
+ margin:0;padding:0;border:2px solid var(--muted);border-radius:6px;
+ background:var(--opaque);box-shadow:none;cursor:pointer;
+}
+#library-list input[type=checkbox]:checked,.playlist-selection input[type=checkbox]:checked{
+ background:var(--green);border-color:var(--green);
+}
+#library-list input[type=checkbox]:checked::after,.playlist-selection input[type=checkbox]:checked::after{
+ content:"";position:absolute;left:6px;top:2px;width:6px;height:11px;
+ border:solid var(--accent-ink);border-width:0 2px 2px 0;transform:rotate(45deg);
+}
+.playlist-selection label>span{min-width:0}
+
+@media(max-width:760px){
+ #library-back{display:inline-flex;align-items:center;justify-content:center;padding:9px 18px;min-height:44px}
+ #library-list>.library-track{grid-template-columns:24px 38px minmax(0,1fr) auto;gap:8px}
+}
