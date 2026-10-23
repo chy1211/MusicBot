@@ -1,7 +1,7 @@
 ﻿import { computed, ref, watch } from 'vue'
-import { dashboard } from '../store'
+import { dashboard, type Snapshot } from '../store'
 import { request } from '../api'
-import { notice } from './useDashboard'
+import { applySnapshot, notice } from './useDashboard'
 import { t } from './useLocale'
 import { safeURL, songIdentity, trackThumbnail } from './useTrack'
 
@@ -116,11 +116,12 @@ async function play(items?: number[]): Promise<void> {
   try {
     const body: { revision: string; selected_items?: string[] } = { revision: payload.value.revision }
     if (items) body.selected_items = items.map(String)
-    const result = await request<{ message?: string; skipped?: number }>(
+    const result = await request<{ message?: string; skipped?: number; state?: Snapshot }>(
       '/api/guilds/' + encodeURIComponent(guild) + '/library/' + encodeURIComponent(list.id) + '/play',
       { method: 'POST', body },
     )
     if (!current(epoch, guild, sessionEpoch)) return
+    if (result.state) { dashboard.stateSequence++; applySnapshot(result.state) }
     notice(result.message || t('m0195'))
     if ((result.skipped ?? 0) > 0) loadError.value = result.message || t('m0195')
   } catch (error) { if (current(epoch, guild, sessionEpoch)) loadError.value = errorText(error) }
