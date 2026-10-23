@@ -740,3 +740,32 @@ test("R30 playlist rename keeps input width and saves on desktop and mobile", as
     assert.deepEqual(app.errors, []);
   }
 });
+
+
+test("R30 account avatar name and action share a vertical center", async t => {
+  for (const width of [1440, 390]) {
+    const app = await openDashboard({ width, height: width === 390 ? 844 : 1000 }, {
+      context: width === 390 ? { isMobile: true, hasTouch: true } : {},
+      setup: async page => {
+        await page.route("**/auth/session", async route => {
+          const response = await route.fetch();
+          const data = await response.json();
+          if (data.authenticated) data.user = { ...data.user, name: "XiaoYi", avatar: baseURL + "/demo-cover/0.svg" };
+          await route.fulfill({ response, json: data });
+        });
+      }
+    });
+    t.after(() => app.context.close());
+    await app.page.locator("#user-avatar").waitFor({ state: "visible" });
+    await app.page.waitForFunction(() => document.querySelector("#user-avatar")?.naturalWidth > 0);
+    const boxes = await app.page.locator("#user-avatar,#user-name,.account-actions>summary").evaluateAll(els =>
+      els.map(el => { const r = el.getBoundingClientRect(); return { id: el.id || el.tagName, center: r.top + r.height / 2, height: r.height }; }));
+    console.log("R30_ACCOUNT_" + width + "=" + JSON.stringify(boxes));
+    assert.equal(boxes.length, 3);
+    assert.ok(Math.max(...boxes.map(r => r.center)) - Math.min(...boxes.map(r => r.center)) <= 2, JSON.stringify(boxes));
+    await r30Shot(app.page, "issue3-account-" + width + ".png");
+    await app.page.locator(".account-actions>summary").click();
+    await app.page.locator("#logout").waitFor({ state: "visible" });
+    assert.deepEqual(app.errors, []);
+  }
+});

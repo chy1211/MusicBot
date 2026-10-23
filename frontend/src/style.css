@@ -221,3 +221,13 @@ html[data-glass=clear]{--surface:rgba(37,42,47,.78);--panel:rgba(34,39,44,.92);-
 .activity-list span{min-width:0;overflow-wrap:anywhere}
 .activity-list small{color:var(--muted);white-space:nowrap}
 @media(max-width:760px){.activity-list li{grid-template-columns:auto minmax(0,1fr)}.activity-list small{grid-column:2}}
+
+/* Keep the account masthead on one centered baseline at every width. */
+.user-profile{align-items:center;flex-wrap:nowrap;gap:8px}
+#user-avatar{width:36px;height:36px;flex:0 0 36px}
+#user-name{line-height:20px}
+.account-actions{flex:0 0 auto}
+.account-actions>summary{display:flex;align-items:center;justify-content:center;gap:6px;height:44px;min-height:44px;padding:0 12px;line-height:20px;list-style:none;cursor:pointer}
+.account-actions>summary::-webkit-details-marker{display:none}
+.account-actions>summary::before{content:'\25b6';font-size:9px}
+.account-actions[open]>summary::before{transform:rotate(90deg)}
