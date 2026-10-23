@@ -1,0 +1,6 @@
+import {onMounted,onBeforeUnmount} from 'vue'
+import {dashboard} from '../store'
+import {notice} from './useDashboard'
+import {t} from './useLocale'
+function sweep(worker:ServiceWorker|null){if(!worker||typeof MessageChannel==='undefined')return;const channel=new MessageChannel(),timer=setTimeout(()=>channel.port1.close(),5000);channel.port1.onmessage=()=>{clearTimeout(timer);channel.port1.close()};worker.postMessage({type:'musicbot-cache-sweep'},[channel.port2])}
+export function usePwa(){const supported='serviceWorker' in navigator,hadController=supported&&!!navigator.serviceWorker.controller;const changed=()=>{sweep(navigator.serviceWorker.controller);if(hadController){dashboard.updateAvailable=true;notice(t('m0222'))}};onMounted(()=>{if(!supported)return;navigator.serviceWorker.addEventListener('controllerchange',changed);void navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'}).then(registration=>{void registration.update().catch(()=>{});if(navigator.serviceWorker.controller&&new URL(navigator.serviceWorker.controller.scriptURL).pathname==='/sw.js')sweep(navigator.serviceWorker.controller)}).catch(()=>{})});onBeforeUnmount(()=>{if(supported)navigator.serviceWorker.removeEventListener('controllerchange',changed)})}

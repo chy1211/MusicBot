@@ -1,0 +1,17 @@
+import {reactive,watch} from 'vue'
+import {request,APIError} from '../api'
+import {dashboard,usable,type Track} from '../store'
+import {command,notice} from './useDashboard'
+import {songIdentity,safeURL} from './useTrack'
+import {t} from './useLocale'
+export interface PreviewEntry extends Track {item_id:string;allowed:boolean;default_selected?:boolean;is_requested?:boolean;reason?:string}
+export interface Preview extends Track {kind:string;allowed:boolean;preview_id:string;entries?:PreviewEntry[];count?:number;checked_count?:number;eligible_count?:number;reason?:string;warning?:string;source_url?:string;saveable?:boolean;selected:string[];name:string;pending:boolean}
+export const requests=reactive({query:'',action:'play',loading:false,error:'',results:[] as Preview[]})
+let sequence=0
+export function clearPreview(){sequence++;requests.loading=false;requests.error='';requests.results=[]}
+watch(()=>dashboard.epoch,()=>{clearPreview();requests.query=''});watch(()=>requests.action,clearPreview)
+export async function resolveQuery(){if(!usable.value||requests.loading||!requests.query.trim())return;clearPreview();const seq=++sequence,epoch=dashboard.epoch,guild=dashboard.guildId;requests.loading=true;notice(t('m0079'));try{const result=await request<{results:Preview[]}>(`/api/guilds/${guild}/resolve`,{method:'POST',body:{query:requests.query.trim(),action:requests.action}});if(seq!==sequence||epoch!==dashboard.epoch)return;requests.results=result.results.map(s=>({...s,selected:(s.entries||[]).filter(e=>s.allowed&&e.allowed&&e.default_selected!==false).map(e=>e.item_id),name:Array.from(s.title).slice(0,60).join(''),pending:false}));notice(t('m0080'))}catch(error){if(seq===sequence&&epoch===dashboard.epoch){requests.error=error instanceof Error?error.message:String(error);notice(requests.error,true)}}finally{if(seq===sequence&&epoch===dashboard.epoch)requests.loading=false}}
+export async function confirmPreview(song:Preview,action=requests.action){if(!usable.value||song.pending||!song.allowed||song.kind==='playlist'&&!song.selected.length)return;song.pending=true;try{const value=await command(action,{query:song.url,preview_id:song.preview_id,...(song.kind==='playlist'?{selected_items:song.entries?.filter(e=>song.selected.includes(e.item_id)).map(e=>e.item_id)}:{})});if(value){clearPreview();requests.query=''}}catch(error){if(error instanceof APIError&&Array.isArray(error.body.results))requests.results=(error.body.results as Preview[]).map(s=>({...s,selected:[],name:s.title,pending:false}))}finally{song.pending=false}}
+export function selectPreview(song:Preview,all:boolean){song.selected=all&&song.allowed?(song.entries||[]).filter(e=>e.allowed).map(e=>e.item_id):[]}
+export function duplicateMessage(url:string,batch=false){const key=songIdentity(url);if(!key)return '';const position=dashboard.snapshot?.queue.find(s=>songIdentity(s.url)===key)?.position,current=key===songIdentity(dashboard.snapshot?.current?.url);return position!==undefined?batch?t('m0074'):t('m0075')+position+t('m0033')+(current?t('m0076'):''):current?batch?t('m0077'):t('m0078'):''}
+export async function previewHistory(song:Track){if(!safeURL(song.url)||!usable.value)return;requests.query=song.url;requests.action='play';await resolveQuery();document.querySelector('#preview-panel')?.scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})}

@@ -1,0 +1,12 @@
+import {computed,reactive,watch,onMounted,onBeforeUnmount,ref} from 'vue'
+import {dashboard,currentTrackKey,usable} from '../store'
+import {run} from './useDashboard'
+export const clock=ref(Date.now())
+export const player=reactive({preview:null as number|null,kind:'',pointerId:0,key:'',epoch:0,token:'' as string|undefined,choices:false,volume:15})
+export const progress=computed(()=>{const s=dashboard.snapshot,base=Math.max(0,s?.progress||0),value=base+(dashboard.connected&&s?.status==='playing'?Math.max(0,clock.value-dashboard.stateAt)/1000:0),total=s?.current?.duration;return total&&total>0?Math.min(total,value):value})
+export const seekable=computed(()=>usable.value&&!!dashboard.snapshot?.current?.seekable&&(dashboard.snapshot.current.duration||0)>0&&dashboard.snapshot.capabilities?.seek===true)
+export function cancelSeek(){player.preview=null;player.kind='';document.body.classList.remove('no-selection')}
+export function beginSeek(kind:string,event?:PointerEvent){if(!seekable.value)return;player.kind=kind;player.key=currentTrackKey.value;player.epoch=dashboard.epoch;player.token=dashboard.snapshot?.current?.track_token;player.preview=progress.value;player.pointerId=event?.pointerId||0;if(kind==='pointer')document.body.classList.add('no-selection')}
+export function previewSeek(event:Event){if(!player.kind)beginSeek('assistive');if(player.kind)player.preview=Number((event.target as HTMLInputElement).value)}
+export async function commitSeek(){if(player.preview===null)return;const position=player.preview,key=player.key,epoch=player.epoch,token=player.token;cancelSeek();if(key!==currentTrackKey.value||epoch!==dashboard.epoch)return;await run('seek',{position,track_token:token})}
+export function usePlayback(){let timer:ReturnType<typeof setInterval>|undefined;const release=(event:PointerEvent)=>{document.body.classList.remove('no-selection');if(player.kind==='pointer'&&event.pointerId===player.pointerId)void commitSeek()},cancel=()=>cancelSeek();const stop=watch(currentTrackKey,()=>{cancelSeek();player.choices=false});const volume=watch(()=>dashboard.snapshot?.volume,v=>{if(v!==null&&v!==undefined)player.volume=v});onMounted(()=>{timer=setInterval(()=>clock.value=Date.now(),250);document.addEventListener('pointerup',release);document.addEventListener('pointercancel',cancel);window.addEventListener('blur',cancel)});onBeforeUnmount(()=>{clearInterval(timer);stop();volume();cancelSeek();document.removeEventListener('pointerup',release);document.removeEventListener('pointercancel',cancel);window.removeEventListener('blur',cancel)})}

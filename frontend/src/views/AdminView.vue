@@ -1,42 +1,62 @@
+<script setup lang="ts">
+import { computed, nextTick, ref, watch } from 'vue'
+import PermissionsEditor from '../components/PermissionsEditor.vue'
+import { useAdmin } from '../composables/useAdmin'
+import { usePermissions } from '../composables/usePermissions'
+import { t } from '../composables/useLocale'
+const a=useAdmin(), p=usePermissions()
+const notifyChannel=ref(''), emptyMode=ref<'autoplaylist'|'radio'|'off'>('autoplaylist'), radioMin=ref(0), radioMax=ref(0)
+const query=ref('')
+const permissionDialog=ref<HTMLDialogElement|null>(null)
+watch(()=>p.pending.value,async pending=>{await nextTick();const dialog=permissionDialog.value;if(!dialog)return;if(pending&&!dialog.open)dialog.showModal();else if(!pending&&dialog.open)dialog.close()})
+watch(()=>a.owner.value,isOwner=>{if(isOwner)void p.load()})
+const lyricsDraft=ref('true')
+watch(()=>a.notify.value,()=>{notifyChannel.value=a.notify.value?.channel_id||''},{immediate:true})
+watch(()=>a.emptyQueue.value,()=>{const v=a.emptyQueue.value;if(v){emptyMode.value=v.empty_queue;radioMin.value=v.radio_min_seconds;radioMax.value=v.radio_max_seconds}},{immediate:true})
+watch(()=>a.lyricsEnabled.value,(v)=>{lyricsDraft.value=String(v)},{immediate:true})
+function permissionLabel(field:string){const keys:Record<string,string>={AllowPlaylists:'admin.permissions.allowPlaylists',MaxSongLength:'admin.permissions.maxSongLength',MaxSongs:'admin.permissions.maxSongs',MaxPlaylistLength:'admin.permissions.maxPlaylistLength',MaxSearchItems:'admin.permissions.maxSearchItems',InstaSkip:'admin.permissions.instaSkip',SkipLooped:'admin.permissions.skipLooped',Remove:'admin.permissions.remove',SkipWhenAbsent:'admin.permissions.skipWhenAbsent',BypassKaraokeMode:'admin.permissions.bypassKaraoke',SummonNoVoice:'admin.permissions.summonNoVoice',Extractors:'admin.permissions.extractors',CommandWhitelist:'admin.permissions.commandWhitelist',CommandBlacklist:'admin.permissions.commandBlacklist',GrantToRoles:'admin.permissions.grantRoles',UserList:'admin.permissions.userList'};return t(keys[field]||'admin.permissions.other',{p0:field})}
+function display(value:unknown){return typeof value==='boolean'?t(value?'admin.value.enabled':'admin.value.disabled'):Array.isArray(value)?value.join(', '):String(value)}
+const details=computed(()=>{
+ const m=a.maintenance.value;if(!m)return [] as Array<{label:string;value:string;warning?:boolean}>
+ const rows:Array<{label:string;value:string;warning?:boolean}>=[{label:t('admin.maintenance.cookie'),value:m.cookie?.status==='unused'?t('admin.maintenance.unused'):m.cookie?.status==='ok'?t('admin.maintenance.ok'):t('admin.maintenance.unavailable'),warning:m.cookie?.warning}]
+ if(m.cookie?.earliest_expiry)rows.push({label:t('admin.maintenance.cookieExpiry'),value:`${date(m.cookie.earliest_expiry)} · ${m.cookie.remaining_days??0} ${t('admin.days')}`,warning:(m.cookie.remaining_days??99)<=7})
+ for(const c of m.cookie?.cookies||[])rows.push({label:c.name,value:`${date(c.expires_at)} · ${c.remaining_days} ${t('admin.days')}`,warning:c.remaining_days<=7})
+ for(const [key,label] of [['yt-dlp','admin.maintenance.ytdlp'],['yt-dlp-ejs','admin.maintenance.ytdlpEjs']] as const)rows.push({label:t(label),value:m.versions?.[key]||t('admin.value.unknown')})
+ if(m.started_at)rows.push({label:t('admin.maintenance.started'),value:date(m.started_at)})
+ if(m.last_stop)rows.push({label:t('admin.maintenance.lastStop'),value:`${date(m.last_stop.time)} · ${m.last_stop.classification||''}`})
+ if(m.dashboard_version)rows.push({label:t('admin.maintenance.version'),value:m.dashboard_version})
+ rows.push({label:t('admin.maintenance.viewers'),value:String(m.viewers??0)})
+ if(m.host_status?.status==='unavailable')rows.push({label:t('admin.maintenance.host'),value:t('admin.maintenance.unavailable'),warning:true})
+ else if(m.host_status?.written_at)rows.push({label:t('admin.maintenance.hostUpdated'),value:date(m.host_status.written_at)})
+ return rows
+})
+function date(value?:string){if(!value)return t('admin.value.unknown');const d=new Date(value);return Number.isFinite(d.getTime())?d.toLocaleString(undefined,{hour12:false}):t('admin.value.unknown')}
+function syncForm(){const v=a.emptyQueue.value;if(v){emptyMode.value=v.empty_queue;radioMin.value=v.radio_min_seconds;radioMax.value=v.radio_max_seconds}}
+function syncNotify(){notifyChannel.value=a.notify.value?.channel_id||''}
+function search(){a.aplPage.value=1;a.aplQuery.value=query.value;void a.loadApl()}
+function movePage(delta:number){a.page(delta)}
+function saveQueue(){void a.saveEmptyQueue({empty_queue:emptyMode.value,radio_min_seconds:Number(radioMin.value),radio_max_seconds:Number(radioMax.value)})}
+function saveNotify(){void a.saveNotify(notifyChannel.value)}
+function saveLyricsButton(){void a.saveLyrics(lyricsDraft.value==='true')}
+function toggleVote(event:Event){a.voteSkip.value=(event.currentTarget as HTMLInputElement).checked}
+function saveVoteButton(){void a.saveVoteSkip(a.voteSkip.value)}
+function saveVoteButton(){const el=document.getElementById('admin-vote-skip-enabled');if(el instanceof HTMLInputElement)void a.saveVoteSkip(el.checked)}
+</script>
 <template>
-<section id="admin-panel" class="card" hidden aria-labelledby="admin-heading">
-<h2 id="admin-heading"><span data-i18n="m0234">Admin</span></h2>
-<section aria-labelledby="maintenance-heading">
-<div class="section-top"><h3 id="maintenance-heading"><span data-i18n="m0303">Maintenance</span></h3><button id="maintenance-refresh" type="button"><span data-i18n="m0269">Refresh</span></button></div>
-<p id="maintenance-status" role="status" aria-live="polite"></p>
-<dl id="maintenance-details" class="maintenance-details"></dl>
+<section id="admin-panel" class="card" aria-labelledby="admin-heading">
+<header class="section-top"><h2 id="admin-heading">{{ t('admin.heading') }}</h2><button id="maintenance-refresh" type="button" :disabled="a.maintenanceLoading.value" @click="a.loadMaintenance()">{{ t('admin.refresh') }}</button></header>
+<p v-if="a.loading.value" role="status" aria-live="polite">{{ t('admin.loading') }}</p>
+<div v-if="a.error.value" class="maintenance-warning" role="alert" tabindex="-1">{{ a.error.value }} <button type="button" @click="a.loadAll()">{{ t('admin.retry') }}</button></div>
+<template v-if="a.owner.value">
+<section aria-labelledby="maintenance-heading"><h3 id="maintenance-heading">{{ t('admin.maintenance.heading') }}</h3><p id="maintenance-status" role="status" aria-live="polite">{{ a.maintenanceLoading.value?t('admin.loading'):'' }}</p><dl id="maintenance-details" class="maintenance-details"><template v-if="details.length"><template v-for="row in details" :key="row.label"><dt>{{ row.label }}</dt><dd :class="{'maintenance-warning':row.warning}">{{ row.value }}</dd></template></template><dd v-else class="hint">{{ t('admin.empty') }}</dd></dl></section>
+<form id="admin-notify-form" class="selection-tools" aria-describedby="admin-notify-help" @submit.prevent="saveNotify"><label for="admin-notify-channel">{{ t('admin.notify.label') }}</label><select id="admin-notify-channel" v-model="notifyChannel" aria-describedby="admin-notify-warning"><option value="">{{ t('admin.notify.default') }}</option><option v-for="channel in a.notify.value?.channels||[]" :key="channel.id" :value="channel.id">#{{ channel.name }}</option><option v-if="a.notify.value?.channel_id&&!a.notify.value.channels.some(c=>c.id===a.notify.value?.channel_id)" :value="a.notify.value.channel_id" disabled>{{ t('admin.notify.unavailable') }}</option></select><button id="admin-notify-save" type="submit" :disabled="!a.notify.value||a.saving.value">{{ t('admin.notify.save') }}</button><p id="admin-notify-help" class="hint">{{ t('admin.notify.help') }}</p><p v-if="a.notify.value?.unavailable" id="admin-notify-warning" class="maintenance-warning" role="status">{{ t('admin.notify.warning') }}</p><p id="admin-notify-status" role="status" aria-live="polite">{{ a.notifyStatus.value }}</p></form>
+<form id="admin-lyrics-form" class="selection-tools" @submit.prevent="saveLyricsButton"><label for="admin-lyrics-enabled">{{ t('admin.lyrics.label') }}</label><select id="admin-lyrics-enabled" v-model="lyricsDraft"><option value="true">{{ t('admin.lyrics.allow') }}</option><option value="false">{{ t('admin.lyrics.disable') }}</option></select><button id="admin-lyrics-save" type="submit" :disabled="a.saving.value">{{ t('admin.save') }}</button><p id="admin-lyrics-status" class="hint" role="status" aria-live="polite">{{ a.lyricsStatus.value }}</p></form>
+<form id="empty-queue-form" class="selection-tools" @submit.prevent="saveQueue"><label for="empty-queue-mode">{{ t('admin.emptyQueue.label') }}</label><select id="empty-queue-mode" v-model="emptyMode"><option value="autoplaylist">{{ t('admin.emptyQueue.autoplaylist') }}</option><option value="radio">{{ t('admin.emptyQueue.radio') }}</option><option value="off">{{ t('admin.emptyQueue.stop') }}</option></select><label for="radio-min-seconds">{{ t('admin.emptyQueue.radioMin') }}</label><input id="radio-min-seconds" v-model.number="radioMin" type="number" min="0" max="31536000" step="1"><label for="radio-max-seconds">{{ t('admin.emptyQueue.radioMax') }}</label><input id="radio-max-seconds" v-model.number="radioMax" type="number" min="0" max="31536000" step="1"><button id="empty-queue-save" type="submit" :disabled="a.saving.value">{{ t('admin.save') }}</button><p id="radio-seeds" class="hint" role="status">{{ a.emptyQueue.value?.seed_count ? t('admin.emptyQueue.seedSummary',{p0:a.emptyQueue.value.seed_titles[0]||'',p1:a.emptyQueue.value.seed_count}) : t('admin.emptyQueue.noSeeds') }}</p><p id="empty-queue-status" role="status" aria-live="polite">{{ a.emptyQueueStatus.value || (a.emptyQueue.value?.radio_suspended_seconds ? t('admin.emptyQueue.suspended',{p0:a.emptyQueue.value.radio_suspended_seconds}):'') }}</p></form>
+<section aria-labelledby="admin-apl-heading"><h3 id="admin-apl-heading">{{ t('admin.playlist.heading') }}</h3><form id="admin-apl-search" class="input-row" @submit.prevent="search"><label for="admin-apl-query">{{ t('admin.playlist.searchLabel') }}</label><input id="admin-apl-query" v-model="query" type="search" maxlength="100"><button id="admin-apl-search-button" type="submit" :disabled="a.saving.value">{{ t('admin.playlist.search') }}</button></form><p id="admin-apl-count" role="status" aria-live="polite">{{ a.apl.value?t('admin.playlist.count',{p0:a.apl.value.total,p1:a.apl.value.matched,p2:a.apl.value.page}):t('admin.loading') }}</p><ol id="admin-apl-list" class="admin-apl-list"><li v-for="track in a.apl.value?.tracks||[]" :key="track.index"><span>{{ track.url||track.title }}</span><button type="button" :aria-label="t('admin.playlist.removeLabel',{p0:track.title})" :disabled="a.saving.value" @click="a.removeApl(track)">{{ t('admin.playlist.remove') }}</button></li></ol><p v-if="a.apl.value&&!a.apl.value.tracks.length" class="hint">{{ t('admin.playlist.empty') }}</p><div class="selection-tools"><button id="admin-apl-prev" type="button" :disabled="!a.apl.value||a.aplPage.value<=1" @click="movePage(-1)">{{ t('admin.playlist.previous') }}</button><button id="admin-apl-next" type="button" :disabled="!a.apl.value||a.aplPage.value*a.apl.value.page_size>=a.apl.value.matched" @click="movePage(1)">{{ t('admin.playlist.next') }}</button></div></section>
+<section aria-labelledby="vote_skip-heading"><h3 id="vote_skip-heading">{{ t('admin.permissions.heading') }}</h3><form id="admin-vote-skip-form" class="selection-tools" @submit.prevent="saveVoteButton"><label for="admin-vote-skip-enabled">{{ t('admin.voteSkip.label') }}</label><input id="admin-vote-skip-enabled" type="checkbox" role="switch" :checked="a.voteSkip.value" :disabled="a.voteSkipLoading.value" aria-describedby="admin-vote-skip-help" @change="toggleVote"><button id="admin-vote-skip-save" type="submit" :disabled="a.voteSkipLoading.value" >{{ t('admin.voteSkip.save') }}</button><p id="admin-vote-skip-help" class="hint">{{ t('admin.voteSkip.help') }}</p><p id="admin-vote-skip-status" role="status" aria-live="polite">{{ a.voteSkipStatus.value }}</p></form></section>
+<PermissionsEditor :data="p.data.value" :loading="p.loading.value" :error="p.error.value" :saving="p.saving.value" @change="p.propose" @retry="p.load" />
+<dialog id="permission-confirm-dialog" ref="permissionDialog" aria-labelledby="permission-confirm-heading" @cancel.prevent="p.cancel"><h2 id="permission-confirm-heading">{{ t('admin.permissions.confirmHeading') }}</h2><p id="permission-confirm-text">{{ p.pending.value ? t('admin.permissions.confirmText',{p0:p.pending.value.group,p1:permissionLabel(p.pending.value.field),p2:display(p.pending.value.old_value),p3:display(p.pending.value.value)}) : '' }}</p><p v-if="p.error.value" role="alert">{{ p.error.value }}</p><div class="selection-tools"><button id="permission-confirm" type="button" autofocus :disabled="p.saving.value" @click="p.confirm">{{ t('admin.permissions.confirm') }}</button><button id="permission-cancel" type="button" @click="p.cancel">{{ t('admin.cancel') }}</button></div></dialog>
+</template>
+<p v-else-if="!a.loading.value" class="hint">{{ t('admin.ownerOnly') }}</p>
 </section>
-<form id="admin-notify-form" class="selection-tools" aria-describedby="admin-notify-help">
-<label for="admin-notify-channel"><span data-i18n="notify.label">Fallback notification channel</span></label>
-<select id="admin-notify-channel" aria-describedby="admin-notify-warning"><option value="" data-i18n="notify.default">Not specified (use defaults)</option></select>
-<button id="admin-notify-save" type="submit"><span data-i18n="notify.save">Save notification channel</span></button>
-<p id="admin-notify-help" class="hint"><span data-i18n="notify.help">Used only when no request channel is available. Binding and speaking permissions still apply.</span></p>
-<p id="admin-notify-warning" class="maintenance-warning" role="status" hidden><span data-i18n="notify.warning">The configured channel is deleted, inaccessible, or excluded by channel bindings. Notifications will use the default fallback order.</span></p>
-<p id="admin-notify-status" role="status" aria-live="polite"></p>
-</form>
-<form id="admin-lyrics-form" class="selection-tools"><label for="admin-lyrics-enabled"><span data-i18n="m0304">Server lyrics</span></label><select id="admin-lyrics-enabled"><option value="true" data-i18n="m0305">Allow (off by default for everyone)</option><option value="false" data-i18n="m0306">Disable</option></select><button id="admin-lyrics-save" type="submit"><span data-i18n="m0307">Save lyrics settings</span></button><p id="admin-lyrics-status" class="hint"></p></form>
-<form id="empty-queue-form" class="selection-tools">
-<label for="empty-queue-mode"><span data-i18n="m0308">When the queue is empty</span></label>
-<select id="empty-queue-mode"><option value="autoplaylist" data-i18n="m0309">Autoplaylist</option><option value="radio" data-i18n="m0310">Radio</option><option value="off" data-i18n="m0311">Stop</option></select>
-<label for="radio-min-seconds"><span data-i18n="m0312">Radio minimum duration (seconds)</span></label><input id="radio-min-seconds" type="number" min="0" max="31536000" step="1" value="0">
-<label for="radio-max-seconds"><span data-i18n="m0313">Radio maximum duration (0 = unlimited)</span></label><input id="radio-max-seconds" type="number" min="0" max="31536000" step="1" value="0">
-<button id="empty-queue-save" type="submit"><span data-i18n="m0314">Save</span></button>
-<p id="radio-seeds" class="hint"></p>
-<p id="empty-queue-status" role="status" aria-live="polite"></p>
-</form><h3><span data-i18n="m0309">Autoplaylist</span></h3>
-<form id="admin-apl-search" class="input-row"><label for="admin-apl-query"><span data-i18n="m0315">Search URLs</span></label><input id="admin-apl-query" type="search" maxlength="100"><button id="admin-apl-search-button" type="submit"><span data-i18n="m0316">Search</span></button></form>
-<p id="admin-apl-count" role="status"></p><ol id="admin-apl-list" class="admin-apl-list"></ol>
-<div class="selection-tools"><button id="admin-apl-prev" type="button"><span data-i18n="m0317">Previous</span></button><button id="admin-apl-next" type="button"><span data-i18n="m0318">Next</span></button></div>
-
-<h3><span data-i18n="vote_skip.heading">Server permissions</span></h3>
-<form id="admin-vote-skip-form" class="selection-tools">
-<label for="admin-vote-skip-enabled"><span data-i18n="vote_skip.label">Vote to skip</span></label>
-<input id="admin-vote-skip-enabled" type="checkbox" role="switch" checked disabled aria-describedby="admin-vote-skip-help">
-<button id="admin-vote-skip-save" type="submit" disabled><span data-i18n="vote_skip.save">Save skip settings</span></button>
-<p id="admin-vote-skip-help" class="hint"><span data-i18n="vote_skip.help">Applies to this server. When disabled, anyone with Skip permission can skip immediately.</span></p>
-<p id="admin-vote-skip-status" role="status" aria-live="polite"></p>
-</form>
-<div id="admin-permissions"></div></section>
-<dialog id="permission-confirm-dialog"><h2><span data-i18n="m0319">Confirm permission change</span></h2><p id="permission-confirm-text"></p><div class="selection-tools"><button id="permission-confirm" type="button"><span data-i18n="m0320">Confirm change</span></button><button id="permission-cancel" type="button"><span data-i18n="m0302">Cancel</span></button></div></dialog>
-
 </template>
