@@ -18,7 +18,7 @@ assert.equal(origin.hostname,"localhost");assert.equal(origin.protocol,"http:");
   // Actual short timed lines advance solely from playback's shared clock.
   await p.route("**/api/guilds/1/lyrics",async route=>{
     const response=await route.fetch();assert.equal(response.status(),200,"demo lyrics must be available, not rate limited");const data=await response.json();
-    const current=await p.evaluate(()=>localProgress());
+    const current=Number(await p.locator("#progress").inputValue());
     data.lines=Array.from({length:45},(_,i)=>({time:current-12+i*.75,text:"\u540c\u6b65\u6b4c\u8a5e \u00b7 "+(i+1)}));data.offset=0;data.offset_source="matched";
     await route.fulfill({response,json:data});
   });
