@@ -710,3 +710,33 @@ test("R30 mobile playlist detail and browser back return to the list", async t =
   assert.equal(await app.page.locator("#library-detail").isVisible(), false);
   assert.deepEqual(app.errors, []);
 });
+
+
+test("R30 playlist rename keeps input width and saves on desktop and mobile", async t => {
+  for (const width of [1440, 390]) {
+    const app = await openDashboard({ width, height: width === 390 ? 844 : 1000 }, {
+      context: width === 390 ? { isMobile: true, hasTouch: true } : {}, setup: r30Library
+    });
+    t.after(() => app.context.close());
+    await app.page.locator("#nav-library").click();
+    await app.page.locator(".library-choice").nth(1).click();
+    await app.page.locator("#library-actions>summary").click();
+    const sizes = await app.page.locator(".library-rename-row").evaluate(row => ({
+      row: row.getBoundingClientRect().width,
+      input: row.querySelector("input").getBoundingClientRect().width,
+      button: row.querySelector("button").getBoundingClientRect().width
+    }));
+    console.log("R30_RENAME_" + width + "=" + JSON.stringify(sizes));
+    assert.ok(sizes.input >= sizes.row * .6, JSON.stringify(sizes));
+    const input = app.page.locator("#library-name");
+    await input.click();
+    assert.equal(await input.evaluate(el => document.activeElement === el), true);
+    const name = "Renamed " + width;
+    await input.fill(name);
+    await r30Shot(app.page, "issue2-rename-" + width + ".png");
+    await app.page.locator("#library-rename").click();
+    await app.page.waitForFunction(name => document.querySelector("#library-detail-heading")?.textContent === name, name);
+    assert.ok(app.requests.some(r => r.method === "PATCH" && JSON.parse(r.body).name === name));
+    assert.deepEqual(app.errors, []);
+  }
+});
