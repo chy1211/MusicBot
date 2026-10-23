@@ -33,6 +33,7 @@ function waitForHealth(timeoutMs = 30000) {
 async function openDashboard(viewport = { width: 1440, height: 1000 }, options = {}) {
   const context = await browser.newContext({ viewport, locale: "zh-TW", colorScheme: "light", serviceWorkers: "block", ...options.context });
   const page = await context.newPage();
+  await page.route("**/api/guilds/*/spotify", route => route.fulfill({json: {url: "https://open.spotify.com/track/Fixture", mode: "track"}}));
   const requests = [];
   page.on("request", request => {
     const url = new URL(request.url());
@@ -386,3 +387,5 @@ require("./dashboard_round31_auth_cases.cjs")({test, assert, openDashboard, base
 require("./dashboard_round31_auth_extra.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_controls.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_sse.cjs")({test, assert, openDashboard, baseURL});
+require("./dashboard_round31_spotify.cjs")({test, assert, openDashboard, baseURL});
+require("./dashboard_round31_media_gestures.cjs")({test, assert, openDashboard, baseURL});
