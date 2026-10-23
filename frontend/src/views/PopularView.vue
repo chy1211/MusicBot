@@ -31,7 +31,7 @@ const statusText = computed(() => {
       <li v-if="popular.loading.value" v-for="n in 5" :key="n" class="popular-skeleton" aria-hidden="true"></li>
       <li v-for="(song, index) in popular.tracks.value" :key="song.url" class="popular-row">
         <span class="popular-rank" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}</span>
-        <div class="history-info"><p><a v-if="popular.safeUrl(song.url)" :href="popular.safeUrl(song.url)" target="_blank" rel="noopener noreferrer">{{ song.title }}</a><span v-else>{{ song.title }}</span></p><small>{{ song.count }} {{ t('m0220') }}<template v-if="song.duration"> · {{ library.formatDuration(song.duration) }}</template></small></div>
+        <div class="history-info"><p><a v-if="popular.safeUrl(song.url)" :href="popular.safeUrl(song.url)" target="_blank" rel="noopener noreferrer">{{ song.title }}</a><span v-else>{{ song.title }}</span></p><small>{{ song.count }} {{ t('m0220').replace(/\s*·\s*$/, '') }}<template v-if="song.duration"> · {{ library.formatDuration(song.duration) }}</template></small></div>
         <div class="history-actions">
           <button type="button" class="primary popular-add" :disabled="popular.adding.value !== null || dashboard.busy || !song.url" :aria-label="t('m0132') + song.title" :aria-busy="popular.adding.value === song.url" @click="popular.add(song)">{{ popular.adding.value === song.url ? t('m0217') : t('m0612') }}</button>
           <button type="button" class="subtle save-to-library" :disabled="!song.url" :aria-label="t('m0198') + ' ' + song.title" @click="library.openSave(song)">{{ t('m0198') }}</button>
