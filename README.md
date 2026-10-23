@@ -24,7 +24,7 @@ Members sign in with their Discord account, then search, queue, reorder and cont
 **Playlists and discovery**
 - Import public Spotify and YouTube / YouTube Music playlists and mixes, choosing which tracks to add
 - Personal playlists and favorites for each member
-- Server "popular requests", recent plays, and a radio mode that keeps the music going when the queue runs out
+- Server "popular requests", recent plays, and a radio mode that keeps the music going when the queue runs out; songs members request always play before the radio picks
 
 **Lyrics**
 - Optional synced lyrics (off by default for each person), from [LRCLIB](https://lrclib.net)
@@ -32,6 +32,7 @@ Members sign in with their Discord account, then search, queue, reorder and cont
 
 **Built for phones and teams**
 - Installable as a phone app (PWA), with a layout made for one-handed use
+- Light and dark themes with a one-tap switch that remembers your choice
 - English and Traditional Chinese, with a per-person language switch
 - Stay signed in for 30 days; sessions are stored server-side and can be signed out everywhere
 - Owner pages for permissions, the autoplaylist and read-only maintenance status
