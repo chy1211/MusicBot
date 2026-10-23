@@ -28,9 +28,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg libopus0 libsodium-dev libffi-dev
           python -m pip install -r requirements.txt
+      - name: Build dashboard frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx --no-install playwright install --with-deps chromium
       - name: Backend unittest
         run: python -m unittest discover -s tests -p 'test_*.py'
       - name: Frontend Node tests
+        env:
+          NODE_PATH: ${{ github.workspace }}/frontend/node_modules
         run: node --test tests/test_*.cjs
       - name: Compound YouTube links
         run: python -m tools.test_compound_link
