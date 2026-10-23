@@ -389,3 +389,4 @@ require("./dashboard_round31_controls.cjs")({test, assert, openDashboard, baseUR
 require("./dashboard_round31_sse.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_spotify.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_media_gestures.cjs")({test, assert, openDashboard, baseURL});
+require("./dashboard_round31_sse_fallback.cjs")({test, assert, openDashboard, baseURL});
