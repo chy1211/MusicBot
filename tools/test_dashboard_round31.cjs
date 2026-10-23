@@ -577,3 +577,78 @@ test("recent operations show translated sources in separate columns", async t =>
     assert.deepEqual(app.errors, []);
   }
 });
+
+
+test("mobile form controls use at least 16px text to avoid iOS focus zoom", async t => {
+  const app = await openDashboard({ width: 390, height: 844 }, { context: { hasTouch: true, isMobile: true } });
+  t.after(() => app.context.close());
+  const checkVisibleControls = async label => {
+    const sizes = await app.page.evaluate(() => [...document.querySelectorAll("input,select,textarea")]
+      .filter(el => {
+        const rect = el.getBoundingClientRect(), style = getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      })
+      .map(el => ({ tag: el.tagName.toLowerCase(), id: el.id, type: el.type || "", fontSize: parseFloat(getComputedStyle(el).fontSize) })));
+    const small = sizes.filter(control => control.fontSize < 16);
+    console.log("R29_CONTROL_SIZES_" + label + "=" + JSON.stringify({ count: sizes.length, small }));
+    assert.ok(sizes.length > 0, label + " should contain visible form controls");
+    assert.deepEqual(small, [], label + " controls below 16px");
+  };
+  const viewport = await app.page.locator('meta[name="viewport"]').getAttribute("content");
+  assert.match(viewport, /maximum-scale=1/);
+  assert.doesNotMatch(viewport, /user-scalable\s*=\s*no/i);
+  await checkVisibleControls("play");
+  await app.page.locator("#nav-admin").click();
+  await app.page.locator("#admin-panel").waitFor({ state: "visible" });
+  await checkVisibleControls("admin");
+  assert.deepEqual(app.errors, []);
+});
+
+test("area around the floating player and nav stays transparent", async t => {
+  const shotDir = process.env.R29_SCREENSHOTS_DIR;
+  const inspect = async (viewport, mobile, screenshotName) => {
+    const app = await openDashboard(viewport, { context: { colorScheme: "dark", ...(mobile ? { hasTouch: true, isMobile: true } : {}) } });
+    t.after(() => app.context.close());
+    await app.page.locator("#queue > li").nth(2).scrollIntoViewIfNeeded();
+    const result = await app.page.evaluate(() => {
+      const bar = document.querySelector(".playback-bar");
+      const r = bar.getBoundingClientRect();
+      const points = [{ label: "player-top-left-outside", x: Math.min(innerWidth - 1, r.left + 6), y: Math.max(1, r.top - 6) }];
+      const nav = document.querySelector(".page-tabs.mobile-glass");
+      if (nav) {
+        const n = nav.getBoundingClientRect();
+        const gapY = (n.top + r.bottom) / 2;
+        if (n.top > r.bottom && gapY > r.bottom && gapY < n.top) points.push({ label: "nav-player-gap", x: n.left + n.width / 2, y: gapY });
+      }
+      const samples = points.map(point => {
+        const stack = document.elementsFromPoint(point.x, point.y);
+        const top = stack[0];
+        const style = top ? getComputedStyle(top) : null;
+        const rect = top?.getBoundingClientRect();
+        const bg = style?.backgroundColor || "transparent";
+        const alpha = bg === "transparent" ? 0 : bg.startsWith("rgba(") ? Number(bg.match(/,\s*([\d.]+)\s*\)$/)?.[1] ?? 1) : 1;
+        return { ...point, top: top?.tagName.toLowerCase(), id: top?.id || "", className: String(top?.className || ""), background: bg,
+          position: style?.position || "", width: rect?.width || 0, alpha };
+      });
+      const after = getComputedStyle(document.querySelector("#app"), "::after");
+      return { samples, afterContent: after.content, afterBackground: after.backgroundColor, viewportWidth: innerWidth };
+    });
+    console.log("R29_DOCK_" + viewport.width + "=" + JSON.stringify(result));
+    assert.ok(result.samples.length >= (mobile ? 2 : 1));
+    for (const sample of result.samples) {
+      assert.notEqual(sample.id, "app", "dock-adjacent sample hit #app: " + JSON.stringify(sample));
+      assert.ok(!(sample.position === "fixed" && sample.width >= result.viewportWidth - 1 && sample.alpha >= 0.99),
+        "dock-adjacent sample hit an opaque full-width fixed element: " + JSON.stringify(sample));
+    }
+    const afterAlpha = result.afterBackground === "transparent" ? 0 : Number(result.afterBackground.match(/rgba?\([^)]*[,/]\s*([\d.]+)\s*\)$/)?.[1] ?? 1);
+    assert.ok(result.afterContent === "none" || afterAlpha === 0, "#app::after is still painting: " + JSON.stringify(result));
+    if (shotDir && screenshotName) await app.page.screenshot({ path: path.join(shotDir, screenshotName) });
+    return app;
+  };
+  await inspect({ width: 390, height: 844 }, true, "mobile-dark-play-mid.png");
+  const light = await openDashboard({ width: 390, height: 844 }, { context: { colorScheme: "light", hasTouch: true, isMobile: true } });
+  t.after(() => light.context.close());
+  await light.page.locator("#queue > li").nth(2).scrollIntoViewIfNeeded();
+  if (shotDir) await light.page.screenshot({ path: path.join(shotDir, "mobile-light-play-mid.png") });
+  await inspect({ width: 1440, height: 900 }, false, "desktop-dark-play-mid.png");
+});

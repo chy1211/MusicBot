@@ -174,7 +174,12 @@ html[data-glass=clear]{--surface:rgba(37,42,47,.78);--panel:rgba(34,39,44,.92);-
  #play-view .song a,.history-list a,.popular-row a,.demo-controls a{display:inline-flex;align-items:center;min-height:44px;min-width:44px}
  #admin-apl-search{flex-wrap:wrap}#admin-apl-query{flex:1 1 12rem;min-width:88px}
 }
-@media(max-width:760px){#app::after{content:"";position:fixed;z-index:9;left:0;right:0;bottom:0;height:calc(var(--dock-player-height,110px) + 76px + var(--safe-bottom));background:var(--opaque);pointer-events:none}}
+@media(max-width:760px){
+ #app input,#app select,#app textarea{font-size:16px}
+ #app::after{content:none;display:none}
+}
+/* The base stylesheet paints a full-width shade above the dock. Keep the glass dock only. */
+.playback-bar::before{content:none}
 @media(min-width:761px){#lyrics-panel{display:flex;flex-direction:column}#lyrics-content{flex:0 1 150px;min-height:0}}
 
 /* History rows keep the title column flexible and actions content-sized. */
