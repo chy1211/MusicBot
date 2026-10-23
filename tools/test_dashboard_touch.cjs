@@ -30,7 +30,7 @@ async function swipe(cdp,a,b,hold=0){
 async function state(p){return p.evaluate(async()=>{const r=await fetch("/api/guilds/1/state",{headers:{"X-MusicBot-Dashboard":"1"}});if(!r.ok)throw Error(await r.text());return r.json();});}
 async function ready(p){
   await p.goto(new URL("/?demo-queue=filled&demo-lyrics=synced",origin).href);
-  await p.waitForFunction(()=>document.querySelector("#dashboard")&&(!document.querySelector("#dashboard").hidden||!document.querySelector("#discord-login").hidden));
+  await p.waitForFunction(()=>document.querySelector("#dashboard")?.getClientRects().length||document.querySelector("#discord-login")?.getClientRects().length);
   if(await p.locator("#discord-login").isVisible()) await tap(p,"#discord-login");
   await p.waitForFunction(()=>document.querySelector("#progress")&&!document.querySelector("#progress").disabled&&document.querySelector("#queue > li"));
   await p.waitForFunction(()=>window.touchSnapshots?.length>0);
@@ -123,7 +123,7 @@ async function audit(p,label){
     const move=requests.filter(r=>r.url.endsWith("/queue/move"));
     assert.equal(move.length,1);assert.deepEqual(move[0].body,{from:1,to:2,revision:initial.revision});
     const next=await state(p);assert.equal(next.queue[0].url,initial.queue[1].url);assert.equal(next.queue[1].url,initial.queue[0].url);
-    assert.deepEqual(await p.locator("#queue>li").evaluateAll(es=>es.map(e=>e.querySelector(".song-title")?.textContent)),next.queue.map(e=>e.title));
+    assert.deepEqual(await p.locator("#queue>li").evaluateAll(es=>es.map(e=>e.querySelector(".song p")?.textContent)),next.queue.map(e=>e.title));
     return move[0];
   });
   await run("queue-tap-and-early-swipe",async()=>{
@@ -213,7 +213,11 @@ async function audit(p,label){
     await tap(p,"#queue-mine");assert.equal(await p.locator("#queue-mine").getAttribute("aria-pressed"),"true");
     await tap(p,"#queue-all");assert.equal(await p.locator("#queue-all").getAttribute("aria-pressed"),"true");
     await positionQueue(p);await swipe(cdp,{x:70,y:460},{x:70,y:260});await sleep(450);
-    assert.equal(await p.locator(".page-tabs").evaluate(e=>e.classList.contains("nav-compact")),true);
+    const navAfterScroll=await p.locator(".page-tabs").evaluate(e=>{
+      const rect=e.getBoundingClientRect(),style=getComputedStyle(e);
+      return {fixed:style.position==="fixed",visible:rect.top>=0&&rect.bottom<=innerHeight,bottom:rect.bottom};
+    });
+    assert.ok(navAfterScroll.fixed&&navAfterScroll.visible,JSON.stringify(navAfterScroll));
     const compact=await p.locator(".page-tabs").evaluate(e=>{const s=getComputedStyle(e);return [...e.querySelectorAll("button:not([hidden])")].map(b=>({height:b.offsetHeight,bottom:b.offsetTop+b.offsetHeight,limit:e.clientHeight-parseFloat(s.paddingBottom)}));});
     assert.ok(compact.every(b=>b.height>=44&&b.bottom<=b.limit),JSON.stringify(compact));
     await tap(p,"#nav-library");assert.equal(await p.locator("#library-panel").isVisible(),true);
