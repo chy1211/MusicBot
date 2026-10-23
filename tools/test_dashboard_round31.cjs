@@ -869,3 +869,22 @@ test("R30 saved YouTube tracks derive the same artwork as playlist covers", asyn
   await r30Shot(app.page, "issue5-desktop-covers.png");
   assert.deepEqual(app.errors, []);
 });
+
+test("R30 playlist counts use a single separator", async t => {
+  const app = await openDashboard({ width: 1440, height: 900 }, { setup: r30Library });
+  t.after(() => app.context.close());
+  await app.page.locator("#nav-library").click();
+  await app.page.locator(".library-choice").first().waitFor({ state: "visible" });
+  await app.page.locator(".library-choice").first().click();
+  await app.page.locator("#library-list>li").first().waitFor({ state: "visible" });
+  const texts = await app.page.evaluate(() => [...document.querySelectorAll("#library-panel *")]
+    .filter(el => el.children.length === 0 && /首/.test(el.textContent || ""))
+    .map(el => el.textContent.replace(/\s+/g, " ").trim()));
+  console.log("R30_SEPARATORS=" + JSON.stringify(texts));
+  assert.ok(texts.length >= 2);
+  for (const text of texts) {
+    assert.doesNotMatch(text, /·\s*·/, "double separator: " + text);
+    assert.doesNotMatch(text, /·\s*$/, "trailing separator: " + text);
+  }
+  assert.deepEqual(app.errors, []);
+});

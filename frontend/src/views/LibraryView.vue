@@ -20,7 +20,7 @@ const sourceLabel = computed(() => active.value?.source_type === 'spotify' ? 'Sp
 
 function playlistMeta(item: { id: string; tracks: unknown[]; source_url?: string; source_type?: string }): string {
   const source = item.source_type === 'spotify' ? 'Spotify' : item.source_url ? 'YouTube' : item.id === 'favorites' ? t('m0192') : t('m0193')
-  return item.tracks.length + ' ' + t('m0191') + (source ? ' · ' + source : '')
+  return item.tracks.length + ' ' + t('m0033').trim() + (source ? ' · ' + source : '')
 }
 
 function submitSave(): void {
@@ -118,7 +118,7 @@ watch(library.saveDialogOpen, async open => {
             </details>
           </div>
           <p v-if="library.loadError.value" class="library-error" role="alert">{{ library.loadError.value }}</p>
-          <div v-if="active.tracks.length" class="library-track-tools"><span class="hint">{{ active.tracks.length }} {{ t('m0191') }}</span><button type="button" class="subtle" @click="toggleAllSelected">{{ library.selected.value.length === active.tracks.length ? t('m0261') : t('m0281') }}</button></div>
+          <div v-if="active.tracks.length" class="library-track-tools"><span class="hint">{{ active.tracks.length }} {{ t('m0033').trim() }}</span><button type="button" class="subtle" @click="toggleAllSelected">{{ library.selected.value.length === active.tracks.length ? t('m0261') : t('m0281') }}</button></div>
           <p v-if="!active.tracks.length" id="library-empty" class="library-empty-state" role="status"><span class="empty-glyph" aria-hidden="true">♫</span>{{ t('m0287') }}</p>
           <ol id="library-list" class="library-list">
             <li v-for="(song, index) in active.tracks" :key="song.url + index" class="library-track">
