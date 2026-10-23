@@ -383,3 +383,5 @@ test("session logout clears the rendered dashboard and sends the protected reque
 require("./dashboard_round31_regressions.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_async.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_auth_cases.cjs")({test, assert, openDashboard, baseURL});
+require("./dashboard_round31_auth_extra.cjs")({test, assert, openDashboard, baseURL});
+require("./dashboard_round31_controls.cjs")({test, assert, openDashboard, baseURL});
