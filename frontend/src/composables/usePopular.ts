@@ -66,7 +66,7 @@ async function add(track: PopularTrack): Promise<void> {
     if (dashboard.busy) throw new Error(t('m0614'))
     await command('play', { query: candidate.url, preview_id: candidate.preview_id })
   } catch (cause) {
-    if (epoch === actionEpoch && sessionEpoch === dashboard.epoch && guild === dashboard.guildId) error.value = errorMessage(cause)
+    if (epoch === actionEpoch && sessionEpoch === dashboard.epoch && guild === dashboard.guildId) { error.value = errorMessage(cause); notice(error.value, true) }
   } finally { if (epoch === actionEpoch) adding.value = null }
 }
 function setPeriod(value: string): void {
