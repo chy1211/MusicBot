@@ -552,3 +552,28 @@ test("mobile queue long-press drag follows the finger without re-rendering rows"
   assert.equal(app.requests.filter(r => /\/queue\/move$/.test(r.url)).length, 1);
   assert.deepEqual(app.errors, []);
 });
+
+test("recent operations show translated sources in separate columns", async t => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    const app = await openDashboard(viewport);
+    t.after(() => app.context.close());
+    const rows = app.page.locator("#activity-list > li");
+    await rows.first().waitFor({ state: "visible" });
+    const measured = await rows.evaluateAll(items => items.map(li => {
+      const parts = [...li.children].map(el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom }; });
+      let overlaps = 0;
+      for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
+        if (Math.min(parts[i].right, parts[j].right) - Math.max(parts[i].x, parts[j].x) > .5 &&
+            Math.min(parts[i].bottom, parts[j].bottom) - Math.max(parts[i].y, parts[j].y) > .5) overlaps++;
+      }
+      return { source: li.querySelector("small")?.textContent || "", overlaps };
+    }));
+    console.log("R28_ACTIVITY_" + viewport.width + "=" + JSON.stringify(measured.slice(0, 4)));
+    assert.ok(measured.length > 0);
+    for (const row of measured) {
+      assert.doesNotMatch(row.source, /discord_|^text$|^slash$|^web$/, "activity source must be translated: " + row.source);
+      assert.equal(row.overlaps, 0, "activity columns must not overlap: " + JSON.stringify(row));
+    }
+    assert.deepEqual(app.errors, []);
+  }
+});
