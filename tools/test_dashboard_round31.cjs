@@ -30,8 +30,8 @@ function waitForHealth(timeoutMs = 30000) {
   });
 }
 
-async function openDashboard(viewport = { width: 1440, height: 1000 }) {
-  const context = await browser.newContext({ viewport, locale: "zh-TW", colorScheme: "light", serviceWorkers: "block" });
+async function openDashboard(viewport = { width: 1440, height: 1000 }, options = {}) {
+  const context = await browser.newContext({ viewport, locale: "zh-TW", colorScheme: "light", serviceWorkers: "block", ...options.context });
   const page = await context.newPage();
   const requests = [];
   page.on("request", request => {
@@ -43,8 +43,10 @@ async function openDashboard(viewport = { width: 1440, height: 1000 }) {
   const errors = [];
   page.on("pageerror", error => errors.push(String(error)));
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
+  if (options.setup) await options.setup(page);
   await page.goto(baseURL + "/?demo-queue=filled&demo-lyrics=synced", { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => document.querySelector("#dashboard") || document.querySelector("#discord-login"));
+  await page.waitForFunction(() => document.querySelector("#dashboard")?.getClientRects().length || document.querySelector("#discord-login")?.getClientRects().length);
+  if (options.authenticate === false) return { context, page, requests, errors };
   if (await page.locator("#discord-login").isVisible().catch(() => false)) await page.locator("#discord-login").click();
   await page.waitForFunction(() => {
     const dashboard = document.querySelector("#dashboard");
@@ -375,3 +377,6 @@ test("session logout clears the rendered dashboard and sends the protected reque
   assert.ok(await app.page.locator("#discord-login").isVisible());
   assert.deepEqual(app.errors, []);
 });
+
+require("./dashboard_round31_regressions.cjs")({test, assert, openDashboard, baseURL});
+require("./dashboard_round31_async.cjs")({test, assert, openDashboard, baseURL});
