@@ -1,12 +1,13 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { dashboard } from '../store'
 import { t } from '../composables/useLocale'
 import { useLibrary } from '../composables/useLibrary'
 import PlaylistCover from '../components/PlaylistCover.vue'
 
 const route = useRoute()
+const router = useRouter()
 const library = useLibrary()
 const visible = computed(() => route.path === '/library')
 const detailHeading = ref<HTMLElement | null>(null)
@@ -25,12 +26,14 @@ function submitSave(): void {
   if (id) void library.savePending(id)
 }
 function chooseList(id: string): void {
-  library.setActive(id)
-  void nextTick(() => detailHeading.value?.focus({ preventScroll: true }))
+  void router.push({ path: '/library', query: { ...route.query, playlist: id } })
 }
 function backToLists(): void {
-  library.detailOpen.value = false
-  void nextTick(() => document.querySelector<HTMLButtonElement>('#library-playlists [aria-current=true]')?.focus({ preventScroll: true }))
+  if (router.options.history.state.back === '/library') router.back()
+  else {
+    const { playlist: _playlist, ...query } = route.query
+    void router.replace({ path: '/library', query })
+  }
 }
 function toggleAllSelected(): void {
   const songs = active.value?.tracks ?? []
@@ -40,6 +43,15 @@ function closeDialog(): void {
   library.closeSave()
   saveDialog.value?.close()
 }
+
+watch(() => [route.path, route.query.playlist] as const, async ([path, id]) => {
+  if (path === '/library' && typeof id === 'string') library.setActive(id)
+  else library.detailOpen.value = false
+  await nextTick()
+  if (path !== '/library') return
+  if (library.detailOpen.value) detailHeading.value?.focus({ preventScroll: true })
+  else document.querySelector<HTMLButtonElement>('#library-playlists [aria-current=true]')?.focus({ preventScroll: true })
+}, { immediate: true })
 
 onMounted(() => { if (dashboard.authenticated) void library.load() })
 watch(library.saveDialogOpen, async open => {
@@ -51,7 +63,7 @@ watch(library.saveDialogOpen, async open => {
 </script>
 
 <template>
-  <section id="library-panel" class="card library-page" :hidden="!visible" aria-labelledby="library-heading">
+  <section id="library-panel" class="card library-page" :class="{ 'detail-open': library.detailOpen.value }" :hidden="!visible" aria-labelledby="library-heading">
     <header class="section-top library-page-heading">
       <div><p class="eyebrow">{{ t('m0232') }}</p><h2 id="library-heading">{{ t('m0232') }}</h2></div>
       <button id="library-refresh" type="button" class="subtle" :disabled="library.loading.value || library.busy.value" :aria-busy="library.loading.value" @click="library.load()">

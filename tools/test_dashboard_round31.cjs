@@ -652,3 +652,61 @@ test("area around the floating player and nav stays transparent", async t => {
   if (shotDir) await light.page.screenshot({ path: path.join(shotDir, "mobile-light-play-mid.png") });
   await inspect({ width: 1440, height: 900 }, false, "desktop-dark-play-mid.png");
 });
+
+
+// Round 30: focused regression cases. Synthetic data stays in the browser.
+async function r30Library(page) {
+  const payload = { revision: "r30-1", owner: true, sources: { youtube: true, spotify: true }, playlists: [
+    { id: "favorites", name: "Favorites", tracks: [
+      { title: "Saved YouTube track", url: "https://www.youtube.com/watch?v=demo0000001", duration: 195 },
+      { title: "Saved external track", url: "https://soundcloud.com/example/saved", duration: 180, thumbnail: baseURL + "/demo-cover/2.svg" },
+      { title: "Track without artwork", url: "https://soundcloud.com/example/no-art", duration: 60 }
+    ] },
+    { id: "a".repeat(24), name: "Editable playlist", tracks: [
+      { title: "Editable YouTube track", url: "https://youtu.be/demo0000002", duration: 180 }
+    ] }
+  ] };
+  await page.route("**/api/library{,/**}", async route => {
+    if (route.request().method() === "PATCH") {
+      const body = route.request().postDataJSON();
+      payload.playlists[1].name = body.name;
+      payload.revision = "r30-2";
+    }
+    await route.fulfill({ json: payload });
+  });
+  await page.route("https://i.ytimg.com/**", route => route.fulfill({
+    contentType: "image/svg+xml",
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#237b70"/><circle cx="160" cy="90" r="42" fill="#b2d9c3"/></svg>'
+  }));
+}
+
+async function r30Shot(page, name) {
+  const dir = process.env.R30_SCREENSHOTS_DIR;
+  if (dir) {
+    require("node:fs").mkdirSync(dir, { recursive: true });
+    await page.screenshot({ path: path.join(dir, name) });
+  }
+}
+
+test("R30 mobile playlist detail and browser back return to the list", async t => {
+  const app = await openDashboard({ width: 390, height: 844 }, {
+    context: { isMobile: true, hasTouch: true }, setup: r30Library
+  });
+  t.after(() => app.context.close());
+  await app.page.locator("#nav-library").click();
+  await app.page.locator(".library-choice").first().click();
+  await app.page.locator("#library-list>li").first().waitFor({ state: "visible" });
+  assert.ok(await app.page.locator("#library-list>li").count() > 0);
+  assert.equal(await app.page.locator("#library-back").innerText(), "\u2190 \u8fd4\u56de\u6b4c\u55ae\u5217\u8868");
+  await r30Shot(app.page, "issue1-mobile-detail.png");
+  await app.page.locator("#library-back").click();
+  await app.page.locator(".library-choice").first().waitFor({ state: "visible" });
+  await r30Shot(app.page, "issue1-mobile-list.png");
+  await app.page.locator(".library-choice").first().click();
+  await app.page.locator("#library-list>li").first().waitFor({ state: "visible" });
+  await app.page.goBack();
+  await app.page.locator(".library-choice").first().waitFor({ state: "visible" });
+  assert.match(app.page.url(), /#\/library$/);
+  assert.equal(await app.page.locator("#library-detail").isVisible(), false);
+  assert.deepEqual(app.errors, []);
+});
