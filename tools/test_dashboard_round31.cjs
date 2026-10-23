@@ -888,3 +888,62 @@ test("R30 playlist counts use a single separator", async t => {
   }
   assert.deepEqual(app.errors, []);
 });
+
+
+test("R31 theme toggle sits before the language label and select", async t => {
+  for (const scenario of [
+    { width: 1440, height: 900, mode: "dark" },
+    { width: 1440, height: 900, mode: "light" },
+    { width: 390, height: 844, mode: "dark", mobile: true }
+  ]) {
+    const { width, height, mode, mobile = false } = scenario;
+    const app = await openDashboard({ width, height }, {
+      context: { colorScheme: mode, isMobile: mobile, hasTouch: mobile },
+      setup: async page => {
+        await page.route("**/auth/session", async route => {
+          const response = await route.fetch();
+          const data = await response.json();
+          if (data.authenticated) data.user = { ...data.user, name: "DemoUser" };
+          await route.fulfill({ response, json: data });
+        });
+      }
+    });
+    t.after(() => app.context.close());
+    const button = app.page.locator("#theme-toggle");
+    const select = app.page.locator("#dashboard-language");
+    const label = app.page.locator('label[for="' + await select.getAttribute("id") + '"]');
+    assert.equal(await label.count(), 1);
+    assert.equal(await label.evaluate(el => el.control === document.querySelector("#dashboard-language")), true);
+    assert.equal(await label.isVisible(), !mobile);
+    const b = await button.boundingBox(), s = await select.boundingBox();
+    const centers = [b.y + b.height / 2, s.y + s.height / 2];
+    assert.ok(b.x + b.width <= s.x, JSON.stringify({ b, s }));
+    if (!mobile) {
+      const l = await label.boundingBox();
+      assert.ok(b.x + b.width <= l.x, JSON.stringify({ b, l }));
+      assert.ok(l.x + l.width <= s.x, JSON.stringify({ l, s }));
+      centers.push(l.y + l.height / 2);
+      const headerGap = await app.page.locator(".user-profile").evaluate(el => parseFloat(getComputedStyle(el).gap));
+      assert.ok(Math.abs(l.x - b.x - b.width - headerGap) <= 1);
+      assert.ok(Math.abs(s.x - l.x - l.width - headerGap) <= 1);
+    }
+    assert.ok(Math.max(...centers) - Math.min(...centers) <= 2, JSON.stringify(centers));
+    await select.evaluate(el => el.blur());
+    if (mobile) await label.evaluate(el => el.click());
+    else await label.click();
+    assert.equal(await select.evaluate(el => document.activeElement === el), true);
+    await select.evaluate(el => el.blur());
+    assert.equal(await app.page.locator("html").getAttribute("data-theme"), mode);
+    assert.deepEqual(app.errors, []);
+    console.log("R31_ORDER_" + width + "_" + mode + "=" + JSON.stringify({ button: b, select: s, centers, labelFocus: true }));
+    const dir = process.env.R31_SCREENSHOTS_DIR;
+    if (dir) {
+      require("node:fs").mkdirSync(dir, { recursive: true });
+      const x = Math.max(0, b.x - 12), y = Math.max(0, Math.min(b.y, s.y) - 12);
+      await app.page.screenshot({
+        path: path.join(dir, "r31-header-" + width + "-" + mode + ".png"),
+        clip: { x, y, width: Math.min(width - x, s.x + s.width + 12 - x), height: Math.max(b.y + b.height, s.y + s.height) + 12 - y }
+      });
+    }
+  }
+});

@@ -247,7 +247,6 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
 #theme-toggle .theme-moon{opacity:1;transform:rotate(0)}
 #theme-toggle[data-mode=light] .theme-sun{opacity:1;transform:rotate(0)}
 #theme-toggle[data-mode=light] .theme-moon{opacity:0;transform:rotate(90deg)}
-.language-preference>label{order:-1}
 @media(max-width:760px){
  .language-preference{gap:6px}
  .sidebar .brand{margin-right:0;max-width:calc(100% - 184px);white-space:normal;line-height:1.25}
