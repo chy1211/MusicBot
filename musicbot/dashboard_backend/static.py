@@ -80,6 +80,13 @@ class DashboardStaticRoutes:
         if not name or Path(name).name != name or name in (".", ".."):
             raise web.HTTPNotFound()
         path = root / name
+        if not path.is_file() and name in (
+            "dashboard.js", "admin.js", "library.js", "popular.js", "permissions.js"
+        ) and (root / "index.html").is_file():
+            return web.Response(
+                text="if (!document.getElementById('app')) location.replace('/');",
+                content_type="text/javascript",
+            )
         if not path.is_file():
             raise web.HTTPNotFound()
         return web.Response(

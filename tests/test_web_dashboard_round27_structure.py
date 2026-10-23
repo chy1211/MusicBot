@@ -35,6 +35,12 @@ class BuiltStaticTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.status,200);self.assertIn("immutable",response.headers["Cache-Control"])
                 self.assertIn("javascript",response.headers["Content-Type"])
                 self.assertEqual((await self.client.get("/assets/not-found.js")).status,404)
+                for name in ("dashboard.js", "admin.js", "library.js", "popular.js", "permissions.js"):
+                    self.assertFalse((built/name).exists())
+                    response=await self.client.get("/"+name)
+                    self.assertEqual(response.status,200)
+                    self.assertIn("javascript",response.headers["Content-Type"])
+                    self.assertIn("location.replace('/')",await response.text())
     async def test_worker_and_offline_resources_use_correct_headers(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);built=root/"dist";built.mkdir()
