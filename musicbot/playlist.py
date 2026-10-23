@@ -141,8 +141,8 @@ class Playlist(EventEmitter, Serializable):
             author=author,
             channel=channel,
         )
-        self._add_entry(entry, head=head, defer_serialize=defer_serialize)
-        return entry, len(self.entries)
+        position = self._add_entry(entry, head=head, defer_serialize=defer_serialize)
+        return entry, position
 
     async def add_entry_from_info(
         self,
@@ -230,8 +230,8 @@ class Playlist(EventEmitter, Serializable):
             {"subject": info.input_subject},
         )
         entry = URLPlaylistEntry(self, info, author=author, channel=channel)
-        self._add_entry(entry, head=head, defer_serialize=defer_serialize)
-        return entry, (1 if head else len(self.entries))
+        position = self._add_entry(entry, head=head, defer_serialize=defer_serialize)
+        return entry, position
 
     async def add_local_file_entry(
         self,
@@ -250,8 +250,8 @@ class Playlist(EventEmitter, Serializable):
             {"subject": info.input_subject},
         )
         entry = LocalFilePlaylistEntry(self, info, author=author, channel=channel)
-        self._add_entry(entry, head=head, defer_serialize=defer_serialize)
-        return entry, (1 if head else len(self.entries))
+        position = self._add_entry(entry, head=head, defer_serialize=defer_serialize)
+        return entry, position
 
     async def import_from_info(
         self,
@@ -350,6 +350,8 @@ class Playlist(EventEmitter, Serializable):
                     author=author,
                     channel=channel,
                 )
+                if not entry_list:
+                    position = _pos
                 entry_list.append(entry)
             except (WrongEntryTypeError, ExtractionError):
                 baditems += 1
@@ -424,25 +426,44 @@ class Playlist(EventEmitter, Serializable):
 
     def _add_entry(
         self, entry: EntryTypes, *, head: bool = False, defer_serialize: bool = False
-    ) -> None:
+    ) -> int:
         """
-        Handle appending the `entry` to the queue. If the entry is he first,
-        the entry will create a future to download itself.
+        Add an entry and return its one-based queue position.
+        Tail requests go before queued radio tracks; radio itself stays at the tail.
 
         :param: head:  Toggle adding to the front of the queue.
         :param: defer_serialize:  Signal to events that serialization should be deferred.
         """
+        # Imported lazily to keep the core playlist's module initialization independent
+        # of the dashboard. Radio metadata is already present before fill() adds it.
+        from .web_dashboard_radio import is_radio
+
+        radio_index = next(
+            (i for i, queued in enumerate(self.entries) if is_radio(queued)),
+            len(self.entries),
+        )
+        has_radio = radio_index < len(self.entries) or is_radio(entry)
         if head:
             self.entries.appendleft(entry)
-        else:
+        elif is_radio(entry):
             self.entries.append(entry)
+        else:
+            self.entries.insert(radio_index, entry)
 
-        if self.bot.config.round_robin_queue and not entry.from_auto_playlist:
+        # Radio queues keep request FIFO and automatic tracks. The legacy
+        # round-robin rebuild drops entries without authors, including radio.
+        if (
+            self.bot.config.round_robin_queue
+            and not entry.from_auto_playlist
+            and not has_radio
+        ):
             self.reorder_for_round_robin()
 
+        position = self.entries.index(entry) + 1
         self.emit(
             "entry-added", playlist=self, entry=entry, defer_serialize=defer_serialize
         )
+        return position
 
     async def get_next_entry(self) -> Any:
         """
