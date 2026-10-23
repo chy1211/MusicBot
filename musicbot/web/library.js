@@ -26,6 +26,7 @@ function libraryClear() {
 }
 function libraryView(page) {
   libraryPage = page;
+  window.dispatchEvent?.(new CustomEvent("musicbot:navigate", {detail: page}));
   $("play-view").hidden = page !== "play"; $("library-panel").hidden = page !== "library";
   if ($("admin-panel")) $("admin-panel").hidden = page !== "admin";
   if ($("popular-panel")) $("popular-panel").hidden = page !== "popular";
@@ -38,6 +39,18 @@ async function libraryLoad() {
   libraryData = value; libraryRender(); favoriteRender(); return true;
 }
 function playlistName(item) { return item.id === "favorites" ? t("m0192") : item.name; }
+function libraryTrack(song) {
+  const track = {title: song.title, url: song.url, duration: song.duration || null};
+  const thumbnail = typeof playlistCoverThumbnail === "function" ? playlistCoverThumbnail(song) : safeURL(song?.thumbnail || "");
+  if (thumbnail) track.thumbnail = thumbnail;
+  return track;
+}
+function libraryPlaylistCover(tracks, size, extraClass = "") {
+  if (typeof playlistCoverElement !== "function") return null;
+  const cover = playlistCoverElement(tracks, size);
+  if (extraClass) cover.className += " " + extraClass;
+  return cover;
+}
 function libraryRender() {
   $("library-playlists").replaceChildren();
   if (!libraryData) return;
@@ -45,9 +58,12 @@ function libraryRender() {
   for (const item of libraryData.playlists) {
     const row = document.createElement("li"), button = document.createElement("button");
     button.type = "button"; button.className = "library-choice";
-    const title = document.createElement("span"); title.textContent = playlistName(item);
+    const title = document.createElement("span"); title.className = "library-choice-title"; title.textContent = playlistName(item);
     const meta = document.createElement("small");
     meta.textContent = item.tracks.length + t("m0191") + (item.source_type === "spotify" ? "Spotify" : item.source_url ? "YouTube" : item.id === "favorites" ? t("m0192") : t("m0193"));
+    const cover = libraryPlaylistCover(item.tracks, 48);
+    if (cover) { button.style.gridTemplateColumns = "48px minmax(0, 1fr)"; cover.style.gridRow = "span 2"; cover.style.gridColumn = "1"; title.style.gridColumn = meta.style.gridColumn = "2"; }
+    if (cover) button.append(cover);
     button.append(title, meta); button.setAttribute("aria-current", String(item.id === libraryActive));
     button.addEventListener("click", () => {
       libraryActive = item.id; libraryDetailOpen = true; libraryRender();
@@ -57,7 +73,13 @@ function libraryRender() {
   }
   const list = libraryData.playlists.find(p => p.id === libraryActive);
   $("library-panel").classList.toggle("detail-open", libraryDetailOpen);
-  $("library-detail-heading").textContent = playlistName(list);
+  const heading = $("library-detail-heading"), headingTitle = document.createElement("span");
+  headingTitle.textContent = playlistName(list);
+  const hero = libraryPlaylistCover(list.tracks, 64, "playlist-cover-hero");
+  if (hero) {
+    heading.style.display = "flex"; heading.style.alignItems = "center"; heading.style.gap = "12px";
+    heading.replaceChildren(hero, headingTitle);
+  } else heading.textContent = playlistName(list);
   $("library-meta").textContent = list.tracks.length + t("m0033") + (list.source_url ? " · " + (list.source_type === "spotify" ? "Spotify" : "YouTube") : "");
   $("library-rename-form").hidden = list.id === "favorites";
   $("library-delete").hidden = list.id === "favorites";
@@ -110,7 +132,7 @@ async function libraryPlay(list, chosen) {
 async function librarySave(song, favorite = false) {
   if (!safeURL(song?.url)) throw new Error(t("m0197"));
   if (!await libraryLoad()) return;
-  const track = {title: song.title, url: song.url, duration: song.duration || null};
+  const track = libraryTrack(song);
   if (favorite) return libraryChange("favorites", {track}, "POST", "/tracks");
   libraryPendingSong = track;
   $("playlist-picker").replaceChildren();
@@ -165,7 +187,7 @@ $("favorite").addEventListener("click", () => libraryRun($("favorite"), async ()
   const key = songIdentity(song.url);
   const saved = libraryData.playlists[0].tracks.some(t => songIdentity(t.url) === key);
   await libraryChange("favorites", saved ? {action:"remove_url",url:song.url}
-    : {track:{title:song.title,url:song.url,duration:song.duration || null}}, saved ? "PATCH" : "POST", saved ? "" : "/tracks");
+    : {track:libraryTrack(song)}, saved ? "PATCH" : "POST", saved ? "" : "/tracks");
   if (!reduceMotion() && $("favorite").animate)
     $("favorite").animate([{transform:"scale(1)"},{transform:"scale(1.12)"},{transform:"scale(1)"}], {duration:230});
 }));
