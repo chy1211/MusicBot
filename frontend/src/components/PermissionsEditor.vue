@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import type { PermissionData, PermissionChange } from '../composables/usePermissions'
 import { nextTick, ref, watch } from 'vue'
-import { nextTick, ref, watch } from 'vue'
 import { t } from '../composables/useLocale'
-const props=const props=defineProps<{data:PermissionData|null;loading:boolean;error:string;saving:boolean}>()
-const errorRef=ref<HTMLElement|null>(null)
-watch(()=>props.error,async error=>{if(error){await nextTick();errorRef.value?.focus()}})
+const props=defineProps<{data:PermissionData|null;loading:boolean;error:string;saving:boolean}>()
 const errorRef=ref<HTMLElement|null>(null)
 watch(()=>props.error,async error=>{if(error){await nextTick();errorRef.value?.focus()}})
 const emit=defineEmits<{change:[value:PermissionChange];confirm:[];cancel:[];retry:[]}>()

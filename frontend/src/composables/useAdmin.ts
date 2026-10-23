@@ -30,6 +30,7 @@ export function useAdmin() {
  const path = (id:string,suffix:string) => `/api/guilds/${encodeURIComponent(id)}/admin/${suffix}`
  const current = (token:number,id:string) => token === epoch && guild.value === id
  const message = (e:unknown) => e instanceof Error ? e.message : t('admin.error.generic')
+ function handleError(e:unknown){if(e instanceof APIError&&e.status===401){owner.value=false;notify.value=null;emptyQueue.value=null;apl.value=null;maintenance.value=null;error.value=t('admin.error.unauthorized')}else error.value=message(e)}
  async function loadAll() {
   const id=guild.value, token=++epoch
   if(!id||id!==dashboard.guildId||!dashboard.authenticated){owner.value=false;loading.value=false;notify.value=null;emptyQueue.value=null;apl.value=null;maintenance.value=null;return}

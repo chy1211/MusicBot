@@ -4,13 +4,10 @@ import PermissionsEditor from '../components/PermissionsEditor.vue'
 import { useAdmin } from '../composables/useAdmin'
 import { usePermissions } from '../composables/usePermissions'
 import { t } from '../composables/useLocale'
-const a=useAdmin(), p=usePermissions(() => a.canManage)
+const a=useAdmin(), p=usePermissions(a.canManage, () => { a.owner.value=false })
 const notifyChannel=ref(''), emptyMode=ref<'autoplaylist'|'radio'|'off'>('autoplaylist'), radioMin=ref(0), radioMax=ref(0)
 const query=ref('')
 const permissionDialog=ref<HTMLDialogElement|null>(null)
-const adminErrorRef=ref<HTMLDivElement|null>(null),permissionErrorRef=ref<HTMLParagraphElement|null>(null)
-watch(()=>a.error.value,async error=>{if(error){await nextTick();adminErrorRef.value?.focus()}})
-watch(()=>p.error.value,async error=>{if(error){await nextTick();permissionErrorRef.value?.focus()}})
 const adminErrorRef=ref<HTMLDivElement|null>(null),permissionErrorRef=ref<HTMLParagraphElement|null>(null)
 watch(()=>a.error.value,async error=>{if(error){await nextTick();adminErrorRef.value?.focus()}})
 watch(()=>p.error.value,async error=>{if(error){await nextTick();permissionErrorRef.value?.focus()}})
@@ -25,8 +22,6 @@ const details=computed(()=>{
  const m=a.maintenance.value;if(!m)return [] as Array<{label:string;value:string;warning?:boolean}>
  const rows:Array<{label:string;value:string;warning?:boolean}>=[{label:t('admin.maintenance.cookie'),value:m.cookie?.status==='unused'?t('admin.maintenance.unused'):m.cookie?.status==='ok'?t('admin.maintenance.ok'):t('admin.maintenance.unavailable'),warning:m.cookie?.warning}]
  if(m.cookie?.earliest_expiry)rows.push({label:t('admin.maintenance.cookieExpiry'),value:`${date(m.cookie.earliest_expiry)} · ${m.cookie.remaining_days??0} ${t('admin.days')}`,warning:(m.cookie.remaining_days??99)<=7})
- if(m.cookie?.updated_at)rows.push({label:t('admin.maintenance.cookieUpdated'),value:date(m.cookie.updated_at)})
- if(m.cookie?.updated_at)rows.push({label:t('admin.maintenance.cookieUpdated'),value:date(m.cookie.updated_at)})
  if(m.cookie?.updated_at)rows.push({label:t('admin.maintenance.cookieUpdated'),value:date(m.cookie.updated_at)})
  for(const c of m.cookie?.cookies||[])rows.push({label:c.name,value:`${date(c.expires_at)} · ${c.remaining_days} ${t('admin.days')}`,warning:c.remaining_days<=7})
  for(const [key,label] of [['yt-dlp','admin.maintenance.ytdlp'],['yt-dlp-ejs','admin.maintenance.ytdlpEjs']] as const)rows.push({label:t(label),value:m.versions?.[key]||t('admin.value.unknown')})
