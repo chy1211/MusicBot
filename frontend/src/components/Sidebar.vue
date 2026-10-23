@@ -1,19 +1,13 @@
-<template>
-  <aside class="sidebar">
-    <a class="brand" href="/" aria-label="Music dashboard home" data-i18n-aria-label="m0228"><span class="brand-icon" aria-hidden="true">♫</span><span class="brand-label"><span data-i18n="m0223">Music dashboard</span></span></a>
-    <label for="guild"><span data-i18n="m0229">Switch server</span></label><select id="guild" aria-label="Switch server" data-i18n-aria-label="m0229"></select>
-    <nav class="page-tabs" aria-label="Pages" data-i18n-aria-label="m0230"><button id="nav-play" type="button" aria-pressed="true"><span data-i18n="m0231">Play</span></button><button id="nav-library" type="button"><span data-i18n="m0232">My playlists</span></button><button id="nav-popular" type="button"><span data-i18n="m0233">Popular</span></button><button id="nav-admin" type="button" hidden><span data-i18n="m0234">Admin</span></button></nav>
-    <button id="shortcuts-help" class="desktop-shortcuts subtle" type="button"><span data-i18n="m0235">Keyboard shortcuts ?</span></button>
-    <button id="pwa-refresh" type="button" hidden><span data-i18n="m0236">Refresh to update</span></button>
-    <span id="connection" class="badge" role="status"><span data-i18n="m0125">Connecting</span></span>
-    <details id="auth" class="auth">
-      <summary><span data-i18n="m0237">Connection settings</span></summary>
-      <form id="auth-form"><label for="secret"><span data-i18n="m0238">Shared secret</span></label>
-        <input id="secret" type="password" autocomplete="off" maxlength="1024">
-        <button type="submit"><span data-i18n="m0239">Reconnect</span></button><button id="forget" type="button" class="subtle"><span data-i18n="m0240">Clear</span></button>
-        <p class="hint"><span data-i18n="m0241">Kept only in this browser tab&#x27;s memory.</span></p>
-      </form>
-    </details>
-  </aside>
-
-</template>
+<script setup lang="ts">
+import {computed,ref} from 'vue'
+import {useRouter,useRoute} from 'vue-router'
+import {dashboard} from '../store'
+import {selectGuild,connect} from '../composables/useDashboard'
+import {t} from '../composables/useLocale'
+const router=useRouter(),route=useRoute(),secret=ref('')
+const owner=computed(()=>dashboard.authMode==='owner'||dashboard.me?.can_manage===true)
+const pages=computed(()=>[{id:'play',key:'m0231'},{id:'library',key:'m0232'},{id:'popular',key:'m0233'},...(owner.value?[{id:'admin',key:'m0234'}]:[])])
+const selected=computed(()=>route.path.slice(1)||'play')
+function reconnect(forget=false){dashboard.secret=forget?'':secret.value;secret.value='';void connect()}
+</script>
+<template><aside class="sidebar"><RouterLink class="brand" to="/play" :aria-label="t('m0228')"><span class="brand-icon" aria-hidden="true">♫</span><span class="brand-label">{{ t('m0223') }}</span></RouterLink><label for="guild">{{ t('m0229') }}</label><select id="guild" :value="dashboard.guildId" :disabled="dashboard.busy||dashboard.loading" :aria-label="t('m0229')" @change="selectGuild(($event.target as HTMLSelectElement).value)"><option v-for="guild in dashboard.guilds" :key="guild.id" :value="guild.id">{{ guild.name }}</option></select><nav class="page-tabs mobile-glass" :class="{'nav-compact':!owner}" :aria-label="t('m0230')" :style="{'--tabs':pages.length}"><button v-for="(page,index) in pages" :id="'nav-'+page.id" :key="page.id" type="button" :aria-pressed="selected===page.id" :style="{'--index':index}" @click="router.push('/'+page.id)">{{ t(page.key) }}</button></nav><button id="shortcuts-help" class="desktop-shortcuts subtle" type="button" @click="dashboard.shortcutsOpen=true">{{ t('m0235') }}</button><button id="pwa-refresh" type="button" :hidden="!dashboard.updateAvailable" @click="window.location.reload()">{{ t('m0236') }}</button><span id="connection" class="badge" :class="{online:dashboard.connected}" role="status" :aria-label="t('m0071')+t(dashboard.streaming?'m0188':dashboard.loading?'m0125':dashboard.connected?'m0123':'m0124')">{{ t(dashboard.streaming?'m0188':dashboard.loading?'m0125':dashboard.connected?'m0123':'m0124') }}</span><details id="auth" class="auth" :hidden="dashboard.authMode!=='owner'" :open="!dashboard.connected&&!dashboard.loading"><summary>{{ t('m0237') }}</summary><form id="auth-form" @submit.prevent="reconnect()"><label for="secret">{{ t('m0238') }}</label><input id="secret" v-model="secret" type="password" autocomplete="off" maxlength="1024"><button type="submit" :disabled="dashboard.busy">{{ t('m0239') }}</button><button id="forget" type="button" class="subtle" @click="reconnect(true)">{{ t('m0240') }}</button><p class="hint">{{ t('m0241') }}</p></form></details></aside></template>

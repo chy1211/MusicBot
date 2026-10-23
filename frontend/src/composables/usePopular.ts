@@ -3,6 +3,7 @@ import { dashboard } from '../store'
 import { request } from '../api'
 import { command, notice } from './useDashboard'
 import { t } from './useLocale'
+import { safeURL } from './useTrack'
 import type { LibraryTrack } from './useLibrary'
 
 interface PopularTrack extends LibraryTrack { count: number }
@@ -19,14 +20,11 @@ let requestEpoch = 0
 let actionEpoch = 0
 
 function errorMessage(value: unknown): string { return value instanceof Error && value.message ? value.message : t('m0221') }
-function safeUrl(value: unknown): string {
-  if (typeof value !== 'string' || /[\u0000-\u001f]/.test(value)) return ''
-  try { const url = new URL(value); return /^https?:$/.test(url.protocol) && !url.username && !url.password ? value : '' }
-  catch { return '' }
-}
+function safeUrl(value: unknown): string { return safeURL(value) }
 async function load(): Promise<void> {
   const epoch = ++requestEpoch
   const guild = dashboard.guildId
+  const sessionEpoch = dashboard.epoch
   if (!guild || !dashboard.authenticated || !dashboard.connected) {
     tracks.value = []
     empty.value = false
@@ -34,25 +32,27 @@ async function load(): Promise<void> {
     loading.value = false
     return
   }
+  tracks.value = []
   loading.value = true
   empty.value = false
   error.value = ''
   try {
     const result = await request<PopularPayload>('/api/guilds/' + encodeURIComponent(guild) + '/popular?period=' + encodeURIComponent(period.value))
-    if (epoch !== requestEpoch || guild !== dashboard.guildId) return
+    if (epoch !== requestEpoch || sessionEpoch !== dashboard.epoch || guild !== dashboard.guildId) return
     tracks.value = (result.tracks ?? []).slice(0, 20)
     empty.value = tracks.value.length === 0
   } catch (cause) {
-    if (epoch === requestEpoch && guild === dashboard.guildId) {
+    if (epoch === requestEpoch && sessionEpoch === dashboard.epoch && guild === dashboard.guildId) {
       tracks.value = []
       error.value = errorMessage(cause)
     }
-  } finally { if (epoch === requestEpoch) loading.value = false }
+  } finally { if (epoch === requestEpoch && sessionEpoch === dashboard.epoch) loading.value = false }
 }
 async function add(track: PopularTrack): Promise<void> {
   const guild = dashboard.guildId
   if (!guild || !dashboard.authenticated || !dashboard.connected || dashboard.busy || adding.value || !safeUrl(track.url)) return
   const epoch = ++actionEpoch
+  const sessionEpoch = dashboard.epoch
   adding.value = track.url
   error.value = ''
   try {
@@ -60,12 +60,13 @@ async function add(track: PopularTrack): Promise<void> {
       '/api/guilds/' + encodeURIComponent(guild) + '/resolve',
       { method: 'POST', body: { query: track.url, action: 'play' } },
     )
-    if (epoch !== actionEpoch || guild !== dashboard.guildId) return
+    if (epoch !== actionEpoch || sessionEpoch !== dashboard.epoch || guild !== dashboard.guildId || !dashboard.connected) return
     const candidate = result.results?.find(row => row.kind === 'track' && row.allowed && row.preview_id && safeUrl(row.url))
     if (!candidate?.preview_id) throw new Error(result.results?.[0]?.reason || t('m0613'))
+    if (dashboard.busy) throw new Error(t('m0614'))
     await command('play', { query: candidate.url, preview_id: candidate.preview_id })
   } catch (cause) {
-    if (epoch === actionEpoch && guild === dashboard.guildId) error.value = errorMessage(cause)
+    if (epoch === actionEpoch && sessionEpoch === dashboard.epoch && guild === dashboard.guildId) error.value = errorMessage(cause)
   } finally { if (epoch === actionEpoch) adding.value = null }
 }
 function setPeriod(value: string): void {

@@ -15,6 +15,11 @@ const saveDialog = ref<HTMLDialogElement | null>(null)
 const active = library.activePlaylist
 const sourceLabel = computed(() => active.value?.source_type === 'spotify' ? 'Spotify' : active.value?.source_url ? 'YouTube' : '')
 
+function playlistMeta(item: { id: string; tracks: unknown[]; source_url?: string; source_type?: string }): string {
+  const source = item.source_type === 'spotify' ? 'Spotify' : item.source_url ? 'YouTube' : item.id === 'favorites' ? t('m0192') : t('m0193')
+  return item.tracks.length + ' ' + t('m0191') + (source ? ' · ' + source : '')
+}
+
 function submitSave(): void {
   const id = saveSelect.value?.value
   if (id) void library.savePending(id)
@@ -71,7 +76,7 @@ watch(library.saveDialogOpen, async open => {
             <button type="button" class="library-choice" :aria-current="item.id === library.activeId.value ? 'true' : undefined" @click="chooseList(item.id)">
               <PlaylistCover :tracks="item.tracks" :size="52" :label="library.playlistLabel(item)" />
               <span class="library-choice-title">{{ library.playlistLabel(item) }}</span>
-              <small>{{ item.tracks.length }} {{ t('m0191') }}<template v-if="item.source_type"> · {{ item.source_type === 'spotify' ? 'Spotify' : 'YouTube' }}</template></small>
+              <small>{{ playlistMeta(item) }}</small>
             </button>
           </li>
         </ul>
@@ -104,7 +109,7 @@ watch(library.saveDialogOpen, async open => {
           <ol id="library-list" class="library-list">
             <li v-for="(song, index) in active.tracks" :key="song.url + index" class="library-track">
               <input type="checkbox" :checked="library.selected.value.includes(index)" :aria-label="t('m0095') + song.title" @change="library.toggleTrack(index, ($event.target as HTMLInputElement).checked)">
-              <img v-if="song.thumbnail" class="library-track-cover" :src="song.thumbnail" alt="" loading="lazy" referrerpolicy="no-referrer" @error="($event.target as HTMLImageElement).hidden = true">
+              <img v-if="library.safeUrl(song.thumbnail)" class="library-track-cover" :src="library.safeUrl(song.thumbnail)" alt="" loading="lazy" referrerpolicy="no-referrer" @error="($event.target as HTMLImageElement).hidden = true">
               <span v-else class="library-track-cover library-track-cover-empty" aria-hidden="true">♫</span>
               <div class="song"><p><a v-if="library.safeUrl(song.url)" :href="library.safeUrl(song.url)" target="_blank" rel="noopener noreferrer">{{ song.title }}</a><span v-else>{{ song.title }}</span></p><small>{{ library.formatDuration(song.duration) }}</small></div>
               <button type="button" class="subtle library-remove" :aria-label="t('m0194') + song.title" :disabled="library.busy.value" @click="library.removeTrack(index)">{{ t('m0004') }}</button>

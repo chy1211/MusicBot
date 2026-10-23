@@ -1,17 +1,28 @@
-<template>
-<section id="playback-bar" class="playback-bar" aria-label="Playback controls" data-i18n-aria-label="m0328">
-<div class="bar-track"><div class="art mini-art"><span aria-hidden="true">♫</span><img id="bar-cover" alt="" hidden></div>
-<div class="bar-copy"><button id="bar-title" type="button" aria-expanded="false" aria-controls="song-choices" aria-haspopup="true"><span data-i18n="m0110">Nothing playing</span></button><small id="bar-status"><span data-i18n="m0113">Pick a song</span></small>
-<div id="song-choices" class="song-choices" role="group" aria-label="Open track" hidden data-i18n-aria-label="m0329">
-<a id="source-link" target="_blank" rel="noopener noreferrer"><span data-i18n="m0106">Open on YouTube</span></a>
-<a id="song-spotify" target="_blank" rel="noopener noreferrer"><span data-i18n="m0330">Open on Spotify</span></a></div></div>
-<button id="favorite" class="player-control" type="button" aria-label="Save this track" aria-pressed="false" data-i18n-aria-label="m0201">♡</button></div>
-<div class="bar-center"><div id="player-transport" class="transport">
-<button id="toggle" class="primary player-control" aria-label="Play or pause" disabled data-i18n-aria-label="m0331"><span data-i18n="m0109">Resume</span></button><button id="skip" class="player-control" aria-label="Skip the current track" disabled data-i18n-aria-label="m0332"><span data-i18n="m0333">Skip</span></button>
-<button id="repeat" class="repeat-control player-control" aria-label="Repeat: off" aria-pressed="false" disabled data-i18n-aria-label="m0334"><span data-i18n="m0114">Repeat</span></button></div>
-<div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1" step="1" value="0" aria-label="Player seek position" disabled data-i18n-aria-label="m0335"><span id="duration">0:00</span></div></div>
-<p class="sr-only seek-hint"><span data-i18n="m0336">Drag or use the arrow keys. Release to seek.</span></p><div class="bar-right"><button id="lyrics-toggle" class="player-control" type="button" aria-expanded="false" aria-controls="lyrics-panel" disabled><span data-i18n="m0141">Lyrics</span></button>
-<div class="volume-row"><label for="volume" class="sr-only"><span data-i18n="m0337">Volume</span></label><input id="volume" type="range" min="1" max="100" value="15" aria-label="Volume" disabled data-i18n-aria-label="m0337"><output id="volume-label" for="volume">15%</output></div></div>
-</section>
-
-</template>
+<script setup lang="ts">
+import {computed,ref,onMounted,onBeforeUnmount,nextTick} from 'vue'
+import {dashboard,usable} from '../store'
+import {run} from '../composables/useDashboard'
+import {player,progress,seekable,beginSeek,previewSeek,commitSeek,cancelSeek,usePlayback} from '../composables/usePlayback'
+import {lyrics,toggleLyrics,centerLine} from '../composables/useLyrics'
+import {useLibrary} from '../composables/useLibrary'
+import {duration,safeURL,songLinkURL} from '../composables/useTrack'
+import {t} from '../composables/useLocale'
+import TrackArt from './TrackArt.vue'
+usePlayback();const library=useLibrary(),dock=ref<HTMLElement|null>(null)
+const track=computed(()=>dashboard.snapshot?.current),state=computed(()=>dashboard.snapshot)
+const active=computed(()=>usable.value&&!!track.value&&['playing','paused'].includes(state.value?.status||''))
+const position=computed(()=>player.preview??progress.value)
+const repeatLabel=computed(()=>t(state.value?.repeat==='song'?'m0115':state.value?.repeat==='all'?'m0116':'m0114'))
+const source=computed(()=>songLinkURL(track.value?.url))
+const spotify=computed(()=>{if(!track.value)return '';const raw=safeURL(track.value.url);try{const url=new URL(raw);if(url.hostname==='open.spotify.com')return raw}catch{}return 'https://open.spotify.com/search/'+encodeURIComponent(track.value.title)})
+let observer:ResizeObserver|undefined
+function measure(){if(dock.value)document.documentElement.style.setProperty('--dock-player-height',Math.ceil(dock.value.getBoundingClientRect().height)+'px')}
+async function choices(){player.choices=!player.choices;if(player.choices){lyrics.menu=false;await nextTick();document.getElementById('source-link')?.focus()}else void centerLine()}
+function outside(event:Event){if(!(event.target as HTMLElement)?.closest?.('.bar-copy')){player.choices=false;void centerLine()}}
+function key(event:KeyboardEvent){if(event.key==='Escape')player.choices=false}
+function seekKey(event:KeyboardEvent){if(event.key==='Escape'){cancelSeek();return}if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key))beginSeek('keyboard')}
+function releaseKey(event:KeyboardEvent){if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(event.key))void commitSeek()}
+onMounted(()=>{measure();observer=new ResizeObserver(measure);if(dock.value)observer.observe(dock.value);document.addEventListener('pointerdown',outside);document.addEventListener('focusin',outside);document.addEventListener('keydown',key)})
+onBeforeUnmount(()=>{observer?.disconnect();document.removeEventListener('pointerdown',outside);document.removeEventListener('focusin',outside);document.removeEventListener('keydown',key)})
+</script>
+<template><section id="playback-bar" ref="dock" class="playback-bar" :aria-label="t('m0328')"><div class="bar-track"><TrackArt :track="track" class="mini-art" image-id="bar-cover"/><div class="bar-copy"><button id="bar-title" type="button" :disabled="!track" :aria-expanded="player.choices" aria-controls="song-choices" aria-haspopup="true" @click="choices">{{ track?.title||t('m0110') }}</button><small id="bar-status">{{ track ? t(state?.status==='playing'?'m0040':state?.status==='paused'?'m0041':'m0111')+t('m0112')+(track.requester?.name||t('m0045')) : t('m0113') }}</small><div id="song-choices" class="song-choices" role="group" :aria-label="t('m0329')" :hidden="!player.choices"><a id="source-link" :href="source||undefined" target="_blank" rel="noopener noreferrer">{{ t(source.includes('youtube.com')?'m0106':'m0107') }}</a><a id="song-spotify" :href="spotify||undefined" target="_blank" rel="noopener noreferrer">{{ t('m0330') }}</a></div></div><button id="favorite" class="player-control" type="button" :disabled="!usable||!safeURL(track?.url)||library.busy.value" :aria-label="t(library.isFavorite()?'m0200':'m0201')" :aria-pressed="library.isFavorite()" @click="library.toggleFavorite()">{{ library.isFavorite()?'♥':'♡' }}</button></div><div class="bar-center"><div id="player-transport" class="transport"><button id="toggle" class="primary player-control" :disabled="!active||state?.capabilities?.[state.status==='playing'?'pause':'resume']!==true" :aria-label="t('m0331')" @click="run(state?.status==='playing'?'pause':'resume')">{{ t(state?.status==='playing'?'m0108':'m0109') }}</button><button id="skip" class="player-control" :disabled="!active||state?.capabilities?.skip!==true" :aria-label="t('m0332')" @click="run('skip')">{{ t('m0333') }}</button><button id="repeat" class="repeat-control player-control" :disabled="!usable||state?.status==='disconnected'" :aria-label="t('m0117')+t(state?.repeat==='off'?'m0118':state?.repeat==='song'?'m0115':'m0119')" :aria-pressed="state?.repeat!=='off'" :value="state?.repeat" @click="run('repeat',{mode:state?.repeat==='off'?'song':state?.repeat==='song'?'all':'off'})">{{ repeatLabel }}</button></div><div class="progress-row"><span id="elapsed">{{ duration(position) }}</span><input id="progress" type="range" min="0" :max="track?.duration||1" step="1" :value="position" :disabled="!seekable" :aria-label="t('m0335')" :aria-valuetext="duration(position)+t('m0130')+duration(track?.duration)" @pointerdown="beginSeek('pointer',$event)" @input="previewSeek" @change="player.kind==='assistive'&&commitSeek()" @keydown="seekKey" @keyup="releaseKey" @blur="cancelSeek"><span id="duration">{{ track?.duration?duration(track.duration):t('m0085') }}</span></div></div><p class="sr-only seek-hint">{{ t('m0336') }}</p><div class="bar-right"><button id="lyrics-toggle" class="player-control" type="button" :hidden="state?.lyrics_available===false" :disabled="!usable||!track||state?.lyrics_available===false" :aria-expanded="lyrics.open" aria-controls="lyrics-panel" @click="player.choices=false;toggleLyrics()">{{ t('m0141') }}</button><div class="volume-row"><label for="volume" class="sr-only">{{ t('m0337') }}</label><input id="volume" v-model.number="player.volume" type="range" min="1" max="100" :disabled="!usable||state?.volume===null||state?.status==='disconnected'" :aria-label="t('m0337')" @change="run('volume',{volume:player.volume})"><output id="volume-label" for="volume">{{ player.volume }}%</output></div></div></section></template>

@@ -8,4 +8,4 @@ export function t(key:string,params:Record<string,unknown>={}){const catalog:Rec
 export const translate=t
 export async function initLocale(){let config:{time_zone?:string;default_language?:string}={};try{const response=await fetch('/ui-config',{cache:'no-store'});if(response.ok)config=await response.json()}catch{}
  timeZone.value=config.time_zone||'UTC';let saved=null;try{saved=localStorage.getItem('musicbot-language')}catch{}locale.value=chooseLanguage(saved,navigator.languages||[navigator.language],config.default_language||'en') as 'en'|'zh-TW';document.documentElement.lang=locale.value}
-export function setLocale(value:string){if(value!=='en'&&value!=='zh-TW')return;try{localStorage.setItem('musicbot-language',value)}catch{}locale.value=value;document.documentElement.lang=value;window.location.reload()}
+export function setLocale(value:string){if(value!=='en'&&value!=='zh-TW')return;try{localStorage.setItem('musicbot-language',value)}catch{}locale.value=value;document.documentElement.lang=value}

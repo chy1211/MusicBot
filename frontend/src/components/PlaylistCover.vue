@@ -1,25 +1,11 @@
 ﻿<script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { LibraryTrack } from '../composables/useLibrary'
+import { trackThumbnail } from '../composables/useTrack'
 
 const props = withDefaults(defineProps<{ tracks: LibraryTrack[]; size?: number; label?: string }>(), { size: 56, label: '' })
 const failed = ref<string[]>([])
-function normalized(value: unknown): string {
-  if (typeof value !== 'string' || /[\u0000-\u001f]/.test(value)) return ''
-  try { const url = new URL(value); return (/^https?:$/.test(url.protocol)) && !url.username && !url.password ? url.href : '' }
-  catch { return '' }
-}
-function thumbnail(track: LibraryTrack): string {
-  const source = normalized(track.thumbnail)
-  if (source) return source
-  try {
-    const url = new URL(track.url)
-    let id = ''
-    if (url.hostname === 'youtu.be') id = url.pathname.split('/').filter(Boolean)[0] || ''
-    else if (/(^|\.)youtube\.com$/.test(url.hostname)) id = url.searchParams.get('v') || url.pathname.match(/\/(?:shorts|embed)\/([^/?]+)/)?.[1] || ''
-    return /^[\w-]{11}$/.test(id) ? 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg' : ''
-  } catch { return '' }
-}
+function thumbnail(track: LibraryTrack): string { return trackThumbnail(track) }
 const sources = computed(() => {
   const seen = new Set<string>()
   const result: string[] = []

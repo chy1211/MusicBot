@@ -1,7 +1,7 @@
-<template>
-    <header class="page-heading"><div><h1><span data-i18n="m0224">Listen together</span></h1></div>
-      <div id="user-profile" class="user-profile" hidden><img id="user-avatar" alt="" referrerpolicy="no-referrer" hidden>
-        <span id="user-name"></span><details class="account-actions"><summary><span data-i18n="m0242">Account</span></summary><div><button id="logout" type="button" class="subtle"><span data-i18n="m0243">Sign out</span></button><button id="logout-all" type="button" class="subtle"><span data-i18n="m0244">Sign out on all devices</span></button></div></details></div></header>
-    <p id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true"></p>
-
-</template>
+<script setup lang="ts">
+import {dashboard} from '../store'
+import {t} from '../composables/useLocale'
+import {logout,run} from '../composables/useDashboard'
+import {safeURL} from '../composables/useTrack'
+</script>
+<template><header class="page-heading"><h1>{{ t('m0224') }}</h1><div id="user-profile" class="user-profile" :hidden="dashboard.authMode!=='discord'"><img id="user-avatar" v-if="safeURL(dashboard.me?.avatar)" :src="safeURL(dashboard.me?.avatar)" alt="" referrerpolicy="no-referrer"><span id="user-name">{{ dashboard.me?.name }}</span><details class="account-actions"><summary>{{ t('m0242') }}</summary><div><button id="logout" type="button" class="subtle" :disabled="dashboard.busy" @click="logout()">{{ t('m0243') }}</button><button id="logout-all" type="button" class="subtle" :disabled="dashboard.busy" @click="logout(true)">{{ t('m0244') }}</button></div></details></div></header><p id="notice" class="notice" :class="{visible:!!dashboard.toast,error:dashboard.toastError}" role="status" aria-live="polite" aria-atomic="true"><span>{{ dashboard.toast }}</span><button v-if="dashboard.undoToken" id="undo" type="button" :disabled="dashboard.busy" @click="run('queue/undo',{undo_token:dashboard.undoToken})">{{ t('m0122') }}</button></p></template>

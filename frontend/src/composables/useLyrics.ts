@@ -1,14 +1,14 @@
 import {computed,reactive,watch,nextTick} from 'vue'
 import {request,APIError} from '../api'
 import {dashboard,currentTrackKey} from '../store'
-import {progress,clock} from './usePlayback'
+import {progress,clock,player} from './usePlayback'
 import {notice} from './useDashboard'
 import {t} from './useLocale'
 interface Line {time:number;text:string}
 interface LyricsResponse {status:string;lines?:Line[];plain_lyrics?:string;artist?:string;title?:string;match?:string;video_id?:string;offset?:number}
 export const lyrics=reactive({open:false,loading:false,timingBusy:false,menu:false,syncArmed:false,query:'',retryQuery:'',heading:'',status:'',lines:[] as Line[],plain:'',video:'',offset:0,search:false,retry:false,preference:false})
 let seq=0,offsetSeq=0,retries=0,retryTimer:ReturnType<typeof setTimeout>|undefined,offsetTimer:ReturnType<typeof setTimeout>|undefined,userUntil=0,autoUntil=0,loadedKey=''
-export const activeLine=computed(()=>{void clock.value;let active=-1;const value=progress.value+lyrics.offset;lyrics.lines.forEach((line,i)=>{if(line.time<=value)active=i});return active})
+export const activeLine=computed(()=>{void clock.value;let active=-1;const value=(player.preview??progress.value)-lyrics.offset;lyrics.lines.forEach((line,i)=>{if(line.time<=value)active=i});return active})
 function clearTimers(){clearTimeout(retryTimer);clearTimeout(offsetTimer)}
 function reset(){seq++;offsetSeq++;clearTimers();lyrics.loading=false;lyrics.timingBusy=false;lyrics.menu=false;lyrics.syncArmed=false;lyrics.lines=[];lyrics.plain='';lyrics.video='';lyrics.offset=0;lyrics.status='';lyrics.heading='';lyrics.query='';lyrics.retry=false;lyrics.search=false;loadedKey='';retries=0;userUntil=0}
 function viewer(){return dashboard.authMode==='discord'?'user:'+dashboard.me?.id:'owner'}
