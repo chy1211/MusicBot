@@ -382,6 +382,90 @@ test("session logout clears the rendered dashboard and sends the protected reque
   assert.deepEqual(app.errors, []);
 });
 
+
+test("recent history title remains wide and compact on desktop", async t => {
+  const app = await openDashboard({ width: 1440, height: 900 });
+  t.after(() => app.context.close());
+  const row = app.page.locator("#history-list > li").first();
+  await row.waitFor({ state: "visible" });
+  const measured = await row.evaluate(el => ({
+    titleWidth: el.querySelector(".history-info").getBoundingClientRect().width,
+    rowHeight: el.getBoundingClientRect().height
+  }));
+  console.log("R28_HISTORY_DESKTOP=" + JSON.stringify(measured));
+  assert.ok(measured.titleWidth >= 500, "history title width must be >= 500px: " + JSON.stringify(measured));
+  assert.ok(measured.rowHeight <= 80, "history row height must be <= 80px: " + JSON.stringify(measured));
+  assert.deepEqual(app.errors, []);
+});
+
+test("mobile recent-history action labels stay on one line without overlap", async t => {
+  const app = await openDashboard({ width: 390, height: 844 });
+  t.after(() => app.context.close());
+  const row = app.page.locator("#history-list > li").first();
+  await row.waitFor({ state: "visible" });
+  const measured = await row.evaluate(el => {
+    const buttons = [...el.querySelectorAll(".history-actions button")];
+    const boxes = buttons.map(button => {
+      const rect = button.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(button);
+      const textRects = [...range.getClientRects()].filter(item => item.width > 0 && item.height > 0);
+      return { text: button.innerText, x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom,
+        whiteSpace: getComputedStyle(button).whiteSpace, textLineCount: textRects.length };
+    });
+    let overlaps = 0;
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      if (Math.min(boxes[i].right, boxes[j].right) - Math.max(boxes[i].x, boxes[j].x) > .5 &&
+          Math.min(boxes[i].bottom, boxes[j].bottom) - Math.max(boxes[i].y, boxes[j].y) > .5) overlaps++;
+    }
+    return { buttons: boxes, overlaps };
+  });
+  console.log("R28_HISTORY_MOBILE=" + JSON.stringify(measured));
+  assert.ok(measured.buttons.length >= 1);
+  assert.ok(measured.buttons.every(button => button.whiteSpace === "nowrap" && button.textLineCount <= 1),
+    "action labels must be single-line: " + JSON.stringify(measured));
+  assert.equal(measured.overlaps, 0, "history action overlap count: " + JSON.stringify(measured));
+  assert.deepEqual(app.errors, []);
+});
+
+test("queue, recommendation, popular and library rows fit four viewport widths", async t => {
+  const app = await openDashboard({ width: 1440, height: 900 });
+  t.after(() => app.context.close());
+  const widths = [1440, 1024, 768, 390];
+  const fits = async selector => app.page.locator(selector).evaluateAll((rows, width) => rows.map(row => {
+    const rect = row.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, width: rect.width,
+      scrollWidth: row.scrollWidth, clientWidth: row.clientWidth,
+      fits: rect.left >= -1 && rect.right <= width + 1 && row.scrollWidth <= row.clientWidth + 1 };
+  }), await app.page.evaluate(() => document.documentElement.clientWidth));
+  const checkFits = (label, rows) => assert.ok(rows.length > 0 && rows.every(row => row.fits), label + ": " + JSON.stringify(rows));
+  for (const width of widths) {
+    await app.page.setViewportSize({ width, height: 900 });
+    checkFits("queue at " + width, await fits("#queue > li"));
+  }
+  await app.page.goto(baseURL + "/?demo-queue=empty");
+  await app.page.locator("#queue-empty").waitFor({ state: "visible" });
+  for (const width of widths) {
+    await app.page.setViewportSize({ width, height: 900 });
+    checkFits("recommendation at " + width, await fits("#recommendation-list > li"));
+  }
+  await app.page.locator("#nav-popular").click();
+  await app.page.locator("#popular-list > li").first().waitFor({ state: "visible" });
+  for (const width of widths) {
+    await app.page.setViewportSize({ width, height: 900 });
+    checkFits("popular at " + width, await fits("#popular-list > li"));
+  }
+  await app.page.locator("#nav-library").click();
+  await app.page.locator("#library-playlists .library-choice").first().waitFor({ state: "visible" });
+  await app.page.locator("#library-playlists .library-choice").first().click();
+  await app.page.locator("#library-list > li").first().waitFor({ state: "visible" });
+  for (const width of widths) {
+    await app.page.setViewportSize({ width, height: 900 });
+    checkFits("library at " + width, await fits("#library-list > li"));
+  }
+  assert.deepEqual(app.errors, []);
+});
+
 require("./dashboard_round31_regressions.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_async.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_auth_cases.cjs")({test, assert, openDashboard, baseURL});
