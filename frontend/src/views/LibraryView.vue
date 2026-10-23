@@ -119,6 +119,7 @@ watch(library.saveDialogOpen, async open => {
         <div v-else class="library-empty-state"><span class="empty-glyph" aria-hidden="true">♫</span><h3>{{ t('m0232') }}</h3><p>{{ t('m0287') }}</p></div>
       </section>
     </div>
+  </section>
 
     <dialog id="library-save-dialog" ref="saveDialog" class="library-save-dialog" @cancel.prevent="closeDialog" @click.self="closeDialog">
       <form @submit.prevent="submitSave">
@@ -130,7 +131,6 @@ watch(library.saveDialogOpen, async open => {
         <div class="selection-tools"><button id="library-save-confirm" class="primary" type="submit" :disabled="library.busy.value || !library.saveChoices.value.length" :aria-busy="library.busy.value">{{ t('m0301') }}</button><button id="library-save-cancel" type="button" class="subtle" @click="closeDialog">{{ t('m0302') }}</button></div>
       </form>
     </dialog>
-  </section>
 </template>
 
 <style scoped>
