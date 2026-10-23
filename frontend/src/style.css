@@ -3,6 +3,7 @@
 /* Liquid Glass material tokens, adapted from the read-only Wardrobe reference.
    Content is opaque; navigation and transient layers carry the glass material. */
 :root{
+ color-scheme:dark;--clear:rgba(255,255,255,.08);--wall-shade:#1e2226;
  --safe-top:env(safe-area-inset-top,0px);--safe-bottom:env(safe-area-inset-bottom,0px);
  --safe-left:env(safe-area-inset-left,0px);--safe-right:env(safe-area-inset-right,0px);
  --bg:#1e2226;--flat:#252a2f;--opaque:#2c3238;--raised:#343b42;--text:#eef1f4;--muted:#a9b3bd;
@@ -12,12 +13,18 @@
  --glass-shadow:inset 0 1px 0 #ffffff50,inset 0 -1px 0 #ffffff10,0 14px 34px -10px #0b0d0f55;
  --spring:cubic-bezier(.22,1,.36,1);
 }
-@media(prefers-color-scheme:light){:root{
- color-scheme:light;--bg:#f3f5f7;--flat:#ffffff;--opaque:#fbfcfd;--raised:#e6eaee;--text:#1e2226;--muted:#55606b;
+@media(prefers-color-scheme:light){:root:not([data-theme=dark]){
+ color-scheme:light;--clear:rgba(255,255,255,.1);--wall-shade:#f3f5f7;--bg:#f3f5f7;--flat:#ffffff;--opaque:#fbfcfd;--raised:#e6eaee;--text:#1e2226;--muted:#55606b;
  --green:#1f7a68;--accent-ink:#ffffff;--error:#b3261e;--warning:#8a5a00;--line:rgba(30,34,38,.14);--surface:rgba(255,255,255,.82);
  --panel:rgba(255,255,255,.94);--popover:rgba(255,255,255,.98);
  --glass-shadow:inset 0 1px 0 #fffffff0,inset 0 -1px 0 #ffffff60,0 14px 34px -10px #0b0d0f20;
 }}
+:root[data-theme=light]{
+ color-scheme:light;--clear:rgba(255,255,255,.1);--wall-shade:#f3f5f7;--bg:#f3f5f7;--flat:#ffffff;--opaque:#fbfcfd;--raised:#e6eaee;--text:#1e2226;--muted:#55606b;
+ --green:#1f7a68;--accent-ink:#ffffff;--error:#b3261e;--warning:#8a5a00;--line:rgba(30,34,38,.14);--surface:rgba(255,255,255,.82);
+ --panel:rgba(255,255,255,.94);--popover:rgba(255,255,255,.98);
+ --glass-shadow:inset 0 1px 0 #fffffff0,inset 0 -1px 0 #ffffff60,0 14px 34px -10px #0b0d0f20;
+}
 body{font-size:15px;line-height:1.6;background:var(--bg);letter-spacing:.005em}
 body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
 button,input,select{font:inherit}
@@ -99,7 +106,8 @@ dialog{max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 48px);max
 
 /* Review 1: optical hierarchy, compact mobile masthead and material fidelity. */
 html[data-glass=clear]{--surface:rgba(37,42,47,.78);--panel:rgba(34,39,44,.92);--dim:1;--glass-blur:22px}
-@media(prefers-color-scheme:light){html[data-glass=clear]{--surface:rgba(255,255,255,.82);--panel:rgba(255,255,255,.94);--dim:1}}
+@media(prefers-color-scheme:light){html[data-glass=clear]:not([data-theme=dark]){--surface:rgba(255,255,255,.82);--panel:rgba(255,255,255,.94);--dim:1}}
+html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel:rgba(255,255,255,.94);--dim:1}
 .sidebar .brand{border:0;box-shadow:none;border-radius:0}
 .page-heading h1{font-size:32px}
 .page-tabs::before,.queue-filters::before{background:var(--green);border-color:transparent;box-shadow:inset 0 1px 0 #ffffff38,0 2px 4px #0001}
@@ -231,3 +239,17 @@ html[data-glass=clear]{--surface:rgba(37,42,47,.78);--panel:rgba(34,39,44,.92);-
 .account-actions>summary::-webkit-details-marker{display:none}
 .account-actions>summary::before{content:'\25b6';font-size:9px}
 .account-actions[open]>summary::before{transform:rotate(90deg)}
+
+/* Current effective theme: line icons rotate and cross-fade in a 44px circle. */
+#theme-toggle{position:relative;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;flex:0 0 44px;padding:0;border-radius:50%;background:var(--flat);color:var(--text)}
+#theme-toggle svg{position:absolute;width:24px;height:24px;pointer-events:none;transition:transform 250ms ease,opacity 250ms ease}
+#theme-toggle .theme-sun{opacity:0;transform:rotate(-90deg)}
+#theme-toggle .theme-moon{opacity:1;transform:rotate(0)}
+#theme-toggle[data-mode=light] .theme-sun{opacity:1;transform:rotate(0)}
+#theme-toggle[data-mode=light] .theme-moon{opacity:0;transform:rotate(90deg)}
+.language-preference>label{order:-1}
+@media(max-width:760px){
+ .language-preference{gap:6px}
+ .sidebar .brand{margin-right:0;max-width:calc(100% - 184px);white-space:normal;line-height:1.25}
+}
+@media(prefers-reduced-motion:reduce){#theme-toggle svg{transition:none}}

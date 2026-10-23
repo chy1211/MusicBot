@@ -711,5 +711,7 @@
   "admin.maintenance.sync.success": "Succeeded",
   "admin.maintenance.sync.failure": "Failed",
   "admin.maintenance.sync.running": "Running",
-  "admin.maintenance.sync.unknown": "Unknown"
+  "admin.maintenance.sync.unknown": "Unknown",
+  "theme.light": "Current theme: light. Switch to dark.",
+  "theme.dark": "Current theme: dark. Switch to light."
 }

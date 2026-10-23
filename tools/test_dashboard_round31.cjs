@@ -769,3 +769,69 @@ test("R30 account avatar name and action share a vertical center", async t => {
     assert.deepEqual(app.errors, []);
   }
 });
+
+
+test("R30 theme toggle persists overrides and tolerates blocked localStorage", async t => {
+  const theme = page => page.evaluate(() => ({
+    mode: document.documentElement.dataset.theme,
+    background: getComputedStyle(document.body).backgroundColor,
+    meta: document.querySelector('meta[name="theme-color"]').content,
+    surface: getComputedStyle(document.documentElement).getPropertyValue("--surface").trim(),
+    panel: getComputedStyle(document.documentElement).getPropertyValue("--panel").trim()
+  }));
+  for (const width of [1440, 390]) {
+    const app = await openDashboard({ width, height: width === 390 ? 844 : 1000 }, {
+      context: width === 390 ? { isMobile: true, hasTouch: true } : {}
+    });
+    t.after(() => app.context.close());
+    const button = app.page.locator("#theme-toggle");
+    const b = await button.boundingBox(), select = await app.page.locator("#dashboard-language").boundingBox();
+    assert.ok(b.x + b.width <= select.x && Math.abs(b.y + b.height / 2 - select.y - select.height / 2) <= 2);
+    assert.equal(b.width, 44); assert.equal(b.height, 44);
+    assert.equal(await button.innerText(), "");
+    assert.equal(await button.getAttribute("title"), null);
+    assert.ok(await button.getAttribute("aria-label"));
+    assert.equal(await button.locator("svg").count(), 2);
+    const light = await theme(app.page);
+    assert.deepEqual({mode:light.mode,background:light.background,meta:light.meta},
+      {mode:"light",background:"rgb(243, 245, 247)",meta:"#f3f5f7"});
+    await r30Shot(app.page, "issue4-light-" + width + ".png");
+    await button.click();
+    await app.page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    const dark = await theme(app.page);
+    assert.deepEqual({mode:dark.mode,background:dark.background,meta:dark.meta},
+      {mode:"dark",background:"rgb(30, 34, 38)",meta:"#1e2226"});
+    await app.page.waitForFunction(() => getComputedStyle(document.querySelector("#theme-toggle .theme-moon")).opacity === "1");
+    assert.equal(await button.locator(".theme-moon").evaluate(el => getComputedStyle(el).opacity), "1");
+    await r30Shot(app.page, "issue4-dark-" + width + ".png");
+    await app.page.reload({ waitUntil: "domcontentloaded" });
+    await app.page.locator("#theme-toggle").waitFor();
+    assert.deepEqual(await theme(app.page), dark);
+    await app.page.emulateMedia({ colorScheme: "dark" });
+    assert.deepEqual(await theme(app.page), dark);
+    await app.page.locator("#theme-toggle").click();
+    await app.page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    assert.deepEqual(await theme(app.page), light);
+    await app.page.emulateMedia({ reducedMotion: "reduce" });
+    assert.equal(await app.page.locator("#theme-toggle svg").first().evaluate(el => getComputedStyle(el).transitionDuration), "0s");
+    assert.deepEqual(app.errors, []);
+    console.log("R30_THEME_" + width + "=" + JSON.stringify({light,dark}));
+  }
+  const blocked = await openDashboard({ width: 390, height: 844 }, {
+    context: { isMobile: true, hasTouch: true, colorScheme: "dark" },
+    setup: page => page.addInitScript(() => Object.defineProperty(window, "localStorage", {
+      configurable: true, get() { throw new DOMException("Storage denied", "SecurityError"); }
+    }))
+  });
+  t.after(() => blocked.context.close());
+  assert.equal((await theme(blocked.page)).mode, "dark");
+  await blocked.page.emulateMedia({ colorScheme: "light" });
+  await blocked.page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+  await blocked.page.locator("#theme-toggle").click();
+  assert.equal((await theme(blocked.page)).mode, "dark");
+  await blocked.page.reload({ waitUntil: "domcontentloaded" });
+  await blocked.page.locator("#theme-toggle").waitFor();
+  assert.equal((await theme(blocked.page)).mode, "light");
+  assert.deepEqual(blocked.errors, []);
+  console.log("R30_STORAGE_BLOCKED_ERRORS=" + JSON.stringify(blocked.errors));
+});
