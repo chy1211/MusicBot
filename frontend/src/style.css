@@ -190,6 +190,8 @@ html[data-glass=clear]{--surface:rgba(37,42,47,.78);--panel:rgba(34,39,44,.92);-
 #recommendation-list>li>button{width:auto;flex:0 0 auto;white-space:nowrap}
 @media(max-width:760px){
  #history-list.history-list>li{grid-template-columns:38px minmax(0,1fr);gap:10px;min-height:64px;padding:10px 0}
+ #history-list .history-info>p{max-height:none}
+ #history-list .history-info>p>a{display:flex;align-items:center;min-height:44px}
  #history-list .history-actions{grid-column:2;width:auto;justify-content:flex-start;flex-wrap:nowrap}
  #history-list .history-actions button{min-width:64px;white-space:nowrap}
 }
