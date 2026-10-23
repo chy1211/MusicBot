@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { spawn, spawnSync } = require("node:child_process");
 const path = require("node:path");
 const root = path.resolve(__dirname, "..");
-const { chromium } = require(path.join(root, "frontend", "node_modules", "playwright"));
+const { chromium } = require("playwright");
 const http = require("node:http");
 const frontend = path.join(root, "frontend");
 const baseURL = "http://localhost:18310";
@@ -50,6 +50,7 @@ async function openDashboard(viewport = { width: 1440, height: 1000 }) {
     const dashboard = document.querySelector("#dashboard");
     return dashboard && !dashboard.hidden && document.querySelector("#nav-play") && !document.querySelector("#nav-play").hidden;
   }, null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelectorAll("#queue > li").length === 4 && !document.querySelector("#enqueue")?.disabled);
   return { context, page, requests, errors };
 }
 
@@ -58,12 +59,12 @@ before(async () => {
     cwd: frontend, encoding: "utf8", timeout: 180000
   });
   if (build.status !== 0) throw new Error("npm run build failed\n" + (build.stdout || "") + "\n" + (build.stderr || ""));
-  serverProcess = spawn("python3", ["-m", "tools.dashboard_round31_fixture", "--host", "127.0.0.1", "--port", "18310"], {
+  if (!process.env.ROUND31_EXTERNAL_FIXTURE) serverProcess = spawn("python3", ["-m", "tools.dashboard_round31_fixture", "--host", "127.0.0.1", "--port", "18310"], {
     cwd: root, stdio: ["ignore", "pipe", "pipe"]
   });
   let bootLog = "";
-  serverProcess.stdout.on("data", chunk => { bootLog += chunk; });
-  serverProcess.stderr.on("data", chunk => { bootLog += chunk; });
+  serverProcess?.stdout.on("data", chunk => { bootLog += chunk; });
+  serverProcess?.stderr.on("data", chunk => { bootLog += chunk; });
   await waitForHealth().catch(error => { throw new Error(error.message + "\n" + bootLog); });
   browser = await chromium.launch({ headless: true });
 });
@@ -103,8 +104,9 @@ test("search preview requires explicit confirmation before queue mutation", asyn
   await app.page.locator("#preview-panel").waitFor({ state: "visible" });
   assert.ok(await app.page.locator("#preview-results > *").count() > 0);
   assert.equal(app.requests.some(request => /\/play$/.test(request.url)), false);
-  await app.page.locator("#preview-results button").first().click();
-  await app.page.waitForFunction(() => document.querySelector("#queue > li")?.textContent.includes("Sunset"));
+  const selectedTitle = await app.page.locator("#preview-results article h3").first().innerText();
+  await app.page.locator("#preview-results button.primary").first().click();
+  await app.page.waitForFunction(title => [...document.querySelectorAll("#queue > li")].some(row => row.textContent.includes(title)), selectedTitle);
   assert.ok(app.requests.some(request => request.method === "POST" && /\/api\/guilds\/1\/play$/.test(request.url)));
 });
 
@@ -130,7 +132,8 @@ test("popular, lyrics, library cover and admin controls render in the built app"
   await app.page.locator("#nav-play").click();
   await app.page.locator("#lyrics-toggle").click();
   await app.page.locator("#lyrics-panel").waitFor({ state: "visible" });
-  assert.ok(await app.page.locator("#lyrics-lines > *").count() > 0);
+  await app.page.locator("#lyrics-content > p").first().waitFor({ state: "visible" });
+  assert.ok(await app.page.locator("#lyrics-content > p").count() > 0);
   await app.page.locator("#lyrics-close").click();
   await app.page.locator("#nav-library").click();
   await app.page.locator("#library-panel").waitFor({ state: "visible" });
@@ -142,7 +145,7 @@ test("popular, lyrics, library cover and admin controls render in the built app"
 test("mobile safe-area keeps rendered notice and playback controls inside the viewport", async t => {
   const app = await openDashboard({ width: 393, height: 852 });
   t.after(() => app.context.close());
-  await app.page.addStyleTag({ content: ":root{--safe-top:59px;--safe-right:0px;--safe-bottom:34px;--safe-left:0px}" });
+  await app.page.evaluate(() => { document.documentElement.style.setProperty("--safe-top", "59px"); document.documentElement.style.setProperty("--safe-bottom", "34px"); });
   await app.page.locator("#favorite").click();
   await app.page.locator("#notice.visible").waitFor({ state: "visible" });
   const notice = await app.page.locator("#notice").boundingBox();
@@ -203,10 +206,23 @@ test("library renders saved covers and favorite stores the current track thumbna
   const covers = app.page.locator("#library-playlists .playlist-cover");
   assert.ok(await covers.count() >= 2);
   assert.ok((await covers.first().getAttribute("aria-label"))?.length > 0);
+  await app.page.locator("#library-playlists .library-choice").nth(1).click();
+  await app.page.locator("#library-list .library-track-cover").first().waitFor({ state: "visible" });
   assert.ok(await app.page.locator("#library-list .library-track-cover").count() > 0);
   await app.page.locator("#nav-play").click();
+  const headers = { "X-MusicBot-Dashboard": "1" };
+  const state = await (await app.page.request.get(baseURL + "/api/guilds/1/state", { headers })).json();
+  const saved = await (await app.page.request.get(baseURL + "/api/library", { headers })).json();
+  if (saved.playlists[0].tracks.some(track => track.url === state.current.url)) {
+    const removed = await app.page.request.patch(baseURL + "/api/library/favorites", {
+      headers, data: { action: "remove_url", url: state.current.url, revision: saved.revision }
+    });
+    assert.equal(removed.status(), 200);
+  }
+  const save = app.page.waitForResponse(response => response.url().endsWith("/api/library/favorites/tracks") && response.request().method() === "POST");
   await app.page.locator("#favorite").click();
-  await app.page.locator("#notice").waitFor({ state: "visible" });
+  assert.equal((await save).status(), 200);
+  await app.page.locator("#notice.visible").waitFor({ state: "visible" });
   assert.ok(app.requests.some(r => r.url.includes("/api/library/favorites/tracks") && r.method === "POST"));
   assert.deepEqual(app.errors, []);
 });
@@ -249,6 +265,7 @@ test("owner permissions require confirmation and keep human readable field label
   await app.page.locator("#nav-admin").click();
   await app.page.locator("#admin-panel").waitFor({ state: "visible" });
   const field = app.page.locator("#permission-Default-AllowPlaylists");
+  await app.page.locator("#admin-permissions summary").filter({ hasText: /^Default$/ }).click();
   await field.waitFor({ state: "visible" });
   assert.ok(await field.getAttribute("aria-label"));
   assert.ok(await app.page.locator("#maintenance-details dt").count() > 0);
@@ -265,6 +282,7 @@ test("confirmed permission edits send the old and new values to the selected gui
   t.after(() => app.context.close());
   await app.page.locator("#nav-admin").click();
   const field = app.page.locator("#permission-Default-AllowPlaylists");
+  await app.page.locator("#admin-permissions summary").filter({ hasText: /^Default$/ }).click();
   await field.waitFor({ state: "visible" });
   await field.selectOption("true");
   await app.page.locator("#permission-confirm").click();
@@ -322,7 +340,7 @@ test("language switch updates visible Vue labels without exposing translation ke
 test("mobile notice and dock avoid injected iPhone safe areas", async t => {
   const app = await openDashboard({ width: 393, height: 852 });
   t.after(() => app.context.close());
-  await app.page.addStyleTag({ content: ":root{--safe-top:59px;--safe-right:0px;--safe-bottom:34px;--safe-left:0px}" });
+  await app.page.evaluate(() => { document.documentElement.style.setProperty("--safe-top", "59px"); document.documentElement.style.setProperty("--safe-bottom", "34px"); });
   await app.page.locator("#favorite").click();
   await app.page.locator("#notice").waitFor({ state: "visible" });
   const notice = await app.page.locator("#notice").boundingBox();
@@ -348,9 +366,11 @@ test("queue empty state remains visible when the fixture has no queued tracks", 
 test("session logout clears the rendered dashboard and sends the protected request", async t => {
   const app = await openDashboard();
   t.after(() => app.context.close());
+  await app.page.locator(".account-actions > summary").click();
   await app.page.locator("#logout").click();
   await app.page.waitForFunction(() => document.querySelector("#dashboard")?.hidden === true);
   assert.ok(app.requests.some(r => r.url === "/auth/logout" && r.method === "POST"));
+  await app.page.waitForFunction(() => document.querySelectorAll("#queue > li").length === 0);
   assert.equal(await app.page.locator("#queue > li").count(), 0);
   assert.ok(await app.page.locator("#discord-login").isVisible());
   assert.deepEqual(app.errors, []);
