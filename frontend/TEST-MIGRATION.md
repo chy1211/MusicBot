@@ -1,3 +1,11 @@
+
+## 2026-10-23 第二十七輪驗收校準
+
+- 舊測試範圍仍記為 198 cases／808 assert calls；目前 round31 真瀏覽器 runner 有 64 cases，本次實跑 63 通過、1 失敗。
+- 逐案映射表目前沒有連到可核對的新 runner 測試名稱或案例編號，因此**已明確對應的新測試：0/198；尚未明確對應：198/198**。這是逐案映射證據數，不代表合併式瀏覽器測試完全沒有覆蓋舊行為。
+- PWA、offline、registration 另有 11 個舊 cases 保留於原套件，仍獨立驗收；不併入上述 198 個 Vue 移植範圍。
+- runner 目前失敗案例：`queue empty state remains visible when the fixture has no queued tracks`。不得以 63/64 宣稱全部舊意圖已移植。
+
 # Vue 測試移植 inventory 與 mapping
 
 此檔由 `node tools/test_dashboard_round31_inventory.cjs` 從現有 CJS 案例產生。原基線記錄為 **211 tests / 856 textual asserts**；目前工作樹解析到 **209 test cases / 856 assert calls**，其中移植範圍 **198 / 808**。數字差異保留為待核對項，不以刪除或重複測試補數。PWA、offline、registration 三組按任務先保留。
