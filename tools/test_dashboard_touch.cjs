@@ -30,9 +30,9 @@ async function swipe(cdp,a,b,hold=0){
 async function state(p){return p.evaluate(async()=>{const r=await fetch("/api/guilds/1/state",{headers:{"X-MusicBot-Dashboard":"1"}});if(!r.ok)throw Error(await r.text());return r.json();});}
 async function ready(p){
   await p.goto(new URL("/?demo-queue=filled&demo-lyrics=synced",origin).href);
-  await p.waitForFunction(()=>!document.querySelector("#dashboard").hidden||!document.querySelector("#discord-login").hidden);
+  await p.waitForFunction(()=>document.querySelector("#dashboard")&&(!document.querySelector("#dashboard").hidden||!document.querySelector("#discord-login").hidden));
   if(await p.locator("#discord-login").isVisible()) await tap(p,"#discord-login");
-  await p.waitForFunction(()=>!document.querySelector("#progress").disabled&&document.querySelector("#queue > li"));
+  await p.waitForFunction(()=>document.querySelector("#progress")&&!document.querySelector("#progress").disabled&&document.querySelector("#queue > li"));
   await p.waitForFunction(()=>window.touchSnapshots?.length>0);
   await p.evaluate(async()=>{
     const headers={"X-MusicBot-Dashboard":"1","Content-Type":"application/json"};
