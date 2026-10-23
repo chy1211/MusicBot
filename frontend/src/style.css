@@ -19,6 +19,10 @@
  --glass-shadow:inset 0 1px 0 #fffffff0,inset 0 -1px 0 #ffffff60,0 14px 34px -10px #30332120;
 }}
 body{font-size:15px;line-height:1.6;background:var(--bg);letter-spacing:.005em}
+body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif}
+button,input,select{font:inherit}
+a{color:var(--text);text-decoration:none}
+a:hover,a:focus-visible{text-decoration:underline;text-underline-offset:.18em}
 #app{min-height:100dvh;padding-top:var(--safe-top)}
 .language-preference{position:relative;margin-top:12px;margin-right:max(20px,var(--safe-right))}
 h1{font-weight:720;letter-spacing:-.055em;font-size:clamp(27px,3.2vw,42px)}
