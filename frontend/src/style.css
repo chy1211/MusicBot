@@ -27,7 +27,9 @@ a:hover,a:focus-visible{text-decoration:underline;text-underline-offset:.18em}
 .language-preference{position:relative;margin-top:12px;margin-right:max(20px,var(--safe-right))}
 h1{font-weight:720;letter-spacing:-.055em;font-size:clamp(27px,3.2vw,42px)}
 h2{letter-spacing:-.035em;font-weight:680}
-.sidebar{top:calc(var(--safe-top) + 16px);left:max(16px,var(--safe-left));border-radius:var(--r-sheet);padding:24px 16px}
+.sidebar{top:calc(var(--safe-top) + 16px);left:max(16px,var(--safe-left));border-radius:var(--r-sheet);padding:24px 16px;background:var(--panel)}
+.playback-bar{background:var(--panel)}
+.login-card{background:var(--flat)}
 .sidebar .brand{justify-content:flex-start;font-size:17px;gap:9px;padding:0 10px;margin-bottom:24px}
 .brand .brand-icon{font-size:28px;color:var(--green)}
 .sidebar .page-tabs{gap:6px}
@@ -39,8 +41,10 @@ main{padding-top:16px;padding-bottom:calc(var(--bar) + var(--safe-bottom) + 56px
 .primary,.login-button.primary{background:var(--green);color:var(--accent-ink);border-color:transparent;box-shadow:inset 0 1px 0 #ffffff38}
 .primary:hover:enabled{background:var(--green);filter:brightness(1.06)}
 button,input:not([type=range]),select{border-radius:var(--r-control)}
-input:not([type=range]),select{background:color-mix(in srgb,var(--flat),var(--green) 4%);border:1px solid var(--line)}
+input:not([type=range]),select{background:var(--opaque);border:1px solid var(--line)}
 button{font-weight:600;transition:background 160ms,transform 220ms var(--spring)}
+button:not(.primary):not(.subtle){background:var(--raised)}
+.actions button{background:transparent}
 button:active:enabled{transform:scale(.96)}
 input[type=range]{accent-color:var(--green)}
 :focus-visible{outline:3px solid var(--green);outline-offset:3px}
@@ -64,7 +68,7 @@ input[type=range]{accent-color:var(--green)}
 .lyrics-panel{top:auto;left:max(252px,var(--safe-left));right:max(16px,var(--safe-right));bottom:calc(var(--safe-bottom) + var(--bar) + 32px);max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - var(--bar) - 64px);border-radius:var(--r-sheet);overflow:auto}
 .lyrics-content{overscroll-behavior:contain}.lyrics-timing-menu{max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 220px);overflow:auto}
 .song-choices,.library-menu,.account-actions>div{max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 160px);overflow:auto;max-width:calc(100vw - var(--safe-left) - var(--safe-right) - 40px)}
-dialog{max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 48px);max-width:calc(100vw - var(--safe-left) - var(--safe-right) - 32px);margin-top:auto;margin-bottom:auto;overflow:auto}
+dialog{max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 48px);max-width:calc(100vw - var(--safe-left) - var(--safe-right) - 32px);margin-top:auto;margin-bottom:auto;overflow:auto;background:var(--opaque);color:var(--text);border-color:var(--line)}
 .library-choice{min-height:90px;gap:14px;text-align:left}.playlist-cover{display:grid;grid-template-columns:repeat(2,1fr);width:64px;height:64px;flex-shrink:0;border-radius:12px;overflow:hidden;background:repeating-radial-gradient(circle at 50% 50%,var(--raised) 0 2px,var(--opaque) 3px 7px);color:var(--green);position:relative}
 .playlist-cover img{width:100%;height:100%;min-height:0;object-fit:cover}.playlist-cover[data-count="1"]{grid-template-columns:1fr}.playlist-cover[data-count="3"] img:first-child{grid-row:span 2}.playlist-cover-fallback{position:absolute;inset:0;display:grid;place-items:center;font-size:26px}.playlist-cover:has(img:not([hidden])) .playlist-cover-fallback{display:none}
 .library-choice>span:not(.playlist-cover){min-width:0}.library-detail>.playlist-cover{width:112px;height:112px;margin-bottom:18px}

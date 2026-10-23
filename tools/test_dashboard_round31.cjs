@@ -455,9 +455,11 @@ test("queue, recommendation, popular and library rows fit four viewport widths",
     await app.page.setViewportSize({ width, height: 900 });
     checkFits("popular at " + width, await fits("#popular-list > li"));
   }
+  await app.page.setViewportSize({ width: 1440, height: 900 });
   await app.page.locator("#nav-library").click();
+  await app.page.locator("#library-panel").waitFor({ state: "visible" });
   await app.page.locator("#library-playlists .library-choice").first().waitFor({ state: "visible" });
-  await app.page.locator("#library-playlists .library-choice").first().click();
+  await app.page.locator("#library-playlists .library-choice").nth(1).click();
   await app.page.locator("#library-list > li").first().waitFor({ state: "visible" });
   for (const width of widths) {
     await app.page.setViewportSize({ width, height: 900 });
