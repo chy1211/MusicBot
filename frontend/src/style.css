@@ -159,3 +159,8 @@ html[data-glass=clear]{--surface:rgba(37,47,40,.82);--panel:rgba(34,43,37,.96);-
  button{transition-property:background,opacity,box-shadow}
  button:active:enabled{transform:none;opacity:.82;box-shadow:inset 0 0 0 2px var(--green)}
 }
+.page-tabs[data-segment-ready]::before,.queue-filters[data-segment-ready]::before{opacity:1}
+@media(max-width:760px){
+ #play-view .song a,.history-list a,.popular-row a,.demo-controls a{display:inline-flex;align-items:center;min-height:44px;min-width:44px}
+ #admin-apl-search{flex-wrap:wrap}#admin-apl-query{flex:1 1 12rem;min-width:88px}
+}
