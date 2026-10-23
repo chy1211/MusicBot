@@ -385,3 +385,4 @@ require("./dashboard_round31_async.cjs")({test, assert, openDashboard, baseURL})
 require("./dashboard_round31_auth_cases.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_auth_extra.cjs")({test, assert, openDashboard, baseURL});
 require("./dashboard_round31_controls.cjs")({test, assert, openDashboard, baseURL});
+require("./dashboard_round31_sse.cjs")({test, assert, openDashboard, baseURL});
