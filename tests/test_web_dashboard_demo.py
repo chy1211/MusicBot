@@ -199,11 +199,11 @@ class DemoTests(unittest.IsolatedAsyncioTestCase):
             urls = {entry["url"] for entry in preview["results"][0]["entries"]}
             self.assertIn(before["queue"][0]["url"], urls)
 
-    class Round9DemoTests(unittest.IsolatedAsyncioTestCase):
-        asyncSetUp = DemoTests.asyncSetUp
-        asyncTearDown = DemoTests.asyncTearDown
-        login = DemoTests.login
-        call = DemoTests.call
+class Round9DemoTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = DemoTests.asyncSetUp
+    asyncTearDown = DemoTests.asyncTearDown
+    login = DemoTests.login
+    call = DemoTests.call
 
     async def test_fake_public_import_resync_and_large_preview_without_provider_access(self):
         await self.login("owner")
