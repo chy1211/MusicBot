@@ -10,7 +10,7 @@ import re
 from typing import Dict
 
 
-LOUDNORM_TARGET = "I=-24.0:LRA=7.0:TP=-2.0"
+LOUDNORM_TARGET = "I=-16.0:LRA=20.0:TP=-1.5"
 
 
 def measured_loudnorm_filter(output: str) -> str:
