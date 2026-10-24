@@ -215,9 +215,10 @@ class BasePlaylistEntry(Serializable):
             return f"-af {filters}"
         return ""
 
-
     async def get_mean_volume(self, input_file: str) -> None:
         """Measure a complete file to configure two-pass loudness normalization."""
+        # Failed re-analysis must fall back to one-pass, not stale measurements.
+        self.remove_audio_filter("loudnorm")
         ffmpeg_bin = shutil.which("ffmpeg")
         if not ffmpeg_bin:
             log.error("Could not locate ffmpeg on your path!")
@@ -229,6 +230,9 @@ class BasePlaylistEntry(Serializable):
             "-nostats",
             "-i",
             input_file,
+            "-vn",
+            "-sn",
+            "-dn",
             "-af",
             f"loudnorm={LOUDNORM_TARGET}:linear=true:print_format=json",
             "-f",
@@ -236,16 +240,16 @@ class BasePlaylistEntry(Serializable):
             os.devnull,
         ]
         try:
-            raw = await run_command(ffmpeg_cmd)
+            raw = await run_command(ffmpeg_cmd, check=True)
             opts = measured_loudnorm_filter(raw.decode("utf-8"))
-        except (ValueError, UnicodeError) as exc:
+        except (ValueError, UnicodeError, OSError) as exc:
             # Caller uses one-pass loudnorm when the measurements are unusable.
             log.warning("Could not measure loudness for %s: %s", input_file, exc)
             return
         self.set_audio_filter("loudnorm", opts)
 
 
-async def run_command(command: List[str]) -> bytes:
+async def run_command(command: List[str], *, check: bool = False) -> bytes:
     """
     Use an async subprocess exec to execute the given `command`
     This method will wait for then return the output.
@@ -268,6 +272,8 @@ async def run_command(command: List[str]) -> bytes:
         {"process": p, "run": command},
     )
     stdout, stderr = await p.communicate()
+    if check and p.returncode:
+        raise OSError(f"FFmpeg command failed with exit status {p.returncode}")
     return stdout + stderr
 
 
@@ -1105,10 +1111,9 @@ class LocalFilePlaylistEntry(BasePlaylistEntry):
 
         try:
             info = YtdlpResponseDict(raw_json["info"])
-            downloaded = (
-                raw_json["downloaded"] if playlist.bot.config.save_videos else False
-            )
-            filename = raw_json["filename"] if downloaded else ""
+            # Local entries have never serialized a "downloaded" field.
+            # Retain their local path; readiness will rebuild transient filters.
+            filename = raw_json.get("filename", "") or info.get("__expected_filename", "")
 
             channel_id = raw_json.get("channel_id", None)
             if channel_id:

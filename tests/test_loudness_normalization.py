@@ -1,8 +1,8 @@
-"""Offline tests against the repository's actual entry/player method bodies.
+"""Loudness regression and integration tests.
 
-The AST harness supplies Discord substitutes, but the real Python methods are
-compiled from entry.py/player.py. No Discord service or downloaded dependency
-is needed to exercise their control flow and FFmpeg filter arguments.
+The AST harness exercises filter control flow with lightweight stand-ins.
+RealModuleLoudnessTests imports actual entry/player modules with installed
+Discord and yt-dlp dependencies, without connecting to a Discord service.
 """
 
 import ast
@@ -408,6 +408,213 @@ class LoudnessTests(unittest.TestCase):
                 data = json.loads(__import__('re').search(r'\{[^{}]*"input_i"[^{}]*\}', measure.stderr, __import__('re').DOTALL).group(0))
                 results.append(float(data["input_i"]))
             self.assertLess(abs(results[0] - results[1]), 0.75, results)
+
+
+
+class RealModuleLoudnessTests(unittest.IsolatedAsyncioTestCase):
+    """Import real modules; stub only the external playback boundaries."""
+
+    def setUp(self):
+        import musicbot.entry as entry_module
+        import musicbot.player as player_module
+        self.entry_module = entry_module
+        self.player_module = player_module
+
+    def entry(self, kind="URLPlaylistEntry"):
+        from musicbot.downloader import YtdlpResponseDict
+        bot = SimpleNamespace(config=SimpleNamespace(default_speed=1.0, save_videos=True),
+                              downloader=None, filecache=None)
+        playlist = SimpleNamespace(bot=bot)
+        info = YtdlpResponseDict(dict(
+            url="https://example.invalid/demo", webpage_url="https://example.invalid/demo",
+            title="DemoUser track", duration=180, extractor="generic",
+            __input_subject="https://example.invalid/demo",
+            __expected_filename="/tmp/demo.ogg"))
+        entry = getattr(self.entry_module, kind)(playlist, info)
+        entry.filename = "/tmp/demo.ogg"
+        return entry
+
+    async def play(self, entry, player=None, **kwargs):
+        from unittest.mock import patch
+        player = player or FakePlayer(entry, **kwargs)
+        with patch.multiple(self.player_module, log=FakeLog(), Thread=FakeThread,
+                            FFmpegOpusAudio=FakeOpus, FFmpegPCMAudio=FakePCM,
+                            PCMVolumeTransformer=FakeTransformer,
+                            SourcePlaybackCounter=FakePlaybackCounter):
+            await self.player_module.MusicPlayer._play(player)
+        return player
+
+    async def test_real_import_and_filter_order(self):
+        self.assertEqual(self.player_module.URLPlaylistEntry, self.entry_module.URLPlaylistEntry)
+        entry = self.entry()
+        entry.set_audio_filter("volume", "0.15")
+        entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
+        player = await self.play(entry)
+        self.assertIn(f"-af loudnorm={LOUDNORM_TARGET},volume=0.15",
+                      player.voice_client.last.source.kwargs["options"])
+
+    async def test_real_probe_stream_keeps_volume_and_encodes(self):
+        entry = self.entry("StreamPlaylistEntry")
+        entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
+        player = await self.play(entry, probe=True)
+        source = player.voice_client.last.source
+        self.assertIn("-af volume=0.15", source.kwargs["options"])
+        self.assertNotIn("loudnorm", source.kwargs["options"])
+        self.assertIsNone(source.kwargs["codec"])
+
+    async def test_real_probe_url_still_omits_filters(self):
+        player = await self.play(self.entry(), probe=True)
+        self.assertNotIn("-af", player.voice_client.last.source.kwargs["options"])
+
+    async def test_real_persistent_queue_old_and_new_aoptions_are_not_reused(self):
+        for kind in ("URLPlaylistEntry", "LocalFilePlaylistEntry"):
+            entry = self.entry(kind)
+            entry._is_downloaded = True
+            entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
+            entry.set_audio_filter("volume", "0.15")
+            raw = entry.__json__()["data"]
+            self.assertIn("aoptions", raw)
+            for old in (None, "-af volume=1.9", "-af loudnorm=I=-16,volume=0.99"):
+                legacy = dict(raw)
+                if old is None:
+                    legacy.pop("aoptions")
+                else:
+                    legacy["aoptions"] = old
+                restored = type(entry)._deserialize(legacy, playlist=entry.playlist)
+                self.assertIsNotNone(restored)
+                self.assertEqual(restored._a_filters, {})
+                self.assertFalse(restored.is_downloaded)
+                if kind == "LocalFilePlaylistEntry":
+                    self.assertEqual(restored.filename, "/tmp/demo.ogg")
+                player = await self.play(restored, volume=0.35)
+                options = player.voice_client.last.source.kwargs["options"]
+                self.assertEqual(options.count("loudnorm="), 1)
+                self.assertEqual(options.count("volume="), 1)
+                self.assertIn("volume=0.35", options)
+
+    async def test_real_volume_command_restarts_with_new_volume_and_measurements(self):
+        from unittest.mock import patch
+        from musicbot.bot import MusicBot
+        import musicbot.bot as bot_module
+        entry = self.entry()
+        measured = measured_loudnorm_filter(LoudnessTests.fixture())
+        entry.set_audio_filter("loudnorm", measured)
+        player = FakePlayer(entry)
+        player.current_entry, player.progress, player.is_playing = entry, 17.5, True
+        requeued, skips = [], []
+        player.playlist.insert_entry_at_index = lambda index, item: requeued.append(item)
+        player.skip = lambda: skips.append(True)
+        bot = SimpleNamespace(config=SimpleNamespace(use_opus_audio=True))
+        with patch.object(bot_module, "_D", lambda text, ssd: text):
+            await MusicBot.cmd_volume(bot, None, player, "35")
+        self.assertEqual(requeued, [entry])
+        self.assertEqual(skips, [True])
+        self.assertEqual(entry.start_time, 17.5)
+        await self.play(entry, player=player)
+        options = player.voice_client.last.source.kwargs
+        self.assertIn("-ss 17.5", options["before_options"])
+        self.assertIn("volume=0.35", options["options"])
+        self.assertEqual(options["options"].count("loudnorm="), 1)
+        self.assertEqual(entry._a_filters["loudnorm"], measured)
+
+    async def test_real_seek_reuses_twopass_measurements(self):
+        from unittest.mock import patch, AsyncMock
+        from musicbot.bot import MusicBot
+        import musicbot.bot as bot_module
+        entry = self.entry()
+        entry._is_downloaded = True
+        measured = measured_loudnorm_filter(LoudnessTests.fixture())
+        entry.set_audio_filter("loudnorm", measured)
+        player = FakePlayer(entry, volume=0.35)
+        player.current_entry, player.progress = entry, 12.0
+        player.playlist.insert_entry_at_index = lambda index, item: None
+        player.skip = lambda: None
+        bot = SimpleNamespace(config=SimpleNamespace(
+            enable_queue_history_global=False, enable_queue_history_guilds=False))
+        with patch.object(bot_module, "_D", lambda text, ssd: text):
+            await MusicBot.cmd_seek(bot, None, SimpleNamespace(id=1), player, [], "42.5")
+        with patch.object(entry, "get_mean_volume", new_callable=AsyncMock) as analysis:
+            self.assertIs(await entry.get_ready_future(), entry)
+            await self.play(entry, player=player)
+            analysis.assert_not_awaited()
+        options = player.voice_client.last.source.kwargs
+        self.assertIn("-ss 42.5", options["before_options"])
+        self.assertEqual(options["options"].count("loudnorm="), 1)
+        self.assertEqual(options["options"].count("volume="), 1)
+        self.assertIn("volume=0.35", options["options"])
+        self.assertEqual(entry._a_filters["loudnorm"], measured)
+
+    async def test_real_equalization_disabled_clears_retained_filter(self):
+        entry = self.entry()
+        entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
+        player = await self.play(entry, eq=False)
+        self.assertNotIn("loudnorm", player.voice_client.last.source.kwargs["options"])
+        self.assertIn("volume=0.15", player.voice_client.last.source.kwargs["options"])
+
+    async def test_real_failed_reanalysis_clears_measurements(self):
+        from unittest.mock import patch, AsyncMock
+        entry = self.entry()
+        entry.set_audio_filter("loudnorm", measured_loudnorm_filter(LoudnessTests.fixture()))
+        with patch.object(self.entry_module, "run_command", new_callable=AsyncMock,
+                          return_value=b"invalid ffmpeg output"):
+            await entry.get_mean_volume(entry.filename)
+        self.assertFalse(entry.has_audio_filter("loudnorm"))
+        player = await self.play(entry)
+        self.assertIn(f"loudnorm={LOUDNORM_TARGET},volume=0.15",
+                      player.voice_client.last.source.kwargs["options"])
+
+    async def test_real_analysis_command_ignores_video(self):
+        from unittest.mock import patch, AsyncMock
+        entry = self.entry()
+        raw = LoudnessTests.fixture().encode()
+        with patch.object(self.entry_module, "run_command", new_callable=AsyncMock,
+                          return_value=raw) as command:
+            await entry.get_mean_volume(entry.filename)
+        argv = command.call_args.args[0]
+        self.assertTrue(all(flag in argv for flag in ("-vn", "-sn", "-dn")))
+        self.assertIn("measured_I=", entry._a_filters["loudnorm"])
+
+    async def test_real_nonzero_analysis_exit_discards_even_valid_json(self):
+        from unittest.mock import patch, AsyncMock
+        entry = self.entry()
+        process = SimpleNamespace(
+            returncode=1,
+            communicate=AsyncMock(return_value=(b"", LoudnessTests.fixture().encode())))
+        with patch.object(self.entry_module.asyncio, "create_subprocess_exec",
+                          new_callable=AsyncMock, return_value=process), \
+                patch.object(self.entry_module, "log", FakeLog()):
+            await entry.get_mean_volume(entry.filename)
+        self.assertFalse(entry.has_audio_filter("loudnorm"))
+        player = await self.play(entry)
+        self.assertIn(f"loudnorm={LOUDNORM_TARGET},volume=0.15",
+                      player.voice_client.last.source.kwargs["options"])
+
+    async def test_real_analysis_spawn_failure_falls_back(self):
+        from unittest.mock import patch, AsyncMock
+        entry = self.entry()
+        with patch.object(self.entry_module, "run_command", new_callable=AsyncMock,
+                          side_effect=OSError("ffmpeg unavailable")):
+            await entry.get_mean_volume(entry.filename)
+        player = await self.play(entry)
+        self.assertIn(f"loudnorm={LOUDNORM_TARGET}", player.voice_client.last.source.kwargs["options"])
+
+    async def test_real_discord_opus_filter_outputs_48khz_packets(self):
+        import discord
+        with tempfile.TemporaryDirectory() as td:
+            path = str(Path(td) / "probe.ogg")
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
+                            "sine=frequency=440:duration=4", "-ar", "48000",
+                            "-ac", "2", "-c:a", "libopus", path], check=True)
+            for filters in (f"loudnorm={LOUDNORM_TARGET},volume=0.15", "volume=0.15"):
+                with tempfile.TemporaryFile() as error:
+                    source = discord.FFmpegOpusAudio(path, codec=None,
+                              options=f"-vn -af {filters}", stderr=error)
+                    try:
+                        self.assertEqual(source._process.args.count("-ar"), 1)
+                        self.assertEqual(source._process.args[source._process.args.index("-ar")+1], "48000")
+                        self.assertTrue(source.read(), filters)
+                    finally:
+                        source.cleanup()
 
 
 if __name__ == "__main__":

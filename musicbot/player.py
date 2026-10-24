@@ -22,6 +22,7 @@ from .constructs import Serializable, Serializer, SkipState
 from .entry import LocalFilePlaylistEntry, StreamPlaylistEntry, URLPlaylistEntry
 from .exceptions import FFmpegError, FFmpegWarning
 from .lib.event_emitter import EventEmitter
+from .loudness import LOUDNORM_TARGET
 
 if TYPE_CHECKING:
     from .bot import MusicBot
@@ -418,12 +419,17 @@ class MusicPlayer(EventEmitter, Serializable):
                 aoptions = "-vn -sn -dn"  # "-b:a 192k"
                 # Prefer measured two-pass loudnorm for completed downloads.
                 # Live streams and failed analyses use the one-pass filter.
+                if (
+                    not self.bot.config.use_experimental_equalization
+                    or self.bot.config.use_opus_probe
+                ):
+                    entry.remove_audio_filter("loudnorm")
                 if not self.bot.config.use_opus_probe:
                     if (
                         self.bot.config.use_experimental_equalization
                         and not entry.has_audio_filter("loudnorm")
                     ):
-                        entry.set_audio_filter("loudnorm", "I=-24.0:LRA=7.0:TP=-2.0")
+                        entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
                     if self.bot.config.use_opus_audio:
                         entry.set_audio_filter("volume", f"{self.volume:.2f}")
                     else:
@@ -437,6 +443,13 @@ class MusicPlayer(EventEmitter, Serializable):
                         entry_options = entry.get_audio_filters()
                     if entry_options:
                         aoptions += f" {entry_options}"
+                elif (
+                    isinstance(entry, StreamPlaylistEntry)
+                    and self.bot.config.use_opus_audio
+                ):
+                    # Preserve stream volume with probing, without normalization.
+                    entry.set_audio_filter("volume", f"{self.volume:.2f}")
+                    aoptions += f" {entry.get_audio_filters()}"
 
                 if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
                     if entry.boptions:
@@ -471,7 +484,8 @@ class MusicPlayer(EventEmitter, Serializable):
                     kbitrate = min(kbitrate, MUSICBOT_VOICE_MAX_KBITRATE)
                     source: FFmpegSources = FFmpegOpusAudio(
                         entry.filename,
-                        codec=entry.probed_codec,
+                        # FFmpeg cannot stream-copy Opus while applying filters.
+                        codec=None if "-af " in aoptions else entry.probed_codec,
                         bitrate=kbitrate,
                         before_options=boptions,
                         options=aoptions,
