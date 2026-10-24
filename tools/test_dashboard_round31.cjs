@@ -1278,7 +1278,7 @@ test('R38 resolve queue shows queued then resolving', async t => {
     assert.equal(await query.evaluate(button=>getComputedStyle(button,'::before').animationName),'resolution-spin');
     const assertNoProgressCopy=async()=>{
       assert.equal(await page.locator('.request-loading').count(),0);
-      assert.doesNotMatch((await page.locator('#notice span').textContent())||'',new RegExp([zh['resolve.queued'],zh['resolve.resolving'],zh['resolve.adding']].join('|')));
+      assert.doesNotMatch((await page.locator('#notice span').textContent())||'',new RegExp([zh['resolve.queued'],zh['resolve.resolving'],zh['resolve.adding'],zh.m0079,zh.m0120].join('|')));
     };
     await assertNoProgressCopy();
     if(mobile&&process.env.R38_SCREENSHOTS_DIR){
