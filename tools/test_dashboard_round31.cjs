@@ -1276,6 +1276,11 @@ test('R38 resolve queue shows queued then resolving', async t => {
     assert.equal(await query.getAttribute('aria-busy'),'true');
     assert.ok(postSeen);
     assert.equal(await query.evaluate(button=>getComputedStyle(button,'::before').animationName),'resolution-spin');
+    const assertNoProgressCopy=async()=>{
+      assert.equal(await page.locator('.request-loading').count(),0);
+      assert.doesNotMatch((await page.locator('#notice span').textContent())||'',new RegExp([zh['resolve.queued'],zh['resolve.resolving'],zh['resolve.adding']].join('|')));
+    };
+    await assertNoProgressCopy();
     if(mobile&&process.env.R38_SCREENSHOTS_DIR){
       require('node:fs').mkdirSync(process.env.R38_SCREENSHOTS_DIR,{recursive:true});
       await query.scrollIntoViewIfNeeded();
@@ -1283,6 +1288,7 @@ test('R38 resolve queue shows queued then resolving', async t => {
     }
     state='resolving';
     await page.waitForFunction(text=>document.querySelector('#enqueue')?.textContent.trim()===text,zh['resolve.resolving']);
+    await assertNoProgressCopy();
     if(mobile&&process.env.R38_SCREENSHOTS_DIR)await page.screenshot({path:path.join(process.env.R38_SCREENSHOTS_DIR,'r38-resolving-mobile-dark.png')});
     release();
     await page.locator('#preview-panel').waitFor({state:'visible'});
@@ -1292,10 +1298,12 @@ test('R38 resolve queue shows queued then resolving', async t => {
     state='queued';postSeen=false;
     await add.click();
     await page.waitForFunction(text=>document.querySelector('.preview-actions button.primary')?.textContent.trim()===text,zh['resolve.queued']);
+    await assertNoProgressCopy();
     assert.equal(await add.getAttribute('aria-busy'),'true');
     assert.ok(postSeen);
     state='resolving';
     await page.waitForFunction(text=>document.querySelector('.preview-actions button.primary')?.textContent.trim()===text,zh['resolve.adding']);
+    await assertNoProgressCopy();
     release();
     await page.locator('#preview-panel').waitFor({state:'hidden'});
     await query.waitFor({state:'visible'});
@@ -1311,6 +1319,7 @@ test('R38 resolve queue shows queued then resolving', async t => {
     release();
     await page.locator('.request > [role=alert]').waitFor({state:'visible'});
     assert.equal((await page.locator('.request > [role=alert]').textContent()).trim(),zh['resolve.queueTimeout']);
+    assert.equal((await page.locator('#notice span').textContent()).trim(),zh['resolve.queueTimeout']);
     await page.waitForFunction(()=>!document.querySelector('#enqueue').disabled);
     // Unavailable status updates still leave a busy button, and the POST settles.
     await page.unroute('**/api/guilds/1/resolve');statusSupported=false;
