@@ -416,21 +416,31 @@ class MusicPlayer(EventEmitter, Serializable):
 
                 boptions = "-nostdin"
                 aoptions = "-vn -sn -dn"  # "-b:a 192k"
-                if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
+                # Prefer measured two-pass loudnorm for completed downloads.
+                # Live streams and failed analyses use the one-pass filter.
+                if not self.bot.config.use_opus_probe:
+                    if (
+                        self.bot.config.use_experimental_equalization
+                        and not entry.has_audio_filter("loudnorm")
+                    ):
+                        entry.set_audio_filter("loudnorm", "I=-24.0:LRA=7.0:TP=-2.0")
                     if self.bot.config.use_opus_audio:
                         entry.set_audio_filter("volume", f"{self.volume:.2f}")
-                    # check for after-options, usually filters for speed and EQ.
-                    if entry.aoptions and not self.bot.config.use_opus_probe:
-                        aoptions += f" {entry.aoptions}"
-                    # check for before options, currently just -ss here.
+                    else:
+                        # PCMVolumeTransformer applies volume after FFmpeg;
+                        # prevent a retained FFmpeg filter from reducing it twice.
+                        entry.remove_audio_filter("volume")
+
+                    if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
+                        entry_options = entry.aoptions
+                    else:
+                        entry_options = entry.get_audio_filters()
+                    if entry_options:
+                        aoptions += f" {entry_options}"
+
+                if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
                     if entry.boptions:
                         boptions += f" {entry.boptions}"
-                elif (
-                    isinstance(entry, StreamPlaylistEntry)
-                    and self.bot.config.use_opus_audio
-                ):
-                    entry.set_audio_filter("volume", f"{self.volume:.2f}")
-                    aoptions += f" {entry.get_audio_filters()}"
 
                 stderr_io = io.BytesIO()
 

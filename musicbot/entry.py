@@ -3,7 +3,6 @@ import datetime
 import logging
 import os
 import time
-import re
 import shutil
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
 
@@ -20,6 +19,7 @@ from .downloader import YtdlpResponseDict
 from .exceptions import ExtractionError, InvalidDataError, MusicbotException
 from .i18n import _X
 from .spotify import Spotify
+from .loudness import LOUDNORM_TARGET, measured_loudnorm_filter
 
 if TYPE_CHECKING:
     from .downloader import Downloader
@@ -196,12 +196,53 @@ class BasePlaylistEntry(Serializable):
         """Add or update an audio filter."""
         self._a_filters[name] = args
 
+    def has_audio_filter(self, name: str) -> bool:
+        """Return whether this entry has a filter with the given name."""
+        return name in self._a_filters
+
+    def remove_audio_filter(self, name: str) -> None:
+        """Remove a filter, such as stale FFmpeg volume in PCM mode."""
+        self._a_filters.pop(name, None)
+
     def get_audio_filters(self) -> str:
         """Convert audio filters into ffmpeg -af option string."""
         if self._a_filters:
-            filters = ",".join(f"{f}={a}" for f, a in self._a_filters.items())
+            # Always normalize before final output volume, even on a replay.
+            ordered = [(k, v) for k, v in self._a_filters.items() if k != "volume"]
+            if "volume" in self._a_filters:
+                ordered.append(("volume", self._a_filters["volume"]))
+            filters = ",".join(f"{f}={a}" for f, a in ordered)
             return f"-af {filters}"
         return ""
+
+
+    async def get_mean_volume(self, input_file: str) -> None:
+        """Measure a complete file to configure two-pass loudness normalization."""
+        ffmpeg_bin = shutil.which("ffmpeg")
+        if not ffmpeg_bin:
+            log.error("Could not locate ffmpeg on your path!")
+            return
+        ffmpeg_cmd = [
+            ffmpeg_bin,
+            "-nostdin",
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            input_file,
+            "-af",
+            f"loudnorm={LOUDNORM_TARGET}:linear=true:print_format=json",
+            "-f",
+            "null",
+            os.devnull,
+        ]
+        try:
+            raw = await run_command(ffmpeg_cmd)
+            opts = measured_loudnorm_filter(raw.decode("utf-8"))
+        except (ValueError, UnicodeError) as exc:
+            # Caller uses one-pass loudnorm when the measurements are unusable.
+            log.warning("Could not measure loudness for %s: %s", input_file, exc)
+            return
+        self.set_audio_filter("loudnorm", opts)
 
 
 async def run_command(command: List[str]) -> bytes:
@@ -547,7 +588,10 @@ class URLPlaylistEntry(BasePlaylistEntry):
                         {"time": self.duration, "file": self.filename},
                     )
 
-            if self.playlist.bot.config.use_experimental_equalization:
+            if (
+                self.playlist.bot.config.use_experimental_equalization
+                and not self.playlist.bot.config.use_opus_probe
+            ):
                 try:
                     await self.get_mean_volume(self.filename)
 
@@ -621,85 +665,6 @@ class URLPlaylistEntry(BasePlaylistEntry):
 
         return None
 
-    async def get_mean_volume(self, input_file: str) -> None:
-        """
-        Attempt to calculate the mean volume of the `input_file` by using
-        output from ffmpeg to provide values which can be used by command
-        arguments sent to ffmpeg during playback.
-        """
-        log.debug("Calculating mean volume of:  %s", input_file)
-        ffmpeg_bin = shutil.which("ffmpeg")
-        if not ffmpeg_bin:
-            log.error("Could not locate ffmpeg on your path!")
-            return
-
-        # NOTE: this command should contain JSON, but I have no idea how to make
-        # ffmpeg spit out only the JSON.
-        ffmpeg_cmd = [
-            ffmpeg_bin,
-            "-i",
-            input_file,
-            "-af",
-            "loudnorm=I=-24.0:LRA=7.0:TP=-2.0:linear=true:print_format=json",
-            "-f",
-            "null",
-            "/dev/null",
-            "-hide_banner",
-            "-nostats",
-        ]
-
-        raw_output = await run_command(ffmpeg_cmd)
-        output = raw_output.decode("utf-8")
-
-        i_matches = re.findall(r'"input_i" : "(-?([0-9]*\.[0-9]+))",', output)
-        if i_matches:
-            # log.debug("i_matches=%s", i_matches[0][0])
-            i_value = float(i_matches[0][0])
-        else:
-            log.debug("Could not parse 'I' in normalize json.")
-            i_value = float(0)
-
-        lra_matches = re.findall(r'"input_lra" : "(-?([0-9]*\.[0-9]+))",', output)
-        if lra_matches:
-            # log.debug("lra_matches=%s", lra_matches[0][0])
-            lra_value = float(lra_matches[0][0])
-        else:
-            log.debug("Could not parse 'LRA' in normalize json.")
-            lra_value = float(0)
-
-        tp_matches = re.findall(r'"input_tp" : "(-?([0-9]*\.[0-9]+))",', output)
-        if tp_matches:
-            # log.debug("tp_matches=%s", tp_matches[0][0])
-            tp_value = float(tp_matches[0][0])
-        else:
-            log.debug("Could not parse 'TP' in normalize json.")
-            tp_value = float(0)
-
-        thresh_matches = re.findall(r'"input_thresh" : "(-?([0-9]*\.[0-9]+))",', output)
-        if thresh_matches:
-            # log.debug("thresh_matches=%s", thresh_matches[0][0])
-            thresh = float(thresh_matches[0][0])
-        else:
-            log.debug("Could not parse 'thresh' in normalize json.")
-            thresh = float(0)
-
-        offset_matches = re.findall(r'"target_offset" : "(-?([0-9]*\.[0-9]+))', output)
-        if offset_matches:
-            # log.debug("offset_matches=%s", offset_matches[0][0])
-            offset = float(offset_matches[0][0])
-        else:
-            log.debug("Could not parse 'offset' in normalize json.")
-            offset = float(0)
-
-        loudnorm_opts = (
-            "I=-24.0:LRA=7.0:TP=-2.0:linear=true:"
-            f"measured_I={i_value}:"
-            f"measured_LRA={lra_value}:"
-            f"measured_TP={tp_value}:"
-            f"measured_thresh={thresh}:"
-            f"offset={offset}"
-        )
-        self.set_audio_filter("loudnorm", loudnorm_opts)
 
     # Format URLs from YouTube stay valid for hours; stay well inside that.
     REUSE_EXTRACTION_MAX_AGE = 30 * 60
@@ -1265,7 +1230,10 @@ class LocalFilePlaylistEntry(BasePlaylistEntry):
                         {"seconds": self.duration, "file": self.filename},
                     )
 
-            if self.playlist.bot.config.use_experimental_equalization:
+            if (
+                self.playlist.bot.config.use_experimental_equalization
+                and not self.playlist.bot.config.use_opus_probe
+            ):
                 try:
                     await self.get_mean_volume(self.filename)
 
@@ -1339,83 +1307,3 @@ class LocalFilePlaylistEntry(BasePlaylistEntry):
             log.exception("ffprobe could not be executed for some reason.")
 
         return None
-
-    async def get_mean_volume(self, input_file: str) -> None:
-        """
-        Attempt to calculate the mean volume of the `input_file` by using
-        output from ffmpeg to provide values which can be used by command
-        arguments sent to ffmpeg during playback.
-        """
-        log.debug("Calculating mean volume of:  %s", input_file)
-        ffmpeg_bin = shutil.which("ffmpeg")
-        if not ffmpeg_bin:
-            log.error("Could not locate ffmpeg on your path!")
-            return
-
-        # NOTE: this command should contain JSON, but I have no idea how to make
-        # ffmpeg spit out only the JSON.
-        ffmpeg_cmd = [
-            ffmpeg_bin,
-            "-i",
-            input_file,
-            "-af",
-            "loudnorm=I=-24.0:LRA=7.0:TP=-2.0:linear=true:print_format=json",
-            "-f",
-            "null",
-            "/dev/null",
-            "-hide_banner",
-            "-nostats",
-        ]
-
-        raw_output = await run_command(ffmpeg_cmd)
-        output = raw_output.decode("utf-8")
-
-        i_matches = re.findall(r'"input_i" : "(-?([0-9]*\.[0-9]+))",', output)
-        if i_matches:
-            # log.debug("i_matches=%s", i_matches[0][0])
-            i_value = float(i_matches[0][0])
-        else:
-            log.debug("Could not parse 'I' in normalize json.")
-            i_value = float(0)
-
-        lra_matches = re.findall(r'"input_lra" : "(-?([0-9]*\.[0-9]+))",', output)
-        if lra_matches:
-            # log.debug("lra_matches=%s", lra_matches[0][0])
-            lra_value = float(lra_matches[0][0])
-        else:
-            log.debug("Could not parse 'LRA' in normalize json.")
-            lra_value = float(0)
-
-        tp_matches = re.findall(r'"input_tp" : "(-?([0-9]*\.[0-9]+))",', output)
-        if tp_matches:
-            # log.debug("tp_matches=%s", tp_matches[0][0])
-            tp_value = float(tp_matches[0][0])
-        else:
-            log.debug("Could not parse 'TP' in normalize json.")
-            tp_value = float(0)
-
-        thresh_matches = re.findall(r'"input_thresh" : "(-?([0-9]*\.[0-9]+))",', output)
-        if thresh_matches:
-            # log.debug("thresh_matches=%s", thresh_matches[0][0])
-            thresh = float(thresh_matches[0][0])
-        else:
-            log.debug("Could not parse 'thresh' in normalize json.")
-            thresh = float(0)
-
-        offset_matches = re.findall(r'"target_offset" : "(-?([0-9]*\.[0-9]+))', output)
-        if offset_matches:
-            # log.debug("offset_matches=%s", offset_matches[0][0])
-            offset = float(offset_matches[0][0])
-        else:
-            log.debug("Could not parse 'offset' in normalize json.")
-            offset = float(0)
-
-        loudnorm_opts = (
-            "I=-24.0:LRA=7.0:TP=-2.0:linear=true:"
-            f"measured_I={i_value}:"
-            f"measured_LRA={lra_value}:"
-            f"measured_TP={tp_value}:"
-            f"measured_thresh={thresh}:"
-            f"offset={offset}"
-        )
-        self.set_audio_filter("loudnorm", loudnorm_opts)
