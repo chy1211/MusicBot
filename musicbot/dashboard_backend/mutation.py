@@ -255,6 +255,8 @@ class DashboardMutationRoutes:
             response = None
             summary = {}
             if action == "play" and preview and preview.get("kind") == "playlist":
+                from ..web_dashboard_preview import log
+                log.info("Dashboard add re-extracting preview: not-single-track")
                 summary = await self.play_selection(request, data, preview, guild, owner)
                 reasons = list(dict.fromkeys(item["reason"] for item in summary["results"] if item["reason"]))
                 response = Response(_D("Added %(added)s tracks; skipped %(skipped)s.", ssd) %
@@ -290,10 +292,11 @@ class DashboardMutationRoutes:
                     return perms
                 check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next))
                 try:
-                    response = await self.run_resolution(guild, getattr(self.bot, "cmd_" + action)(
-                        message=None, player=player, channel=channel, guild=guild,
-                        author=owner, permissions=permissions, leftover_args=[],
-                        song_url=query.strip()), owner=owner, priority="add", request=request)
+                    response = await self.run_preview_add(guild, owner, request, preview, query,
+                        getattr(self.bot, "cmd_" + action)(
+                            message=None, player=player, channel=channel, guild=guild,
+                            author=owner, permissions=permissions, leftover_args=[],
+                            song_url=query.strip()))
                 finally:
                     CONFIRMED_ENTRY_CHECK.reset(check_token)
             elif action == "seek":

@@ -476,6 +476,12 @@ class Downloader:
         """
         if WEB_EXTRACTION.get():
             song_subject = check_subject(song_subject)
+        # Only a dashboard confirmation installs this scope. Misses acquire
+        # resolution admission before any provider/local/Spotify work can run.
+        from .web_dashboard_preview import PREVIEW_EXTRACTION
+        preview = PREVIEW_EXTRACTION.get()
+        if preview is not None and preview.owns_current_task():
+            return await preview.extract(self, song_subject, args, kwargs)
         if kwargs.pop("public_only", False):
             limit = kwargs.pop("public_limit", 201)
             if limit not in (25, 201):

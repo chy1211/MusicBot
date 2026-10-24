@@ -106,7 +106,13 @@ class DashboardResolveRoutes:
                                _web_text('m0420'),
                 })
             else:
-                results.append(dict(self.preview_track(info, permissions), kind="track"))
+                from ..web_dashboard_preview import PreviewTrack, save_extraction
+                item = PreviewTrack(self.preview_track(info, permissions), kind="track")
+                if (valid_url and not playlist_id and not search and imported is None
+                        and "open.spotify.com" not in subject.lower()
+                        and not youtube_playlist_subject(subject) and "entries" not in info):
+                    item.extraction, item.extraction_reason = save_extraction(info, subject, item["url"])
+                results.append(item)
         if not results:
             raise APIError(404, _web_text('m0414'))
         return results
@@ -172,7 +178,12 @@ class DashboardResolveRoutes:
                 "status": "ready", "kind": item["kind"],
                 "count": item.get("count", 1),
                 "entries": [dict(child) for child in item.get("entries", [])],
+                "extraction_reason": getattr(item, "extraction_reason", "not-single-url"),
             }
+            extraction = getattr(item, "extraction", None)
+            if extraction is not None:
+                self.previews[token]["extraction"] = extraction
+                item.extraction = None
             if item.get("source_url") or item.get("saveable"):
                 value = await self.playlist_store.transact(owner.id)
                 item["save_revision"] = value["revision"]
@@ -184,7 +195,27 @@ class DashboardResolveRoutes:
         # Bounded memory even when many queries are made within the TTL.
         while len(self.previews) > 100:
             self.previews.pop(next(iter(self.previews)))
+        from ..web_dashboard_preview import prune_extractions
+        prune_extractions(self.previews, now)
         return results
+
+    async def run_preview_add(self, guild, owner, request, preview, query, operation):
+        from ..web_dashboard_preview import (PREVIEW_EXTRACTION, PreviewExtraction,
+            load_extraction, log)
+        data, reason = load_extraction(preview, query)
+        preview.pop("extraction", None)
+        if data is None:
+            log.info("Dashboard add re-extracting preview: %s", reason)
+            return await self.run_resolution(guild, operation, owner=owner,
+                priority="add", request=request)
+        scope = PreviewExtraction(data, lambda extraction: self.run_resolution(
+            guild, extraction, owner=owner, priority="add", request=request))
+        token = PREVIEW_EXTRACTION.set(scope)
+        try:
+            return await operation
+        finally:
+            scope.close()
+            PREVIEW_EXTRACTION.reset(token)
 
     async def compatibility_preview(self, request, data, guild, owner, action):
         """Old one-request clients use the same preview and guarded confirmation."""
@@ -224,6 +255,9 @@ class DashboardResolveRoutes:
             raise APIError(409, _web_text('m0425'))
         token = data["preview_id"]
         preview = self.previews.get(token) if isinstance(token, str) else None
+        if preview and preview["expires"] <= time.monotonic():
+            preview.pop("extraction", None)
+            preview["extraction_reason"] = "expired-preview"
         if (not preview or preview.get("retain_until", preview["expires"]) <= time.monotonic()
                 or preview["guild_id"] != guild.id or preview["owner_id"] != owner.id):
             raise APIError(409, _web_text('m0425'))
@@ -262,6 +296,8 @@ class DashboardResolveRoutes:
         if not query:
             raise APIError(409, _web_text('m0432'))
         self.user_rate_limit(owner)
+        from ..web_dashboard_preview import log
+        log.info("Dashboard add re-extracting preview: expired-preview")
         results = await self.run_resolution(guild,
             self.resolve_options(guild, owner, query, action), "m0434",
             owner=owner, priority="add", request=request)
@@ -285,7 +321,17 @@ class DashboardResolveRoutes:
             preview["entries"] = refreshed
             preview["count"] = match["count"]
             preview["fresh_reason"] = match["reason"]
+        # Renewal already extracted under admission. Transfer its private data
+        # to the original locked token, without extending the extraction's age.
+        if match["kind"] == "track":
+            refreshed = self.previews[match["preview_id"]]
+            preview.pop("extraction", None)
+            if "extraction" in refreshed:
+                preview["extraction"] = refreshed.pop("extraction")
+            preview["extraction_reason"] = refreshed.get("extraction_reason", "no-saved-result")
         preview["expires"] = time.monotonic() + self.PREVIEW_TTL
+        from ..web_dashboard_preview import prune_extractions
+        prune_extractions(self.previews, time.monotonic())
 
     @staticmethod
     def playlist_restriction(permissions, count):
