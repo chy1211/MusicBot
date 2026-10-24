@@ -14,6 +14,8 @@ const payload = ref<LibraryPayload | null>(null)
 const loading = ref(false)
 const loadError = ref('')
 const busy = ref(false)
+const resolutionState = ref<'queued'|'resolving'|null>(null)
+const syncState = ref<'queued'|'resolving'|null>(null)
 const activeId = ref('favorites')
 const detailOpen = ref(false)
 const selected = ref<number[]>([])
@@ -112,20 +114,21 @@ async function play(items?: number[]): Promise<void> {
   if (!list || !payload.value || !guild || !dashboard.connected || dashboard.busy || busy.value || !list.tracks.length || (items && !items.length)) return
   const epoch = ++mutationEpoch
   busy.value = true
+  resolutionState.value = 'queued'
   loadError.value = ''
   try {
     const body: { revision: string; selected_items?: string[] } = { revision: payload.value.revision }
     if (items) body.selected_items = items.map(String)
     const result = await request<{ message?: string; skipped?: number; state?: Snapshot }>(
       '/api/guilds/' + encodeURIComponent(guild) + '/library/' + encodeURIComponent(list.id) + '/play',
-      { method: 'POST', body },
+      { method: 'POST', body, onResolutionState: state => { if (current(epoch, guild, sessionEpoch)) resolutionState.value = state } },
     )
     if (!current(epoch, guild, sessionEpoch)) return
     if (result.state) { dashboard.stateSequence++; applySnapshot(result.state) }
     notice(result.message || t('m0195'))
     if ((result.skipped ?? 0) > 0) loadError.value = result.message || t('m0195')
   } catch (error) { if (current(epoch, guild, sessionEpoch)) loadError.value = errorText(error) }
-  finally { if (epoch === mutationEpoch) busy.value = false }
+  finally { if (epoch === mutationEpoch) { busy.value = false; resolutionState.value = null } }
 }
 async function openSave(track: LibraryTrack): Promise<void> {
   const url = safeMediaUrl(track.url)
@@ -193,11 +196,12 @@ async function syncPlaylist(): Promise<void> {
   if (!list || !payload.value || !guild || busy.value) return
   const epoch = ++mutationEpoch
   busy.value = true
+  syncState.value = 'queued'
   loadError.value = ''
   try {
     const preview = await request<SyncPreview>(
       '/api/guilds/' + encodeURIComponent(guild) + '/library/' + encodeURIComponent(list.id) + '/sync/preview',
-      { method: 'POST', body: { revision: payload.value.revision } },
+      { method: 'POST', body: { revision: payload.value.revision }, onResolutionState: state => { if (current(epoch, guild, sessionEpoch)) syncState.value = state } },
     )
     if (!current(epoch, guild, sessionEpoch) || activePlaylist.value?.id !== list.id) return
     const prompt = t('m0206') + preview.diff.added + t('m0207') + preview.diff.removed + t('m0208') + preview.warning + t('m0209')
@@ -209,7 +213,7 @@ async function syncPlaylist(): Promise<void> {
     payload.value = result
     notice(result.message || t('m0195'))
   } catch (error) { if (current(epoch, guild, sessionEpoch)) loadError.value = errorText(error) }
-  finally { if (epoch === mutationEpoch) busy.value = false }
+  finally { if (epoch === mutationEpoch) { busy.value = false; syncState.value = null } }
 }
 function toggleTrack(index: number, checked: boolean): void {
   const next = new Set(selected.value)
@@ -243,7 +247,7 @@ watch(() => [dashboard.authenticated, dashboard.guildId], ([authenticated]) => {
 
 export function useLibrary() {
   return {
-    payload, playlists, activePlaylist, loading, loadError, busy, activeId, detailOpen, selected,
+    payload, playlists, activePlaylist, loading, loadError, busy, resolutionState, syncState, activeId, detailOpen, selected,
     pendingSave, saveDialogOpen, saveChoices, createName, renameName, canPlaySelected,
     load, setActive, createPlaylist,
     renamePlaylist: () => activePlaylist.value && mutate(activePlaylist.value.id, { name: renameName.value }),

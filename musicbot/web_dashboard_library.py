@@ -268,14 +268,15 @@ class DashboardLibrary(DashboardImports):
         preview = {"count": len(target["tracks"]), "url": "", "status": "ready",
                    "entries": [dict(item, item_id=str(i)) for i, item in enumerate(target["tracks"])]}
         from .web_dashboard_activity import capture, finish
-        async with self.locks[guild.id]:
-            value = capture(self, guild, member, "play", "web")
-            try:
-                result = await self.play_selection(request, {"selected_items": chosen}, preview, guild, member)
-            except BaseException:
-                finish(value, False)
-                raise
-            finish(value, result["added"] > 0)
-            reasons = list(dict.fromkeys(row["reason"] for row in result["results"] if row["reason"]))
-            return web.json_response(dict(result, message=_web_text('m0554', p0=result['added'], p1=result['skipped']) + "；".join(reasons),
-                                          state=self.snapshot(guild, member)))
+        # Dashboard resolutions are admitted per person. Do not hold the guild
+        # playback-control lock while a saved playlist waits for providers.
+        value = capture(self, guild, member, "play", "web")
+        try:
+            result = await self.play_selection(request, {"selected_items": chosen}, preview, guild, member)
+        except BaseException:
+            finish(value, False)
+            raise
+        finish(value, result["added"] > 0)
+        reasons = list(dict.fromkeys(row["reason"] for row in result["results"] if row["reason"]))
+        return web.json_response(dict(result, message=_web_text('m0554', p0=result['added'], p1=result['skipped']) + "；".join(reasons),
+                                      state=self.snapshot(guild, member)))

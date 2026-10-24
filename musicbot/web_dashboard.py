@@ -245,6 +245,8 @@ class Dashboard(
         self.locks = defaultdict(asyncio.Lock)
         self.extraction_pool = DashboardExtractionPool()
         self.resolve_tasks = {}
+        from .dashboard_backend.resolution_queue import ResolutionQueue
+        self.resolution_queue = ResolutionQueue(self)
         self.RESOLVE_TIMEOUT = config.resolve_timeout_seconds
         self.previews = {}
         self.rate_limits = {}
@@ -320,6 +322,7 @@ class Dashboard(
         self.app.router.add_get("/api/guilds/{guild_id}/activity", self.activity)
         self.app.router.add_get("/api/guilds/{guild_id}/events", self.events,
                                 name="dashboard_events", allow_head=False)
+        self.app.router.add_get("/api/guilds/{guild_id}/resolution-status", self.resolution_status)
         self.app.router.add_get("/api/guilds/{guild_id}/history", self.history)
         self.app.router.add_get("/api/guilds/{guild_id}/popular", self.popular)
         self.app.router.add_get("/api/guilds/{guild_id}/lyrics", self.lyrics)
@@ -357,7 +360,7 @@ class Dashboard(
         "/api/guilds": "guilds",
         **{"/api/guilds/{guild_id}/" + action: action for action in (
             "state", "listeners", "activity", "events", "history", "popular",
-            "lyrics", "resolve", "play", "playnext", "seek", "pause", "resume",
+            "lyrics", "resolve", "resolution-status", "play", "playnext", "seek", "pause", "resume",
             "skip", "volume", "repeat", "spotify")},
         "/api/guilds/{guild_id}/lyrics/offset": "lyrics_offset",
         "/api/guilds/{guild_id}/admin/lyrics": "admin_lyrics",
@@ -538,7 +541,8 @@ class Dashboard(
             entry = getattr(player, "current_entry", None)
             if entry is not None and not self.recent_history.get(guild.id):
                 self.record_play(guild, entry)
-        self.runner = web.AppRunner(self.app, access_log=None, shutdown_timeout=5)
+        self.runner = web.AppRunner(self.app, access_log=None, shutdown_timeout=5,
+                                    handler_cancellation=True)
         await self.runner.setup()
         self.site = web.TCPSite(self.runner, self.config.host, self.config.port)
         await self.site.start()
@@ -547,11 +551,7 @@ class Dashboard(
 
     async def close(self):
         await self.shutdown_events()
-        tasks = list(self.resolve_tasks.values())
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+        await self.resolution_queue.close()
         await self.extraction_pool.close()
         runner, self.runner = self.runner, None
         if runner:

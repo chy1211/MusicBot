@@ -269,6 +269,13 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
         guilds = {i: NS(id=i, unavailable=False, get_member=lambda _: self.bot.owner)
                   for i in (1, 2, 3)}
         self.bot.get_guild = guilds.get
+        # R38: use three people to exercise the GLOBAL two-slot limit. The same
+        # person across guilds now legitimately has only one active resolution.
+        members = {i: NS(**dict(vars(self.bot.owner), id=100+i, name="DemoUser"))
+                   for i in guilds}
+        self.dashboard.guild_owner = lambda request: (
+            guilds[int(request.match_info["guild_id"])],
+            members[int(request.match_info["guild_id"])])
         async def slow(*_, **__):
             await asyncio.Event().wait()
         self.bot.downloader.extract_info = slow

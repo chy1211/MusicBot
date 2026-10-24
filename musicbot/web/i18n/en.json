@@ -715,5 +715,9 @@
   "theme.light": "Current theme: light. Switch to dark.",
   "theme.dark": "Current theme: dark. Switch to light.",
   "library.favorites.builtinHint": "Favorites is a built-in playlist and can't be renamed or deleted.",
-  "library.deselectAll": "Deselect all"
+  "library.deselectAll": "Deselect all",
+  "resolve.queueTimeout": "Too many lookups right now. Please try again shortly.",
+  "resolve.queued": "Queued…",
+  "resolve.resolving": "Looking up…",
+  "resolve.adding": "Adding…"
 }

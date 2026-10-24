@@ -106,13 +106,13 @@ watch(library.saveDialogOpen, async open => {
           </div>
           <p v-if="active.source_url" id="library-source" class="library-source">{{ t('m0204') }}</p>
           <div class="library-toolbar">
-            <button id="library-play-all" class="primary" type="button" :disabled="!active.tracks.length || !dashboard.connected || dashboard.busy || library.busy.value" :aria-busy="library.busy.value" @click="library.playAll">{{ t('m0280') }}</button>
-            <button id="library-enqueue-all" type="button" :disabled="!active.tracks.length || !dashboard.connected || dashboard.busy || library.busy.value" @click="library.enqueueAll">{{ t('m0283') }}</button>
-            <button id="library-play-selected" type="button" :disabled="!library.canPlaySelected.value || !dashboard.connected || dashboard.busy" @click="library.playSelected">{{ t('m0281') }}<template v-if="library.selected.value.length"> · {{ library.selected.value.length }}</template></button>
+            <button id="library-play-all" class="primary" type="button" :disabled="!active.tracks.length || !dashboard.connected || dashboard.busy || library.busy.value" :aria-busy="library.busy.value" @click="library.playAll">{{ library.resolutionState.value?t(library.resolutionState.value==='queued'?'resolve.queued':'resolve.adding'):t('m0280') }}</button>
+            <button id="library-enqueue-all" type="button" :disabled="!active.tracks.length || !dashboard.connected || dashboard.busy || library.busy.value" :aria-busy="library.resolutionState.value!==null" @click="library.enqueueAll">{{ library.resolutionState.value?t(library.resolutionState.value==='queued'?'resolve.queued':'resolve.adding'):t('m0283') }}</button>
+            <button id="library-play-selected" type="button" :disabled="!library.canPlaySelected.value || !dashboard.connected || dashboard.busy" :aria-busy="library.resolutionState.value!==null" @click="library.playSelected">{{ library.resolutionState.value?t(library.resolutionState.value==='queued'?'resolve.queued':'resolve.adding'):t('m0281') }}<template v-if="library.selected.value.length"> · {{ library.selected.value.length }}</template></button>
             <details id="library-actions" class="library-actions"><summary :aria-label="t('m0282')">•••</summary>
               <div class="library-menu">
                 <label v-if="active.id !== 'favorites'" for="library-name">{{ t('m0284') }}</label><div v-if="active.id !== 'favorites'" class="library-rename-row"><input id="library-name" v-model="library.renameName.value" maxlength="60"><button id="library-rename" type="button" :disabled="library.busy.value || !library.renameName.value.trim()" @click="library.renamePlaylist">{{ t('m0285') }}</button></div><p v-else class="hint library-favorites-hint">{{ t('library.favorites.builtinHint') }}</p>
-                <button id="library-sync" v-if="active.source_url" type="button" :disabled="library.busy.value" @click="library.syncPlaylist">{{ t('m0203') }}</button>
+                <button id="library-sync" v-if="active.source_url" type="button" :disabled="library.busy.value" :aria-busy="library.syncState.value!==null" @click="library.syncPlaylist">{{ library.syncState.value?t(library.syncState.value==='queued'?'resolve.queued':'resolve.resolving'):t('m0203') }}</button>
                 <button id="library-delete" type="button" class="danger" :hidden="active.id === 'favorites'" :disabled="library.busy.value" @click="library.deletePlaylist">{{ t('m0286') }}</button>
               </div>
             </details>

@@ -410,10 +410,9 @@ class DashboardImports:
         except exceptions.MusicbotException:
             fail(403, _web_text('m0411'))
         self.user_rate_limit(member)
-        if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
-            fail(429, _web_text('m0422'))
         try:
-            preview = await self.run_resolution(guild, self.import_source(url, kind))
+            preview = await self.run_resolution(guild, self.import_source(url, kind),
+                owner=member, request=request)
         except (APIError, ExtractionBudgetExceeded, UnsupportedDashboardURL):
             raise
         except Exception:

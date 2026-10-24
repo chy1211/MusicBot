@@ -1229,3 +1229,102 @@ test('R37 track list select-all toggle uses select and deselect labels', async t
     assert.deepEqual(app.errors, []);
   }
 });
+
+
+test('R38 resolve queue shows queued then resolving', async t => {
+  const zh = require(path.join(frontend, 'public', 'i18n', 'zh-TW.json'));
+  for (const width of [390, 1440]) {
+    const mobile = width === 390;
+    let state = 'queued', statusSupported = true, release, postSeen, requestId;
+    const hold = () => new Promise(done => { release = done; postSeen = true; });
+    const track = {kind:'track', title:'Demo queue result', url:'https://soundcloud.com/example/demo',
+      duration:120, allowed:true, preview_id:'r38-preview'};
+    const app = await openDashboard({width, height:mobile?844:900}, {
+      context: {colorScheme:'dark', ...(mobile?{isMobile:true,hasTouch:true}:{})},
+      setup: async page => {
+        // Exercise the real HTTP fallback with no EventSource support on mobile,
+        // and an EventSource that disconnects immediately on desktop.
+        await page.addInitScript(disconnected => {
+          if (!disconnected) Object.defineProperty(window,'EventSource',{value:undefined});
+          else window.EventSource = class {
+            constructor(){setTimeout(()=>this.onerror?.(new Event('error')),0)}
+            addEventListener(){} close(){}
+          };
+        }, !mobile);
+        await page.route('**/api/guilds/1/resolution-status?*', route => {
+          assert.equal(new URL(route.request().url()).searchParams.get('request_id'), requestId);
+          return statusSupported?route.fulfill({json:{state}}):route.fulfill({status:503,json:{error:'Status temporarily unavailable'}});
+        });
+        await page.route('**/api/guilds/1/resolve', async route => {
+          requestId=route.request().headers()['x-musicbot-request-id'];
+          assert.match(requestId,/^[a-z0-9]{32}$/);
+          await hold();
+          await route.fulfill({json:{results:[track],expires_in:600}});
+        });
+        await page.route('**/api/guilds/1/play', async route => {
+          requestId=route.request().headers()['x-musicbot-request-id'];
+          await hold();
+          await route.fulfill({json:{message:'Added demo track'}});
+        });
+      }
+    });
+    t.after(()=>app.context.close());
+    const page=app.page, query=page.locator('#enqueue');
+    await page.locator('#query').fill('Demo queue');
+    await query.click();
+    await page.waitForFunction(text=>document.querySelector('#enqueue')?.textContent.trim()===text,zh['resolve.queued']);
+    assert.equal(await query.getAttribute('aria-busy'),'true');
+    assert.ok(postSeen);
+    assert.equal(await query.evaluate(button=>getComputedStyle(button,'::before').animationName),'resolution-spin');
+    if(mobile&&process.env.R38_SCREENSHOTS_DIR){
+      require('node:fs').mkdirSync(process.env.R38_SCREENSHOTS_DIR,{recursive:true});
+      await query.scrollIntoViewIfNeeded();
+      await page.screenshot({path:path.join(process.env.R38_SCREENSHOTS_DIR,'r38-queued-mobile-dark.png')});
+    }
+    state='resolving';
+    await page.waitForFunction(text=>document.querySelector('#enqueue')?.textContent.trim()===text,zh['resolve.resolving']);
+    if(mobile&&process.env.R38_SCREENSHOTS_DIR)await page.screenshot({path:path.join(process.env.R38_SCREENSHOTS_DIR,'r38-resolving-mobile-dark.png')});
+    release();
+    await page.locator('#preview-panel').waitFor({state:'visible'});
+    assert.match(await page.locator('#preview-results').textContent(),/Demo queue result/);
+    assert.equal(await query.getAttribute('aria-busy'),'false');
+    const add=page.locator('.preview-actions button.primary').first();
+    state='queued';postSeen=false;
+    await add.click();
+    await page.waitForFunction(text=>document.querySelector('.preview-actions button.primary')?.textContent.trim()===text,zh['resolve.queued']);
+    assert.equal(await add.getAttribute('aria-busy'),'true');
+    assert.ok(postSeen);
+    state='resolving';
+    await page.waitForFunction(text=>document.querySelector('.preview-actions button.primary')?.textContent.trim()===text,zh['resolve.adding']);
+    release();
+    await page.locator('#preview-panel').waitFor({state:'hidden'});
+    await query.waitFor({state:'visible'});
+    // A queue timeout reaches the original POST response and displays its new key.
+    await page.unroute('**/api/guilds/1/resolve');
+    state='queued';postSeen=false;
+    await page.route('**/api/guilds/1/resolve',async route=>{
+      requestId=route.request().headers()['x-musicbot-request-id'];await hold();
+      await route.fulfill({status:429,json:{error:zh['resolve.queueTimeout']}});
+    });
+    await page.locator('#query').fill('Timeout demo');await query.click();
+    await page.waitForFunction(text=>document.querySelector('#enqueue')?.textContent.trim()===text,zh['resolve.queued']);
+    release();
+    await page.locator('.request > [role=alert]').waitFor({state:'visible'});
+    assert.equal((await page.locator('.request > [role=alert]').textContent()).trim(),zh['resolve.queueTimeout']);
+    await page.waitForFunction(()=>!document.querySelector('#enqueue').disabled);
+    // Unavailable status updates still leave a busy button, and the POST settles.
+    await page.unroute('**/api/guilds/1/resolve');statusSupported=false;
+    await page.route('**/api/guilds/1/resolve',async route=>{
+      requestId=route.request().headers()['x-musicbot-request-id'];await hold();
+      await route.fulfill({json:{results:[track]}});
+    });
+    await page.locator('#query').fill('Fallback demo');await query.click();
+    await page.waitForFunction(()=>document.querySelector('#enqueue').getAttribute('aria-busy')==='true');
+    await page.waitForTimeout(350);release();
+    await page.locator('#preview-panel').waitFor({state:'visible'});
+    await page.waitForFunction(()=>!document.querySelector('#enqueue').disabled);
+    assert.deepEqual(app.errors.filter(error=>!error.includes('429')&&!error.includes('503')),[]);
+    console.log('R38_VIEWPORT_'+width+'=queued -> resolving -> result; add queued -> adding; timeout; SSE/status fallback OK');
+    await app.context.close();
+  }
+});

@@ -16,6 +16,7 @@ const loading = ref(false)
 const error = ref('')
 const empty = ref(false)
 const adding = ref<string | null>(null)
+const resolutionState = ref<'queued'|'resolving'>('queued')
 let requestEpoch = 0
 let actionEpoch = 0
 
@@ -54,11 +55,12 @@ async function add(track: PopularTrack): Promise<void> {
   const epoch = ++actionEpoch
   const sessionEpoch = dashboard.epoch
   adding.value = track.url
+  resolutionState.value = 'queued'
   error.value = ''
   try {
     const result = await request<{ results?: Array<{ kind: string; allowed: boolean; preview_id?: string; url: string; reason?: string }> }>(
       '/api/guilds/' + encodeURIComponent(guild) + '/resolve',
-      { method: 'POST', body: { query: track.url, action: 'play' } },
+      { method: 'POST', body: { query: track.url, action: 'play' }, onResolutionState: state => { if (epoch === actionEpoch) resolutionState.value = state } },
     )
     if (epoch !== actionEpoch || sessionEpoch !== dashboard.epoch || guild !== dashboard.guildId || !dashboard.connected) return
     const candidate = result.results?.find(row => row.kind === 'track' && row.allowed && row.preview_id && safeUrl(row.url))
@@ -77,6 +79,6 @@ function setPeriod(value: string): void {
 }
 watch(() => [dashboard.guildId, dashboard.authenticated, dashboard.connected], () => { void load() })
 const hasGuild = computed(() => Boolean(dashboard.guildId && dashboard.authenticated && dashboard.connected))
-export function usePopular() { return { period, tracks, loading, error, empty, adding, hasGuild, load, add, setPeriod, safeUrl } }
+export function usePopular() { return { period, tracks, loading, error, empty, adding, resolutionState, hasGuild, load, add, setPeriod, safeUrl } }
 
 

@@ -111,41 +111,27 @@ class DashboardResolveRoutes:
             raise APIError(404, _web_text('m0414'))
         return results
 
-    async def run_resolution(self, guild, operation, timeout_key="m0423"):
+    RESOLVE_QUEUE_TIMEOUT = 15
+
+    async def run_resolution(self, guild, operation, timeout_key="m0423", *,
+                             owner, priority="lookup", request=None, timeout=None):
         """Admission lasts until cancellation has killed and reaped provider work."""
-        from ..web_dashboard import APIError, ExtractionBudget, RESOLUTION_BUDGET, _web_text, asyncio
-        if guild.id in self.resolve_tasks or len(self.resolve_tasks) >= 2:
-            operation.close()
-            raise APIError(429, _web_text('m0422'))
+        return await self.resolution_queue.run(guild, owner, operation,
+            priority=priority, request=request,
+            timeout=self.RESOLVE_TIMEOUT if timeout is None else min(timeout, self.RESOLVE_TIMEOUT),
+            timeout_key=timeout_key)
 
-        entered = False
-        async def bounded():
-            nonlocal entered
-            entered = True
-            token = RESOLUTION_BUDGET.set(ExtractionBudget(self.RESOLVE_TIMEOUT,
-                self.config.resolve_max_response_bytes, self.config.resolve_max_total_bytes))
-            try:
-                return await operation
-            finally:
-                RESOLUTION_BUDGET.reset(token)
-
-        task = asyncio.create_task(bounded())
-        self.resolve_tasks[guild.id] = task
-        try:
-            return await asyncio.wait_for(asyncio.shield(task), self.RESOLVE_TIMEOUT)
-        except asyncio.TimeoutError:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-            raise APIError(504, _web_text(timeout_key)) from None
-        except asyncio.CancelledError:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-            raise
-        finally:
-            if not entered:
-                operation.close()
-            if self.resolve_tasks.get(guild.id) is task:
-                self.resolve_tasks.pop(guild.id, None)
+    async def resolution_status(self, request):
+        from ..web_dashboard import web
+        guild, owner = self.guild_owner(request)
+        request_id = request.query.get("request_id", "")
+        # No guild broadcast or SSE: authenticated person + guild + opaque local
+        # request ID must ALL match. Never include queries, identities or counts.
+        state = next(("resolving" if job.task is not None else "queued"
+            for job in self.resolution_queue.jobs
+            if request_id and job.request_id == request_id
+            and job.owner_id == owner.id and job.guild_id == guild.id), None)
+        return web.json_response({"state": state})
 
     async def resolve(self, request):
         from ..web_dashboard import APIError, ExtractionBudgetExceeded, UnsupportedDashboardURL, _web_text, exceptions, log, web
@@ -158,7 +144,7 @@ class DashboardResolveRoutes:
         self.user_rate_limit(owner)
         try:
             results = await self.run_resolution(guild,
-                self.resolve_options(guild, owner, query, action))
+                self.resolve_options(guild, owner, query, action), owner=owner, request=request)
         except (APIError, exceptions.MusicbotException, UnsupportedDashboardURL, ExtractionBudgetExceeded):
             raise
         except Exception:
@@ -213,7 +199,7 @@ class DashboardResolveRoutes:
             raise APIError(409, _web_text('m0397'))
         self.channel_for(guild, owner)
         results = await self.run_resolution(guild,
-            self.resolve_options(guild, owner, query, action))
+            self.resolve_options(guild, owner, query, action), owner=owner, priority="add", request=request)
         if self.discord_auth:
             self.authenticate(request)
         guild, owner = self.guild_owner(request)
@@ -277,7 +263,8 @@ class DashboardResolveRoutes:
             raise APIError(409, _web_text('m0432'))
         self.user_rate_limit(owner)
         results = await self.run_resolution(guild,
-            self.resolve_options(guild, owner, query, action), "m0434")
+            self.resolve_options(guild, owner, query, action), "m0434",
+            owner=owner, priority="add", request=request)
         if self.discord_auth: self.authenticate(request)
         guild, owner = self.guild_owner(request)
         await self.issue_previews(guild, owner, results, query, action)

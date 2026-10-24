@@ -82,10 +82,11 @@ class DashboardMutationRoutes:
                     raise asyncio.TimeoutError()
                 token = CONFIRMED_ENTRY_CHECK.set(check)
                 try:
-                    response = await asyncio.wait_for(self.run_resolution(guild, self.bot.cmd_play(
+                    response = await self.run_resolution(guild, self.bot.cmd_play(
                         message=None, player=player, channel=channel, guild=guild,
                         author=owner, permissions=permissions, leftover_args=[],
-                        song_url=item["url"])), min(self.SONG_TIMEOUT, remaining))
+                        song_url=item["url"]), owner=owner, priority="add", request=request,
+                        timeout=min(self.SONG_TIMEOUT, remaining))
                 finally:
                     CONFIRMED_ENTRY_CHECK.reset(token)
                 if isinstance(response, ErrorResponse):
@@ -146,8 +147,30 @@ class DashboardMutationRoutes:
             log.warning("Dashboard Discord response failed (%s)", type(exc).__name__)
 
     async def mutate(self, request):
-        from ..web_dashboard import ACTIVITY_KEY, APIError, CONFIRMED_ENTRY_CHECK, ConfirmedEntryCheck, ErrorResponse, Response, _D, _web_text, capture, denial_text, math, normalize_query, revision, web
+        from ..web_dashboard import APIError, _web_text, asyncio
         data = await self.payload(request)
+        guild, owner = self.guild_owner(request)
+        if request.path.rsplit("/", 1)[-1] in ("play", "playnext"):
+            self.user_rate_limit(owner)
+        token = data.get("preview_id")
+        preview = self.previews.get(token) if isinstance(token, str) else None
+        if (request.path.rsplit("/", 1)[-1] in ("play", "playnext") and preview
+                and preview["guild_id"] == guild.id and preview["owner_id"] == owner.id):
+            # Idempotent confirmation/expiry renewal is serialized only for this
+            # exact preview. Unrelated people and playback controls remain free.
+            lock = preview.setdefault("confirmation_lock", asyncio.Lock())
+            try:
+                await asyncio.wait_for(lock.acquire(), self.RESOLVE_QUEUE_TIMEOUT)
+            except asyncio.TimeoutError:
+                raise APIError(429, _web_text('resolve.queueTimeout')) from None
+            try:
+                return await self._mutate(request, data)
+            finally:
+                lock.release()
+        return await self._mutate(request, data)
+
+    async def _mutate(self, request, data):
+        from ..web_dashboard import ACTIVITY_KEY, APIError, CONFIRMED_ENTRY_CHECK, ConfirmedEntryCheck, ErrorResponse, Response, _D, _web_text, capture, denial_text, math, normalize_query, revision, web
         guild, owner = self.guild_owner(request)
         action = request.path.rsplit("/", 1)[-1]
         if request.method == "DELETE":
@@ -155,7 +178,6 @@ class DashboardMutationRoutes:
         if action in ("play", "playnext"):
             if "selected_items" in data and "preview_id" not in data:
                 raise APIError(400, _web_text('m0445'))
-            self.user_rate_limit(owner)
             query = normalize_query(self.query(data))
             data["query"] = query
         elif action == "seek":
@@ -182,7 +204,10 @@ class DashboardMutationRoutes:
         elif action == "repeat" and data.get("mode") not in ("off", "song", "all"):
             raise APIError(400, _web_text('m0448'))
 
-        async with self.locks[guild.id]:
+        from contextlib import nullcontext
+        # Provider waits must not hold the guild control lock. Fresh confirmed
+        # checks still run immediately before native enqueue (no await in between).
+        async with (nullcontext() if action in ("play", "playnext") else self.locks[guild.id]):
             request[ACTIVITY_KEY] = capture(self, guild, owner, action, "web")
             if action == "seek" and request[ACTIVITY_KEY] is not None:
                 request[ACTIVITY_KEY].target_position = data["position"]
@@ -268,7 +293,7 @@ class DashboardMutationRoutes:
                     response = await self.run_resolution(guild, getattr(self.bot, "cmd_" + action)(
                         message=None, player=player, channel=channel, guild=guild,
                         author=owner, permissions=permissions, leftover_args=[],
-                        song_url=query.strip()))
+                        song_url=query.strip()), owner=owner, priority="add", request=request)
                 finally:
                     CONFIRMED_ENTRY_CHECK.reset(check_token)
             elif action == "seek":

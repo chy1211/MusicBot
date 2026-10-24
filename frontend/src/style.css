@@ -284,3 +284,8 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
  #library-back{display:inline-flex;align-items:center;justify-content:center;padding:9px 18px;min-height:44px}
  #library-list>.library-track{grid-template-columns:24px 38px minmax(0,1fr) auto;gap:8px}
 }
+
+/* Keep queued and resolving requests visibly busy even without live events. */
+#enqueue[aria-busy="true"]::before,.preview-actions button[aria-busy="true"]::before,.library-toolbar button[aria-busy="true"]::before,.popular-add[aria-busy="true"]::before{content:"";display:inline-block;width:.85em;height:.85em;margin-right:.45em;vertical-align:-.1em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:resolution-spin .8s linear infinite}
+@keyframes resolution-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#enqueue[aria-busy="true"]::before,.preview-actions button[aria-busy="true"]::before,.library-toolbar button[aria-busy="true"]::before,.popular-add[aria-busy="true"]::before{animation:none}}
