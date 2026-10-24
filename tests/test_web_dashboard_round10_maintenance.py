@@ -117,7 +117,7 @@ class MaintenanceAPITests(unittest.IsolatedAsyncioTestCase):
         value=await self.call(URL,method="GET")
         self.assertEqual(value["cookie"]["status"],"unused")
         self.assertEqual(value["host_status"]["status"],"missing")
-        self.assertTrue(value["dashboard_version"].startswith("musicbot-dashboard-"))
+        self.assertEqual(value["dashboard_version"], "musicbot-dashboard-r26-lyrics-popular")
         self.assertIsNone(value["last_stop"])
         await self.call(URL,{},status=405)
         await self.call(URL,method="GET",headers={},status=403)

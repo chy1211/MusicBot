@@ -162,20 +162,6 @@ docker-compose.example.yml is removed in favor of docker-compose.yml.
 - i18n/zh_TW/LC_MESSAGES/musicbot_messages.po
 - musicbot/bot.py
 - musicbot/downloader.py
-- musicbot/web/admin.js
-- musicbot/web/dashboard.css
-- musicbot/web/dashboard.js
-- musicbot/web/i18n.js
-- musicbot/web/i18n/en.json
-- musicbot/web/i18n/zh-TW.json
-- musicbot/web/index.html
-- musicbot/web/library.js
-- musicbot/web/manifest.webmanifest
-- musicbot/web/offline.html
-- musicbot/web/permissions.js
-- musicbot/web/popular.js
-- musicbot/web/pwa.js
-- musicbot/web/sw.js
 - musicbot/web_dashboard.py
 - musicbot/web_dashboard_activity.py
 - musicbot/web_dashboard_admin.py
@@ -208,3 +194,5 @@ docker-compose.example.yml is removed in favor of docker-compose.yml.
 - tools/check_dashboard_i18n.py
 - tools/container_config.py
 - tools/container_healthcheck.py
+
+Round 41: historical vanilla dashboard sources were removed. Current UI source is under `frontend/src/` and public resources under `frontend/public/`.

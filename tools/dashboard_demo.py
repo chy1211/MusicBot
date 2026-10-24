@@ -446,7 +446,7 @@ class DemoDashboard(Dashboard):
 
     async def legacy_worker(self, _request):
         # Credential-free fixture for real installed-worker upgrade regressions.
-        source = Path(__file__).resolve().parents[1] / "musicbot/web/sw.js"
+        source = Path(__file__).resolve().parents[1] / "tests/fixtures/dashboard_legacy_sw.js"
         return web.Response(text=source.read_text(encoding="utf-8"),content_type="text/javascript",
             headers={"Service-Worker-Allowed":"/","Cache-Control":"no-cache"})
 

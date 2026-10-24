@@ -6,7 +6,10 @@ import test_web_dashboard as base
 
 
 class PWATests(unittest.IsolatedAsyncioTestCase):
-    asyncSetUp = base.DashboardTests.asyncSetUp
+    async def asyncSetUp(self):
+        from dashboard_static_fixture import dashboard_static
+        self.static = self.enterContext(dashboard_static())
+        await base.DashboardTests.asyncSetUp(self)
     asyncTearDown = base.DashboardTests.asyncTearDown
 
     async def test_manifest(self):
@@ -32,15 +35,13 @@ class PWATests(unittest.IsolatedAsyncioTestCase):
         page = await (await self.client.get("/")).text()
         for item in ("apple-mobile-web-app-capable", "apple-touch-icon", "manifest.webmanifest"):
             self.assertIn(item, page)
+        self.assertIn('type="module"', page)
         if '/assets/' in page:
-            self.assertIn('type="module"', page)
-            from musicbot.web_dashboard import STATIC
-            scripts = list((STATIC / "dist/assets").glob("*.js"))
+            scripts = list((self.static / "assets").glob("*.js"))
             self.assertTrue(scripts)
-            self.assertIn("serviceWorker", scripts[0].read_text())
-            self.assertIn("/sw.js", scripts[0].read_text())
-        else:
-            self.assertIn("/pwa.js", page)
+            code = "\n".join(script.read_text() for script in scripts)
+            self.assertIn("serviceWorker", code)
+            self.assertIn("/sw.js", code)
         for path in ("/sw.js", "/pwa.js", "/offline.html", "/library.js", "/admin.js", "/permissions.js"):
             response = await self.client.get(path)
             self.assertEqual(response.status, 200)

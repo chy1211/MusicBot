@@ -162,18 +162,21 @@ class DashboardTests(unittest.IsolatedAsyncioTestCase):
         return (await self.call(BASE + "state", method="GET"))["revision"]
 
     async def test_static_page_and_assets(self):
-        for path, content_type in (("/", "text/html"), ("/dashboard.css", "text/css"),
-                                   ("/dashboard.js", "text/javascript")):
-            with self.subTest(path=path):
-                response = await self.client.get(path)
-                self.assertEqual(response.status, 200)
-                self.assertIn(content_type, response.headers["Content-Type"])
-                self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
-                self.assertEqual(response.headers["Cache-Control"], "no-store")
-        page = await (await self.client.get("/")).text()
-        self.assertIn('lang="en"', page)
-        self.assertIn('data-i18n="m0223"', page)
-        self.assertNotIn("cdn", page.lower())
+        from dashboard_static_fixture import dashboard_static
+        with dashboard_static():
+            for path, content_type in (("/", "text/html"), ("/dashboard.css", "text/css"),
+                                       ("/dashboard.js", "text/javascript")):
+                with self.subTest(path=path):
+                    response = await self.client.get(path)
+                    self.assertEqual(response.status, 200)
+                    self.assertIn(content_type, response.headers["Content-Type"])
+                    self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+                    self.assertEqual(response.headers["Cache-Control"], "no-store")
+            page = await (await self.client.get("/")).text()
+            self.assertIn('lang="en"', page)
+            self.assertIn('id="app"', page)
+            self.assertIn('type="module"', page)
+            self.assertNotIn("cdn", page.lower())
 
     async def test_guilds_and_state(self):
         body = await self.call("/api/guilds", method="GET")

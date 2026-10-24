@@ -14,7 +14,7 @@ Dates use the selected locale and this server time zone through Intl.
 
 ## Architecture
 
-Both frontend and backend use `musicbot/web/i18n/*.json`. Translation keys are
+Both frontend and backend use `frontend/public/i18n/*.json`. Translation keys are
 stable identifiers, with named `{p0}`, `{p1}` slots for dynamic values.
 Frontend content uses `t(key, params)`; static HTML uses `data-i18n` or
 `data-i18n-aria-label`, `data-i18n-title` and `data-i18n-placeholder`.
@@ -38,11 +38,11 @@ server names, lyrics and source metadata remain as supplied by their authors.
 1. Copy `en.json` to a locale file such as `fr.json`. Translate every value,
    preserving keys and parameter slots. Do not translate user content.
 2. Add the locale to `SUPPORTED` / `language_tag` in
-   `web_dashboard_i18n.py`, `DASHBOARD_LANGUAGES` / `supportedLanguage` in
-   `web/i18n.js`, the config validation and language-catalog route in
-   `web_dashboard.py`, and the selector in `web/index.html`.
-3. Add its JSON URL to the static service-worker list. Update its cache version
-   and the HTML asset `?v=` values.
+   `musicbot/web_dashboard_i18n.py`, the catalog imports and language selection in
+   `frontend/src/composables/useLocale.ts`, backend config validation, and the
+   rendered language selectors.
+3. Keep the catalog under `frontend/public/i18n/`. Vite copies public resources
+   and injects them into the service worker precache during `npm run build`.
 4. Extend `tools/check_dashboard_i18n.py` and the frontend language tests for
    the new catalog. Run `python -m tools.check_dashboard_i18n` and
    `node --test tests/test_web_dashboard_i18n.cjs`, then check both login and

@@ -260,11 +260,13 @@ class Round6Tests(unittest.IsolatedAsyncioTestCase):
         self.assertIn((await self.client.post("/dashboard/quota")).status, (404, 405))
 
     async def test_local_favicon_both_paths(self):
-        for path in ("/favicon.svg", "/favicon.ico"):
-            r = await self.client.get(path)
-            self.assertEqual(r.status, 200)
-            self.assertIn("image/svg+xml", r.headers["Content-Type"])
-            self.assertIn("<svg", await r.text())
+        from dashboard_static_fixture import dashboard_static
+        with dashboard_static():
+            for path in ("/favicon.svg", "/favicon.ico"):
+                r = await self.client.get(path)
+                self.assertEqual(r.status, 200)
+                self.assertIn("image/svg+xml", r.headers["Content-Type"])
+                self.assertIn("<svg", await r.text())
 
     async def test_events_without_header_snapshot_and_no_cors(self):
         r = await self.stream(headers={"Sec-Fetch-Site":"same-origin", "Origin":self.origin})

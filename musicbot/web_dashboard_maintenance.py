@@ -211,12 +211,9 @@ def loaded_versions():
     return values
 
 
-def inspect_status(cookie, host, logs, sw):
-    try:
-        match = re.search(r'const VERSION = "([A-Za-z0-9._-]+)"', Path(sw).read_text(encoding="utf-8"))
-        version = match[1] if match else None
-    except OSError:
-        version = None
+def inspect_status(cookie, host, logs):
+    # Preserve the existing metadata value independently of removed legacy assets.
+    version = "musicbot-dashboard-r26-lyrics-popular"
     return {"cookie": cookie_status(cookie), "versions": loaded_versions(),
             "host_status": host_status(host), "last_stop": last_stop(logs),
             "dashboard_version": version}
@@ -243,7 +240,7 @@ class DashboardMaintenance:
                 value = await asyncio.to_thread(inspect_status,
                     self.maintenance_root/"cookies.txt",
                     self.maintenance_root/"web_dashboard/host_status.json",
-                    self.maintenance_logs, Path(__file__).with_name("web")/"sw.js")
+                    self.maintenance_logs)
                 self.maintenance_cached = (now+15, value)
             if self.discord_auth:
                 self.authenticate(request)

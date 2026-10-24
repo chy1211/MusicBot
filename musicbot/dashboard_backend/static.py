@@ -10,9 +10,7 @@ class DashboardStaticRoutes:
         # Keep STATIC as the facade patch point used by tests and dev setups.
         from .. import web_dashboard
 
-        source = Path(web_dashboard.STATIC)
-        built = source / "dist"
-        return built if (built / "index.html").is_file() else source
+        return Path(web_dashboard.STATIC) / "dist"
 
 
     async def pwa_asset(self, request):
@@ -70,7 +68,7 @@ class DashboardStaticRoutes:
         root = self._static_root()
         path = root / "index.html"
         if not path.is_file():
-            raise web.HTTPNotFound()
+            return web.Response(status=503, text="dashboard frontend is not built\n", content_type="text/plain")
         return web.Response(text=path.read_text(encoding="utf-8"), content_type="text/html")
 
 

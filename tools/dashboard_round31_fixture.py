@@ -9,7 +9,7 @@ from musicbot.web_dashboard import DashboardConfig
 from tools.dashboard_demo import DemoBot, DemoDashboard, cover
 
 ROOT = Path(__file__).resolve().parents[1]
-web_dashboard.STATIC = ROOT / "musicbot" / "web" / "dist"
+web_dashboard.STATIC = ROOT / "musicbot" / "web"
 
 async def main():
     parser = argparse.ArgumentParser()

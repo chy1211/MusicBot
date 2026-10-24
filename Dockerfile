@@ -4,7 +4,6 @@ WORKDIR /build/frontend
 COPY frontend/package*.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
-COPY musicbot/web/ /build/musicbot/web/
 RUN npm run build
 
 FROM python:3.12-alpine AS wheels

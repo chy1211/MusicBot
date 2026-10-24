@@ -1,4 +1,4 @@
-@import "../../musicbot/web/dashboard.css";
+@import "./base.css";
 
 /* Liquid Glass material tokens, adapted from the read-only Wardrobe reference.
    Content is opaque; navigation and transient layers carry the glass material. */

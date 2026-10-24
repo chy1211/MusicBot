@@ -8,7 +8,10 @@ import test_web_dashboard as base
 
 
 class ThemeBootstrapTests(unittest.IsolatedAsyncioTestCase):
-    asyncSetUp = base.DashboardTests.asyncSetUp
+    async def asyncSetUp(self):
+        from dashboard_static_fixture import dashboard_static
+        self.static = self.enterContext(dashboard_static())
+        await base.DashboardTests.asyncSetUp(self)
     asyncTearDown = base.DashboardTests.asyncTearDown
 
     async def test_bootstrap_hash_matches_source_and_served_html(self):

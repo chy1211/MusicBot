@@ -158,18 +158,20 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
                     self.assertNotIn(private, text)
 
     async def test_session_identity_and_anonymous_home(self):
-        body = await (await self.client.get("/auth/session")).json()
-        self.assertEqual((body["auth_mode"], body["authenticated"], body["user"]["id"]),
-                         ("discord", True, "43"))
-        self.client.session.cookie_jar.clear()
-        body = await (await self.client.get("/auth/session")).json()
-        self.assertFalse(body["authenticated"])
-        self.assertIsNone(body["user"])
-        response = await self.client.get("/")
-        self.assertEqual(response.status, 200)
-        self.assertNotIn("Test Guild", await response.text())
-        self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
-        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        from dashboard_static_fixture import dashboard_static
+        with dashboard_static():
+            body = await (await self.client.get("/auth/session")).json()
+            self.assertEqual((body["auth_mode"], body["authenticated"], body["user"]["id"]),
+                             ("discord", True, "43"))
+            self.client.session.cookie_jar.clear()
+            body = await (await self.client.get("/auth/session")).json()
+            self.assertFalse(body["authenticated"])
+            self.assertIsNone(body["user"])
+            response = await self.client.get("/")
+            self.assertEqual(response.status, 200)
+            self.assertNotIn("Test Guild", await response.text())
+            self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
 
     async def test_login_identify_state_cookie_and_exact_redirect(self):
         self.client.session.cookie_jar.clear()

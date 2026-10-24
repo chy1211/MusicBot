@@ -26,7 +26,7 @@ def png(size):
             chunk(b"IDAT", zlib.compress(bytes(rows),9)) + chunk(b"IEND", b""))
 
 if __name__ == "__main__":
-    root = Path(__file__).parents[1] / "musicbot" / "web"
+    root = Path(__file__).parents[1] / "frontend" / "public"
     for size, filename in ((192,"icon-192.png"),(512,"icon-512.png"),(180,"apple-touch-icon.png")):
         data = png(size)
         (root / filename).write_bytes(data)

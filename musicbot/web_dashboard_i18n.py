@@ -10,7 +10,7 @@ SUPPORTED = ("en", "zh-TW")
 
 @lru_cache(maxsize=16)
 def catalog(language):
-    return json.loads((Path(__file__).with_name("web") / "i18n" / (language + ".json")).read_text(encoding="utf-8"))
+    return json.loads((Path(__file__).resolve().parents[1] / "frontend" / "public" / "i18n" / (language + ".json")).read_text(encoding="utf-8"))
 
 def language_tag(value):
     value = str(value).lower().replace("_", "-")

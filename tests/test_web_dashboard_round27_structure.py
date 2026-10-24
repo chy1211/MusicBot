@@ -22,7 +22,7 @@ class ModuleTests(unittest.TestCase):
 class BuiltStaticTests(unittest.IsolatedAsyncioTestCase):
     asyncSetUp=base.DashboardTests.asyncSetUp
     asyncTearDown=base.DashboardTests.asyncTearDown
-    async def test_built_entry_preferred_and_hashed_assets_are_immutable(self):
+    async def test_built_entry_and_hashed_assets_are_immutable(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);built=root/"dist";assets=built/"assets";assets.mkdir(parents=True)
             (root/"index.html").write_text("legacy")
@@ -57,3 +57,27 @@ class BuiltStaticTests(unittest.IsolatedAsyncioTestCase):
             response=await self.client.get(url)
             self.assertEqual(response.status,404,url)
             self.assertNotIn("root:",await response.text())
+
+    async def test_missing_dist_returns_503_even_with_unbuilt_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "index.html").write_text("unbuilt source must never be served")
+            (root / "dashboard.js").write_text("unbuilt script must never be served")
+            with patch("musicbot.web_dashboard.STATIC", root):
+                response = await self.client.get("/")
+                self.assertEqual(response.status, 503)
+                self.assertEqual(await response.text(), "dashboard frontend is not built\n")
+                self.assertIn("text/plain", response.headers["Content-Type"])
+                self.assertEqual(response.headers["Cache-Control"], "no-store")
+                self.assertEqual((await self.client.get("/dashboard.js")).status, 404)
+                self.assertEqual((await self.client.get("/healthz")).status, 200)
+
+    async def test_catalogs_are_available_without_dist_and_match_public_source(self):
+        import json
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("musicbot.web_dashboard.STATIC", Path(temporary)):
+                for locale in ("en", "zh-TW"):
+                    response = await self.client.get("/i18n/" + locale + ".json")
+                    self.assertEqual(response.status, 200)
+                    source = Path(__file__).resolve().parents[1] / "frontend/public/i18n" / (locale + ".json")
+                    self.assertEqual(await response.json(), json.loads(source.read_text()))

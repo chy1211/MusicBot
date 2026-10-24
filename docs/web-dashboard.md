@@ -353,7 +353,7 @@ docker run --rm --network none --name musicbot-webtest-r4-unit \
   -m unittest discover -s tests -p 'test_web_dashboard*.py'
 docker run --rm --network none --name musicbot-webtest-r4-links \
   --entrypoint python3 musicbot-webtest-r4:demo -m tools.test_compound_link
-(cd "$ctx" && node --check musicbot/web/dashboard.js &&
+(cd "$ctx" && (cd frontend && npm run build) &&
   node --test tests/test_web_dashboard_frontend.cjs)
 ~~~
 
@@ -541,7 +541,7 @@ docker run --rm --network none --name musicbot-webtest-r5-unit \
   -m unittest discover -s tests -p 'test_web_dashboard*.py'
 docker run --rm --network none --name musicbot-webtest-r5-links \
   --entrypoint python3 musicbot-webtest-r5:demo -m tools.test_compound_link
-(cd "$ctx" && node --check musicbot/web/dashboard.js &&
+(cd "$ctx" && (cd frontend && npm run build) &&
   node --test tests/test_web_dashboard_frontend.cjs)
 
 docker run --rm -d --network none --name musicbot-webtest-r5-demo \
@@ -777,7 +777,7 @@ docker run --rm --network none --name musicbot-webtest-r6-unit \
   -m unittest discover -s tests -p 'test_web_dashboard*.py'
 docker run --rm --network none --name musicbot-webtest-r6-links \
   --entrypoint python3 musicbot-webtest-r6:demo -m tools.test_compound_link
-(cd "$ctx" && node --check musicbot/web/dashboard.js &&
+(cd "$ctx" && (cd frontend && npm run build) &&
   node --test tests/test_web_dashboard_frontend.cjs)
 docker run --rm -d --network none --name musicbot-webtest-r6-demo \
   --entrypoint python3 musicbot-webtest-r6:demo \
@@ -1121,7 +1121,7 @@ docker run --rm --network none --name musicbot-webtest-r8-unit \
   -m unittest discover -s tests -p 'test_web_dashboard*.py'
 docker run --rm --network none --name musicbot-webtest-r8-links \
   --entrypoint python3 musicbot-webtest-r8:final -m tools.test_compound_link
-node --check musicbot/web/dashboard.js
+(cd frontend && npm run build)
 node --test tests/test_web_dashboard_frontend.cjs tests/test_web_dashboard_pwa.cjs
 docker run --rm -d --network none --name musicbot-webtest-r8-demo \
   --entrypoint python3 musicbot-webtest-r8:final \
