@@ -37,6 +37,7 @@ EntryTypes = Union[URLPlaylistEntry, StreamPlaylistEntry, LocalFilePlaylistEntry
 FFmpegSources = Union[PCMVolumeTransformer[FFmpegPCMAudio], FFmpegOpusAudio]
 
 log = logging.getLogger(__name__)
+FIRST_FRAME_TIMEOUT = 10.0
 
 
 class MusicPlayerState(Enum):
@@ -68,6 +69,7 @@ class SourcePlaybackCounter(AudioSource):
         # NOTE: PCMVolumeTransformer will let you set any crazy value.
         # But internally it limits between 0 and 2.0.
         self._source = source
+        self._first_frame: Optional[bytes] = None
         self._num_reads: int = 0
         self._start_time: float = start_time
         self._playback_speed: float = playback_speed
@@ -76,8 +78,24 @@ class SourcePlaybackCounter(AudioSource):
     def is_opus(self) -> bool:
         return self._is_opus_audio
 
+    async def prepare(self, timeout: float = FIRST_FRAME_TIMEOUT) -> None:
+        """Read the first packet off-loop, before AudioPlayer starts its clock."""
+        loop = asyncio.get_running_loop()
+        frame = await asyncio.wait_for(
+            loop.run_in_executor(None, self._source.read), timeout=timeout
+        )
+        if not frame:
+            raise FFmpegError("Audio source returned no first frame.")
+        self._first_frame = frame
+
+    def _read_frame(self) -> bytes:
+        if self._first_frame is not None:
+            frame, self._first_frame = self._first_frame, None
+            return frame
+        return self._source.read()
+
     def read(self) -> bytes:
-        res = self._source.read()
+        res = self._read_frame()
         if res:
             self._num_reads += 1
         return res
@@ -146,6 +164,8 @@ class MusicPlayer(EventEmitter, Serializable):
 
         self._source: Optional[SourcePlaybackCounter] = None
         self._pending_seek = None
+        self._preparing_source: Optional[SourcePlaybackCounter] = None
+        self._skip_preparing = False
 
         self.playlist.on("entry-added", self.on_entry_added)
         self.playlist.on("entry-failed", self.on_entry_failed)
@@ -192,6 +212,8 @@ class MusicPlayer(EventEmitter, Serializable):
         log.noise(  # type: ignore[attr-defined]
             "MusicPlayer.skip() is called:  %s", repr(self)
         )
+        if self._preparing_source is not None:
+            self._skip_preparing = True
         self._kill_current_player()
 
     def stop(self) -> None:
@@ -203,6 +225,7 @@ class MusicPlayer(EventEmitter, Serializable):
             "MusicPlayer.stop() is called:  %s", repr(self)
         )
         self.state = MusicPlayerState.STOPPED
+        self._skip_preparing = False
         self._kill_current_player()
 
         self.emit("stop", player=self)
@@ -338,6 +361,8 @@ class MusicPlayer(EventEmitter, Serializable):
         If there is a current player source, attempt to stop it, then
         say "Garbage day!" and set it to None anyway.
         """
+        # Invalidate a pending read so stop/skip/seek cannot start stale audio.
+        self._preparing_source = None
         if self._current_player:
             try:
                 self._current_player.stop()
@@ -502,11 +527,49 @@ class MusicPlayer(EventEmitter, Serializable):
                         self.volume,
                     )
 
-                self._source = SourcePlaybackCounter(
+                prepared_source = SourcePlaybackCounter(
                     source,
                     start_time=entry.start_time,
                     playback_speed=entry.playback_speed,
                 )
+                self._preparing_source = prepared_source
+                self._skip_preparing = False
+
+                def discard_source() -> None:
+                    # FFmpeg cleanup can wait for its process/pipe threads.
+                    try:
+                        prepared_source.cleanup()
+                    except Exception:
+                        log.exception("Failed to clean up an unstarted audio source.")
+                    finally:
+                        stderr_io.close()
+
+                try:
+                    await prepared_source.prepare(timeout=FIRST_FRAME_TIMEOUT)
+                except (Exception, asyncio.CancelledError) as exc:
+                    active = self._preparing_source is prepared_source
+                    if active:
+                        self._preparing_source = None
+                    asyncio.get_running_loop().run_in_executor(None, discard_source)
+                    if isinstance(exc, asyncio.CancelledError):
+                        raise
+                    if active:
+                        self._pending_seek = None
+                        self.stop()
+                        self.emit("error", player=self, entry=entry, ex=exc)
+                    elif self._skip_preparing and not self.is_dead:
+                        self._skip_preparing = False
+                        self.play(_continue=True)
+                    return
+
+                if self._preparing_source is not prepared_source:
+                    asyncio.get_running_loop().run_in_executor(None, discard_source)
+                    if self._skip_preparing and not self.is_dead:
+                        self._skip_preparing = False
+                        self.play(_continue=True)
+                    return
+                self._preparing_source = None
+                self._source = prepared_source
                 log.ffmpeg(  # type: ignore[attr-defined]
                     "Creating player with options: ffmpeg %(before)s -i %(input)s %(after)s",
                     {"before": boptions, "input": entry.filename, "after": aoptions},

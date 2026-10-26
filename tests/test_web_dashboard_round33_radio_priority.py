@@ -94,17 +94,17 @@ class RadioPriorityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.titles(),
                          ["Head1", "Head2", "Next", "Existing", "Radio1", "Radio2", "Radio3"])
 
-    async def test_05_without_radio_tail_and_legacy_autoplay_are_unchanged(self):
+    async def test_05_user_requests_precede_pending_legacy_autoplay(self):
         await self.queue.add_entry_from_info(info("Legacy"))
         first, position = await self.add("User1")
-        self.assertEqual(position, 2)
-        self.assertFalse(is_radio(self.queue.entries[0]))
+        self.assertEqual(position, 1)
+        self.assertFalse(is_radio(self.queue.entries[-1]))
         entries, position = await self.queue.import_from_info(
             batch("User2", "User3"), head=False, author=self.bot.owner)
-        self.assertEqual(position, 3)
-        self.assertEqual(self.titles(), ["Legacy", "User1", "User2", "User3"])
-        self.assertIs(self.queue.entries[1], first)
-        self.assertIs(self.queue.entries[2], entries[0])
+        self.assertEqual(position, 2)
+        self.assertEqual(self.titles(), ["User1", "User2", "User3", "Legacy"])
+        self.assertIs(self.queue.entries[0], first)
+        self.assertIs(self.queue.entries[1], entries[0])
 
     async def test_06_real_radio_fill_appends_in_provider_order(self):
         player = self.bot.player

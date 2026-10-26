@@ -56,6 +56,9 @@ class FakePlaybackCounter:
         self.source = source
         self.kwargs = kwargs
 
+    async def prepare(self, timeout=10):
+        pass
+
 
 class FakeThread:
     def __init__(self, *args, **kwargs):
@@ -149,6 +152,7 @@ def make_player_runtime():
         Thread=FakeThread,
         filter_stderr=lambda *args: None,
         MUSICBOT_VOICE_MAX_KBITRATE=128,
+        FIRST_FRAME_TIMEOUT=10,
         FFmpegOpusAudio=FakeOpus,
         FFmpegPCMAudio=FakePCM,
         PCMVolumeTransformer=FakeTransformer,

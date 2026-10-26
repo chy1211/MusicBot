@@ -429,7 +429,7 @@ class Playlist(EventEmitter, Serializable):
     ) -> int:
         """
         Add an entry and return its one-based queue position.
-        Tail requests go before queued radio tracks; radio itself stays at the tail.
+        Tail requests go before queued automatic tracks; automatic tracks stay last.
 
         :param: head:  Toggle adding to the front of the queue.
         :param: defer_serialize:  Signal to events that serialization should be deferred.
@@ -438,25 +438,24 @@ class Playlist(EventEmitter, Serializable):
         # of the dashboard. Radio metadata is already present before fill() adds it.
         from .web_dashboard_radio import is_radio
 
-        radio_index = next(
-            (i for i, queued in enumerate(self.entries) if is_radio(queued)),
+        def automatic(queued: EntryTypes) -> bool:
+            return queued.from_auto_playlist or is_radio(queued)
+
+        automatic_index = next(
+            (i for i, queued in enumerate(self.entries) if automatic(queued)),
             len(self.entries),
         )
-        has_radio = radio_index < len(self.entries) or is_radio(entry)
+        has_automatic = automatic_index < len(self.entries) or automatic(entry)
         if head:
             self.entries.appendleft(entry)
-        elif is_radio(entry):
+        elif automatic(entry):
             self.entries.append(entry)
         else:
-            self.entries.insert(radio_index, entry)
+            self.entries.insert(automatic_index, entry)
 
-        # Radio queues keep request FIFO and automatic tracks. The legacy
-        # round-robin rebuild drops entries without authors, including radio.
-        if (
-            self.bot.config.round_robin_queue
-            and not entry.from_auto_playlist
-            and not has_radio
-        ):
+        # Keep automatic tracks and request FIFO, as with radio queues.
+        # The legacy round-robin rebuild would drop authorless tracks.
+        if self.bot.config.round_robin_queue and not has_automatic:
             self.reorder_for_round_robin()
 
         position = self.entries.index(entry) + 1

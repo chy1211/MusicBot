@@ -99,6 +99,8 @@ docker compose pull && docker compose up -d
 
 ## 專案狀態
 
+版本變更請見 [CHANGELOG](CHANGELOG.md)。
+
 這是**非官方**的個人 fork，和 Just-Some-Bots 沒有關係，由一個人在空閒時維護，盡力而為，不保證回應時間。
 
 原版目前更新得很慢（`dev` 分支最後一次更新是 2026 年 3 月，`master` 自 2024 年 11 月起沒有再變動）。這個 fork 以原版 `dev` 為基礎，另外補上：
@@ -203,6 +205,8 @@ Your settings, playlists and login sessions live in the mounted `config/` and `d
 - **Not using Docker?** You can still run it like upstream MusicBot (Python 3.10–3.13, ffmpeg, Deno) and enable the dashboard in `config/web_dashboard.ini`. See [docs/web-dashboard.md](docs/web-dashboard.md).
 
 ## Project status
+
+See [CHANGELOG](CHANGELOG.md) for release changes.
 
 This is an **unofficial**, personal fork. It is not affiliated with Just-Some-Bots. One person maintains it in their spare time, on a best-effort basis, with no guaranteed response time.
 
