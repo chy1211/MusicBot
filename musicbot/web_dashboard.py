@@ -511,7 +511,7 @@ class Dashboard(
             "Referrer-Policy": "no-referrer",
             "Content-Security-Policy": (
                 "default-src 'self'; img-src 'self' https://i.ytimg.com https://img.youtube.com https://cdn.discordapp.com https://media.discordapp.net https://i.scdn.co https://mosaic.scdn.co; "
-                "script-src 'self' 'sha256-Sl9gHS3lYv7E/KaYf+FagQrCZ9d9+HrwSwxU8LKhHZU='; "
+                "script-src 'self' 'sha256-cKsqQ70DL6iuIvGa0BnJVxNh92TC1e71OOU9WXl4fP8='; "
                 "object-src 'none'; base-uri 'none'; frame-ancestors 'none'"),
         })
         if isinstance(response, web.HTTPException):

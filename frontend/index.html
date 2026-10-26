@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#1e2226">
-  <script>(()=>{let mode;try{mode=localStorage.getItem('musicbot-theme')}catch{}if(mode!=='light'&&mode!=='dark')mode=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=mode;document.querySelector('meta[name="theme-color"]').content=mode==='light'?'#f3f5f7':'#1e2226'})()</script>
+  <script>(()=>{let mode,palette;try{mode=localStorage.getItem('musicbot-theme')}catch{}try{palette=localStorage.getItem('musicbot-palette')}catch{}if(mode!=='light'&&mode!=='dark')mode=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';if(!['mint','amber','ocean','rose'].includes(palette))palette='mint';document.documentElement.dataset.theme=mode;document.documentElement.dataset.palette=palette;const bg={mint:['#1e2226','#f3f5f7'],amber:['#1b1b1b','#f5f5f5'],ocean:['#141b26','#f2f5fa'],rose:['#1f1a1d','#faf4f6']};document.querySelector('meta[name="theme-color"]').content=bg[palette][mode==='light'?1:0]})()</script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Music dashboard" data-i18n-content="m0223">

@@ -724,5 +724,10 @@
   "admin.maintenance.buildTime": "建置時間（UTC）",
   "admin.maintenance.buildBranch": "建置分支",
   "admin.maintenance.frontendVersion": "前端 service worker 版本",
-  "admin.maintenance.controllerVersion": "目前控制頁面的 service worker 版本"
+  "admin.maintenance.controllerVersion": "目前控制頁面的 service worker 版本",
+  "palette": "配色",
+  "palette.mint": "薄荷炭灰",
+  "palette.amber": "琥珀夜色",
+  "palette.ocean": "深海藍",
+  "palette.rose": "莓果玫瑰"
 }

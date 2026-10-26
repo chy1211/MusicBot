@@ -1337,3 +1337,143 @@ test('R38 resolve queue shows queued then resolving', async t => {
     await app.context.close();
   }
 });
+
+
+const r46Palettes = {
+  mint: { dark: ["#1e2226", "#8fd6c4"], light: ["#f3f5f7", "#1f7a68"] },
+  amber: { dark: ["#1b1b1b", "#ffa31a"], light: ["#f5f5f5", "#9a5800"] },
+  ocean: { dark: ["#141b26", "#7aa7ff"], light: ["#f2f5fa", "#2f5fcf"] },
+  rose: { dark: ["#1f1a1d", "#f29bb8"], light: ["#faf4f6", "#b03a66"] }
+};
+async function r46State(page) {
+  return page.evaluate(() => {
+    const root = document.documentElement, css = getComputedStyle(root);
+    return {palette:root.dataset.palette, mode:root.dataset.theme, bg:css.getPropertyValue("--bg").trim(), green:css.getPropertyValue("--green").trim(), meta:document.querySelector('meta[name="theme-color"]').content};
+  });
+}
+function r46Expected(palette, mode) {
+  const [bg, green] = r46Palettes[palette][mode];
+  return {palette,mode,bg,green,meta:bg};
+}
+async function r46Setup(page) {
+  await page.route("**/auth/session", async route => {
+    const response = await route.fetch(), data = await response.json();
+    if(data.authenticated) data.user = {...data.user,name:"DemoUser"};
+    await route.fulfill({response,json:data});
+  });
+}
+test("R46 palette default mint preserves all original day/night tokens", async t => {
+  const expected = {
+    dark: ["#1e2226","#252a2f","#2c3238","#343b42","#eef1f4","#a9b3bd","#8fd6c4","#12201c","rgba(200,214,228,.16)","rgba(37,42,47,.78)","rgba(34,39,44,.92)","rgba(34,39,44,.97)","#1e2226","#ff9b8a","#f2c46d"],
+    light: ["#f3f5f7","#ffffff","#fbfcfd","#e6eaee","#1e2226","#55606b","#1f7a68","#ffffff","rgba(30,34,38,.14)","rgba(255,255,255,.82)","rgba(255,255,255,.94)","rgba(255,255,255,.98)","#f3f5f7","#b3261e","#8a5a00"]
+  };
+  for(const mode of ["dark","light"]){
+    const app = await openDashboard(undefined,{context:{colorScheme:mode}}); t.after(()=>app.context.close());
+    assert.deepEqual(await r46State(app.page),r46Expected("mint",mode));
+    const tokens = await app.page.evaluate(()=>{
+      const css = getComputedStyle(document.documentElement);
+      return ["bg","flat","opaque","raised","text","muted","green","accent-ink","line","surface","panel","popover","wall-shade","error","warning"].map(key=>css.getPropertyValue("--"+key).trim());
+    });
+    assert.deepEqual(tokens,expected[mode]);
+    // The old blue focus halo/selection/badge RGB stays byte-equivalent for mint.
+    assert.equal(await app.page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--legacy-accent").trim()),"#64d2ff");
+    assert.deepEqual(app.errors,[]);
+  }
+});
+test("R46 palette selections persist and day/night stays independent", async t => {
+  const app = await openDashboard({width:1280,height:1000},{context:{colorScheme:"dark"},setup:r46Setup}); t.after(()=>app.context.close());
+  const select = app.page.locator("#dashboard-palette");
+  assert.equal(await select.getAttribute("aria-label"),"配色");
+  assert.equal(await app.page.locator('label[for="dashboard-palette"]').evaluate(el=>el.control.id),"dashboard-palette");
+  for(const palette of Object.keys(r46Palettes)){
+    await select.selectOption(palette);
+    for(const mode of ["dark","light"]){
+      if((await r46State(app.page)).mode!==mode)await app.page.locator("#theme-toggle").click();
+      assert.deepEqual(await r46State(app.page),r46Expected(palette,mode));
+      await app.page.reload(); await select.waitFor();
+      assert.deepEqual(await r46State(app.page),r46Expected(palette,mode));
+      assert.equal(await select.inputValue(),palette);
+      assert.equal(await app.page.evaluate(()=>localStorage.getItem("musicbot-palette")),palette);
+      if(process.env.R46_SCREENSHOTS_DIR){
+        require("node:fs").mkdirSync(process.env.R46_SCREENSHOTS_DIR,{recursive:true});
+        await app.page.locator("#nav-play").click(); await app.page.waitForTimeout(400);
+        await app.page.screenshot({path:path.join(process.env.R46_SCREENSHOTS_DIR,palette+"-"+mode+"-1280-play.png"),fullPage:true});
+      }
+    }
+    await app.page.locator("#theme-toggle").click();
+  }
+  assert.deepEqual(app.errors,[]);
+});
+test("R46 palette invalid or blocked storage falls back to mint", async t => {
+  for(const blocked of [false,true]){
+    const app = await openDashboard(undefined,{context:{colorScheme:"dark"},setup:async page=>{
+      await page.addInitScript(block=>{
+        if(block) Object.defineProperty(window,"localStorage",{get(){throw new DOMException("blocked","SecurityError");}});
+        else localStorage.setItem("musicbot-palette","\uFFFDgarbage");
+      },blocked);
+    }}); t.after(()=>app.context.close());
+    assert.deepEqual(await r46State(app.page),r46Expected("mint","dark"));
+    await app.page.locator("#dashboard-palette").selectOption("amber");
+    assert.deepEqual(await r46State(app.page),r46Expected("amber","dark"));
+    assert.deepEqual(app.errors,[]);
+  }
+});
+test("R46 palette mobile controls fit and opaque fallbacks follow the palette", async t => {
+  const app = await openDashboard({width:390,height:844},{context:{colorScheme:"dark",hasTouch:true,isMobile:true},setup:r46Setup});t.after(()=>app.context.close());
+  await app.page.locator("#dashboard-palette").selectOption("amber");
+  for(const selector of ["#theme-toggle","#dashboard-language","#dashboard-palette"]){
+    const box = await app.page.locator(selector).boundingBox();
+    assert.ok(box.width>=44 && box.height>=44 && box.x>=0 && box.x+box.width<=390,JSON.stringify({selector,box}));
+  }
+  const bar = await app.page.locator(".language-preference").boundingBox(), brand = await app.page.locator(".sidebar .brand").boundingBox();
+  assert.ok(bar.y+bar.height<=brand.y || bar.x>=brand.x+brand.width);
+  for(const palette of Object.keys(r46Palettes))for(const mode of ["dark","light"]){
+    await app.page.locator("#dashboard-palette").selectOption(palette);
+    if((await r46State(app.page)).mode!==mode)await app.page.locator("#theme-toggle").click();
+    await app.page.emulateMedia({contrast:"more"});
+    assert.equal(await app.page.locator(".playback-bar").evaluate(el=>getComputedStyle(el).backgroundColor),await app.page.evaluate(()=>{const el=document.createElement("div");el.style.color="var(--opaque)";document.body.append(el);const color=getComputedStyle(el).color;el.remove();return color;}));
+    await app.page.emulateMedia({contrast:"no-preference"});
+    await app.page.evaluate(()=>document.documentElement.dataset.glass="opaque");
+    assert.equal(await app.page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()),await app.page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--opaque").trim()));
+    await app.page.evaluate(()=>delete document.documentElement.dataset.glass);
+  }
+  await app.page.locator("#dashboard-palette").selectOption("amber");
+  if((await r46State(app.page)).mode!=="dark")await app.page.locator("#theme-toggle").click();
+  if(process.env.R46_SCREENSHOTS_DIR){
+    await app.page.locator("#nav-play").click();await app.page.waitForTimeout(400);
+    await app.page.screenshot({path:path.join(process.env.R46_SCREENSHOTS_DIR,"amber-dark-390-play.png"),fullPage:true});
+    await app.page.locator("#nav-library").click();await app.page.locator("#library-panel").waitFor();await app.page.waitForTimeout(400);
+    await app.page.screenshot({path:path.join(process.env.R46_SCREENSHOTS_DIR,"amber-dark-390-library.png"),fullPage:true});
+  }
+  assert.deepEqual(app.errors,[]);
+});
+
+
+test("R46 palette follows system day/night and reduced transparency", async t => {
+  const app=await openDashboard(undefined,{context:{colorScheme:"dark"}});t.after(()=>app.context.close());
+  const cdp=await app.context.newCDPSession(app.page);
+  for(const palette of Object.keys(r46Palettes)){
+    await app.page.locator("#dashboard-palette").selectOption(palette);
+    for(const mode of ["light","dark"]){
+      await app.page.emulateMedia({colorScheme:mode});
+      await app.page.waitForFunction(value=>document.documentElement.dataset.theme===value,mode);
+      assert.deepEqual(await r46State(app.page),r46Expected(palette,mode));
+      await app.page.evaluate(()=>document.documentElement.dataset.glass="clear");
+      const clear=await app.page.evaluate(()=>{const c=getComputedStyle(document.documentElement);return [c.getPropertyValue("--surface").trim(),c.getPropertyValue("--legacy-accent").trim()];});
+      if(mode==="light")assert.equal(clear[0],"rgba(255,255,255,.82)");
+      else assert.equal(clear[0],{mint:"rgba(37,42,47,.78)",amber:"rgba(41,41,41,.8)",ocean:"rgba(27,36,51,.8)",rose:"rgba(42,35,39,.8)"}[palette]);
+      assert.equal(clear[1],palette==="mint"?"#64d2ff":r46Palettes[palette][mode][1]);
+      await cdp.send("Emulation.setEmulatedMedia",{features:[{name:"prefers-color-scheme",value:mode},{name:"prefers-reduced-transparency",value:"reduce"}]});
+      assert.equal(await app.page.evaluate(()=>matchMedia("(prefers-reduced-transparency: reduce)").matches),true);
+      const fallback=await app.page.evaluate(()=>{
+        const el=document.createElement("div");el.style.color="var(--opaque)";document.body.append(el);const opaque=getComputedStyle(el).color;el.remove();
+        const bar=getComputedStyle(document.querySelector(".playback-bar"));return {opaque,background:bar.backgroundColor,filter:bar.backdropFilter};
+      });
+      assert.equal(fallback.background,fallback.opaque);assert.equal(fallback.filter,"none");
+      await cdp.send("Emulation.setEmulatedMedia",{features:[{name:"prefers-color-scheme",value:mode},{name:"prefers-reduced-transparency",value:"no-preference"}]});
+      await app.page.evaluate(()=>delete document.documentElement.dataset.glass);
+    }
+  }
+  assert.equal(await app.page.evaluate(()=>localStorage.getItem("musicbot-theme")),null);
+  assert.deepEqual(app.errors,[]);
+});
