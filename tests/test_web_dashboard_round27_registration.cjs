@@ -7,7 +7,7 @@ async function run(controlled){
  removeEventListener:(name,fn)=>{assert.equal(handlers[name],fn);delete handlers[name]},
  register:(url,options)=>{assert.equal(url,"/sw.js");assert.equal(options.updateViaCache,"none");
  observed=typeof handlers.controllerchange==="function";handlers.controllerchange?.();return Promise.resolve({update:()=>Promise.resolve()})}};
- const c=load("frontend/src/composables/usePwa.ts",{vue:{onMounted:fn=>fn(),onBeforeUnmount:fn=>unmount=fn},
+ const c=load("frontend/src/composables/usePwa.ts",{vue:{ref:value=>({value}),onMounted:fn=>fn(),onBeforeUnmount:fn=>unmount=fn},
  '../store':{dashboard},'./useDashboard':{notice:value=>messages.push(value)},'./useLocale':{t:key=>key}},
  {navigator:{serviceWorker}});
  c.usePwa();await Promise.resolve();await Promise.resolve();unmount();
