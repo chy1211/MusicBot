@@ -5,8 +5,9 @@ import logging
 import os
 import sys
 import time
+from collections import deque
 from enum import Enum
-from threading import Thread
+from threading import Event, Thread
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from discord import (
@@ -38,6 +39,10 @@ FFmpegSources = Union[PCMVolumeTransformer[FFmpegPCMAudio], FFmpegOpusAudio]
 
 log = logging.getLogger(__name__)
 FIRST_FRAME_TIMEOUT = 10.0
+# Offline AudioPlayer startup matrix: packet 1 ready, packets 2/3 each stall
+# 200/300/400 ms. Three packets is the smallest buffer with zero catch-up;
+# preparation absorbs 400/600/800 ms before the playback clock starts.
+STARTUP_BUFFER_FRAMES = 3
 
 
 class MusicPlayerState(Enum):
@@ -69,7 +74,12 @@ class SourcePlaybackCounter(AudioSource):
         # NOTE: PCMVolumeTransformer will let you set any crazy value.
         # But internally it limits between 0 and 2.0.
         self._source = source
-        self._first_frame: Optional[bytes] = None
+        self._prefetched_frames: deque[bytes] = deque()
+        self._prefetch_done = Event()
+        self._prefetch_done.set()
+        self._prefetch_stop = Event()
+        self._prefetch_error: Optional[Exception] = None
+        self._source_eof = False
         self._num_reads: int = 0
         self._start_time: float = start_time
         self._playback_speed: float = playback_speed
@@ -78,20 +88,58 @@ class SourcePlaybackCounter(AudioSource):
     def is_opus(self) -> bool:
         return self._is_opus_audio
 
+    def _prepare_frames(self) -> None:
+        """One worker owns source reads until preparation has finished."""
+        try:
+            for _ in range(STARTUP_BUFFER_FRAMES):
+                if self._prefetch_stop.is_set():
+                    break
+                frame = self._source.read()
+                if not frame:
+                    self._source_eof = True
+                    break
+                self._prefetched_frames.append(frame)
+        except Exception as exc:
+            self._prefetch_error = exc
+        finally:
+            self._prefetch_done.set()
+
     async def prepare(self, timeout: float = FIRST_FRAME_TIMEOUT) -> None:
-        """Read the first packet off-loop, before AudioPlayer starts its clock."""
-        loop = asyncio.get_running_loop()
-        frame = await asyncio.wait_for(
-            loop.run_in_executor(None, self._source.read), timeout=timeout
-        )
-        if not frame:
+        """Buffer startup packets off-loop under one total timeout."""
+        self._prefetch_done.clear()
+        worker = asyncio.get_running_loop().run_in_executor(None, self._prepare_frames)
+        try:
+            await asyncio.wait_for(worker, timeout=timeout)
+        except asyncio.TimeoutError:
+            self._prefetch_stop.set()
+            if not self._prefetched_frames:
+                raise
+            log.debug(
+                "Startup buffer timed out after %.3fs; playing %d prepared frames.",
+                timeout, len(self._prefetched_frames),
+            )
+            return
+        except asyncio.CancelledError:
+            self._prefetch_stop.set()
+            raise
+        if self._prefetch_error is not None:
+            raise self._prefetch_error
+        if not self._prefetched_frames:
             raise FFmpegError("Audio source returned no first frame.")
-        self._first_frame = frame
 
     def _read_frame(self) -> bytes:
-        if self._first_frame is not None:
-            frame, self._first_frame = self._first_frame, None
-            return frame
+        if self._prefetched_frames:
+            return self._prefetched_frames.popleft()
+        # A timed-out executor read cannot be cancelled. Let its final packet
+        # arrive before reading again, preserving order and single-reader access.
+        if not self._prefetch_done.is_set():
+            self._prefetch_done.wait()
+        if self._prefetched_frames:
+            return self._prefetched_frames.popleft()
+        if self._prefetch_error is not None:
+            raise self._prefetch_error
+        if self._source_eof:
+            return b""
         return self._source.read()
 
     def read(self) -> bytes:
@@ -104,6 +152,7 @@ class SourcePlaybackCounter(AudioSource):
         log.noise(  # type: ignore[attr-defined]
             "Cleanup got called on the audio source:  %r", self
         )
+        self._prefetch_stop.set()
         self._source.cleanup()
 
     @property

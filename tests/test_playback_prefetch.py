@@ -1,5 +1,6 @@
-"""First-frame preparation uses real player control flow, without Discord I/O."""
+"""Startup-buffer preparation uses real player control flow, without Discord I/O."""
 import asyncio
+import logging
 import threading
 import time
 import unittest
@@ -9,6 +10,9 @@ from unittest.mock import Mock, patch
 from discord import AudioSource, PCMVolumeTransformer
 import musicbot.player as runtime
 import test_loudness_normalization as loudness
+
+# The application registers this custom level at startup; standalone tests do not.
+logging.Logger.noise = logging.Logger.debug
 
 
 class DelayedOpus(AudioSource):
@@ -59,6 +63,11 @@ class DelayedPCM(DelayedOpus):
 
 
 class PrefetchTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        log_patch = patch.object(runtime, "log", loudness.FakeLog())
+        log_patch.start()
+        self.addCleanup(log_patch.stop)
+
     def fixture(self, **options):
         helper = loudness.RealModuleLoudnessTests()
         helper.setUp()
@@ -110,7 +119,7 @@ class PrefetchTests(unittest.IsolatedAsyncioTestCase):
                     if isinstance(raw, PCMVolumeTransformer):
                         raw = raw.original
                     self.assertTrue(raw.started.is_set())
-                    self.assertEqual(raw.calls, 1)
+                    self.assertEqual(raw.calls, 3)  # Two packets, then EOF during preparation.
                     self.assertEqual(source.frames, 0)
                     self.assertEqual(source.is_opus(), options["opus"])
                     packets.extend([source.read(), source.read(), source.read()])
@@ -209,3 +218,153 @@ class PrefetchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(player._source.frames, 0)
         self.assertEqual(player._source.progress, 20)
         player._source.cleanup()
+
+
+class PacketSource(AudioSource):
+    """Ordered packets with observable read ownership and optional stalls."""
+    def __init__(self, count=40, delays=None, block_at=None, fail_at=None):
+        self.count = count
+        self.delays = delays or {}
+        self.block_at = block_at
+        self.fail_at = fail_at
+        self.calls = 0
+        self.active = 0
+        self.max_active = 0
+        self.lock = threading.Lock()
+        self.started = threading.Event()
+        self.released = threading.Event()
+
+    def read(self):
+        with self.lock:
+            self.calls += 1
+            index = self.calls
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            if index == self.block_at:
+                self.started.set()
+                if not self.released.wait(2):
+                    raise RuntimeError("Test source was not released")
+            time.sleep(self.delays.get(index, 0))
+            if index == self.fail_at:
+                raise OSError("Synthetic packet failure")
+            return bytes([index]) if index <= self.count else b""
+        finally:
+            with self.lock:
+                self.active -= 1
+
+    def cleanup(self):
+        self.released.set()
+
+
+class StartupBufferTests(unittest.IsolatedAsyncioTestCase):
+    setUp = PrefetchTests.setUp
+
+    async def test_second_and_third_300ms_packets_are_ready_before_playback(self):
+        source = PacketSource(delays={2: .3, 3: .3})
+        counter = runtime.SourcePlaybackCounter(source)
+        started = time.perf_counter()
+        await counter.prepare()
+        self.assertGreaterEqual(time.perf_counter() - started, .59)
+        self.assertEqual((counter.frames, counter.progress), (0, 0))
+        started = time.perf_counter()
+        packets = [counter.read() for _ in range(runtime.STARTUP_BUFFER_FRAMES)]
+        self.assertLess(time.perf_counter() - started, .05)
+        self.assertEqual(packets, [bytes([i]) for i in range(1, runtime.STARTUP_BUFFER_FRAMES + 1)])
+        self.assertEqual(source.calls, runtime.STARTUP_BUFFER_FRAMES)
+        self.assertEqual(counter.frames, runtime.STARTUP_BUFFER_FRAMES)
+        self.assertAlmostEqual(counter.progress, runtime.STARTUP_BUFFER_FRAMES * .02)
+
+    async def test_five_packet_song_shorter_than_buffer_preserves_order_and_eof(self):
+        source = PacketSource(count=5)
+        counter = runtime.SourcePlaybackCounter(source, start_time=12, playback_speed=2)
+        with patch.object(runtime, "STARTUP_BUFFER_FRAMES", 10):
+            await counter.prepare()
+        self.assertEqual((counter.frames, counter.session_progress, counter.progress), (0, 0, 12))
+        self.assertEqual([counter.read() for _ in range(5)], [bytes([i]) for i in range(1, 6)])
+        self.assertEqual((counter.read(), counter.read()), (b"", b""))
+        self.assertEqual(source.calls, 6)
+        self.assertEqual(counter.frames, 5)
+        self.assertAlmostEqual(counter.progress, 12.2)
+
+    async def test_partial_timeout_plays_buffer_then_retains_inflight_packet(self):
+        source = PacketSource(block_at=2)
+        counter = runtime.SourcePlaybackCounter(source)
+        self.addCleanup(source.cleanup)
+        with patch.object(runtime, "log") as logger:
+            await counter.prepare(timeout=.03)
+        logger.debug.assert_called_once()
+        self.assertEqual(counter.frames, 0)
+        self.assertTrue(source.started.is_set())
+        started = time.perf_counter()
+        self.assertEqual(counter.read(), b"\x01")
+        self.assertLess(time.perf_counter() - started, .02)
+        pending = asyncio.create_task(asyncio.to_thread(counter.read))
+        await asyncio.sleep(.02)
+        self.assertFalse(pending.done())
+        self.assertEqual(source.calls, 2)
+        source.released.set()
+        self.assertEqual(await pending, b"\x02")
+        self.assertEqual(counter.read(), b"\x03")
+        self.assertEqual((source.max_active, counter.frames), (1, 3))
+
+    async def test_all_packets_share_one_timeout(self):
+        source = PacketSource(delays={1: .05, 2: .05, 3: .05})
+        counter = runtime.SourcePlaybackCounter(source)
+        started = time.perf_counter()
+        await counter.prepare(timeout=.08)
+        self.assertLess(time.perf_counter() - started, .13)
+        self.assertEqual(counter.frames, 0)
+        self.assertEqual(counter.read(), b"\x01")
+        self.assertEqual(await asyncio.to_thread(counter.read), b"\x02")
+        self.assertTrue(counter._prefetch_done.is_set())
+        self.assertEqual(source.calls, 2)
+
+    async def test_no_packets_timeout_raises_and_stops_prefetch(self):
+        source = PacketSource(block_at=1)
+        counter = runtime.SourcePlaybackCounter(source)
+        self.addCleanup(source.cleanup)
+        with self.assertRaises(TimeoutError):
+            await counter.prepare(timeout=.03)
+        source.released.set()
+        self.assertTrue(await asyncio.to_thread(counter._prefetch_done.wait, .5))
+        self.assertEqual(source.calls, 1)
+        self.assertEqual(counter.frames, 0)
+
+    async def test_partial_timeout_eof_and_failure_are_not_lost(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail):
+                source = PacketSource(count=1, block_at=2, fail_at=2 if fail else None)
+                counter = runtime.SourcePlaybackCounter(source)
+                self.addCleanup(source.cleanup)
+                await counter.prepare(timeout=.03)
+                self.assertEqual(counter.read(), b"\x01")
+                source.released.set()
+                if fail:
+                    with self.assertRaises(OSError):
+                        await asyncio.to_thread(counter.read)
+                else:
+                    self.assertEqual(await asyncio.to_thread(counter.read), b"")
+                self.assertEqual(counter.frames, 1)
+                self.assertEqual(source.max_active, 1)
+
+
+class PartialTimeoutPlayerTests(unittest.IsolatedAsyncioTestCase):
+    setUp = PrefetchTests.setUp
+    fixture = PrefetchTests.fixture
+    run_player = PrefetchTests.run_player
+    async def test_partial_timeout_starts_voice_without_error(self):
+        player, _ = self.fixture(opus=True)
+        original = DelayedOpus.read
+        def delayed_second(source):
+            if source.calls == 1:
+                source.released.wait(2)
+            return original(source)
+        player.voice_client.play.side_effect = lambda source, **kw: self.assertEqual(source.read(), b"opus")
+        with patch.object(DelayedOpus, "read", delayed_second), patch.object(DelayedOpus, "delay", 0), patch.object(runtime, "FIRST_FRAME_TIMEOUT", .03):
+            await self.run_player(player)
+        player.voice_client.play.assert_called_once()
+        self.assertEqual(self.errors, [])
+        self.assertEqual(player._source.frames, 1)
+        player._source.cleanup()
+        self.assertTrue(await asyncio.to_thread(player._source._prefetch_done.wait, .5))
