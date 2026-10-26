@@ -4,6 +4,8 @@ import PermissionsEditor from '../components/PermissionsEditor.vue'
 import { useAdmin } from '../composables/useAdmin'
 import { usePermissions } from '../composables/usePermissions'
 import { t } from '../composables/useLocale'
+import { SW_VERSION } from '../version'
+import { controllerVersion } from '../composables/usePwa'
 const a=useAdmin(), p=usePermissions(a.canManage, () => { a.owner.value=false })
 const notifyChannel=ref(''), emptyMode=ref<'autoplaylist'|'radio'|'off'>('autoplaylist'), radioMin=ref(0), radioMax=ref(0)
 const query=ref('')
@@ -27,7 +29,11 @@ const details=computed(()=>{
  for(const [key,label] of [['yt-dlp','admin.maintenance.ytdlp'],['yt-dlp-ejs','admin.maintenance.ytdlpEjs']] as const)rows.push({label:t(label),value:m.versions?.[key]||t('admin.value.unknown')})
  if(m.started_at)rows.push({label:t('admin.maintenance.started'),value:date(m.started_at)})
  if(m.last_stop)rows.push({label:t('admin.maintenance.lastStop'),value:`${date(m.last_stop.time)} · ${m.last_stop.classification||''}`})
- if(m.dashboard_version)rows.push({label:t('admin.maintenance.version'),value:m.dashboard_version})
+ rows.push({label:t('admin.maintenance.buildCommit'),value:m.build_info?.commit||'unknown'})
+ rows.push({label:t('admin.maintenance.buildTime'),value:m.build_info?.time||'unknown'})
+ rows.push({label:t('admin.maintenance.buildBranch'),value:m.build_info?.branch||'unknown'})
+ rows.push({label:t('admin.maintenance.frontendVersion'),value:SW_VERSION})
+ rows.push({label:t('admin.maintenance.controllerVersion'),value:controllerVersion.value})
  rows.push({label:t('admin.maintenance.viewers'),value:String(m.viewers??0)})
  if(m.host_status?.status==='unavailable')rows.push({label:t('admin.maintenance.host'),value:t('admin.maintenance.unavailable'),warning:true})
  else if(m.host_status?.written_at){rows.push({label:t('admin.maintenance.hostUpdated'),value:date(m.host_status.written_at)});const update=m.host_status.ytdlp_update;if(update?.updated)rows.push({label:t('admin.maintenance.hostYtdlpUpdate'),value:date(update.updated)+' · '+(update.channel||t('admin.value.unknown'))});for(const name of ['yt-dlp','yt-dlp-ejs','bgutil-plugin'])if(update?.[name])rows.push({label:t('admin.maintenance.hostYtdlpVersion',{p0:name}),value:update[name]});const sync=m.host_status.cookie_sync;if(sync)rows.push({label:t('admin.maintenance.hostCookieSync'),value:(t(({success:'admin.maintenance.sync.success',failure:'admin.maintenance.sync.failure',running:'admin.maintenance.sync.running'} as Record<string,string>)[sync.result||'']||'admin.maintenance.sync.unknown'))+' · '+date(sync.last_run)+' · '+date(sync.next_run)})}

@@ -719,5 +719,10 @@
   "resolve.queueTimeout": "Too many lookups right now. Please try again shortly.",
   "resolve.queued": "Queued…",
   "resolve.resolving": "Looking up…",
-  "resolve.adding": "Adding…"
+  "resolve.adding": "Adding…",
+  "admin.maintenance.buildCommit": "Build commit",
+  "admin.maintenance.buildTime": "Built at (UTC)",
+  "admin.maintenance.buildBranch": "Build branch",
+  "admin.maintenance.frontendVersion": "Frontend service worker version",
+  "admin.maintenance.controllerVersion": "Active service worker version"
 }

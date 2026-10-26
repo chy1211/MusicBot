@@ -211,12 +211,36 @@ def loaded_versions():
     return values
 
 
+BUILD_INFO_PATH = Path(__file__).resolve().parents[1] / "BUILD_INFO.json"
+
+
+def build_info(path=None):
+    """Read only bounded, validated image metadata; source checkouts need no file."""
+    unknown = {"commit": "unknown", "time": "unknown", "branch": "unknown"}
+    try:
+        with Path(path if path is not None else BUILD_INFO_PATH).open("rb") as stream:
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            return unknown
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return unknown
+        commit = data.get("commit")
+        branch = data.get("branch")
+        return {
+            "commit": commit[:12] if isinstance(commit, str) and re.fullmatch(r"[0-9a-fA-F]{7,64}", commit) else "unknown",
+            "time": iso_date(data.get("time")) or "unknown",
+            "branch": branch if isinstance(branch, str) and re.fullmatch(r"[A-Za-z0-9_./-]{1,200}", branch) else "unknown",
+        }
+    except (OSError, ValueError, TypeError):
+        return unknown
+
+
 def inspect_status(cookie, host, logs):
-    # Preserve the existing metadata value independently of removed legacy assets.
-    version = "musicbot-dashboard-r26-lyrics-popular"
+    info = build_info()
     return {"cookie": cookie_status(cookie), "versions": loaded_versions(),
             "host_status": host_status(host), "last_stop": last_stop(logs),
-            "dashboard_version": version}
+            "dashboard_version": info["commit"], "build_info": info}
 
 
 class DashboardMaintenance:

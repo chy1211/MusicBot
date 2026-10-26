@@ -719,5 +719,10 @@
   "resolve.queueTimeout": "目前查詢的人太多，請稍後再試。",
   "resolve.queued": "排隊中…",
   "resolve.resolving": "查詢中…",
-  "resolve.adding": "加入中…"
+  "resolve.adding": "加入中…",
+  "admin.maintenance.buildCommit": "建置來源 commit",
+  "admin.maintenance.buildTime": "建置時間（UTC）",
+  "admin.maintenance.buildBranch": "建置分支",
+  "admin.maintenance.frontendVersion": "前端 service worker 版本",
+  "admin.maintenance.controllerVersion": "目前控制頁面的 service worker 版本"
 }

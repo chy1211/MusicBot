@@ -24,6 +24,11 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/*.whl && 
 WORKDIR /musicbot
 COPY . .
 COPY --from=frontend /build/musicbot/web/dist /musicbot/musicbot/web/dist
+# Explicit metadata works with git archive contexts, which have no .git directory.
+ARG BUILD_COMMIT=unknown
+ARG BUILD_TIME=unknown
+ARG BUILD_BRANCH=unknown
+RUN python3 -c 'import json, os; from pathlib import Path; Path("BUILD_INFO.json").write_text(json.dumps({key: os.environ.get(arg) or "unknown" for key, arg in (("commit", "BUILD_COMMIT"), ("time", "BUILD_TIME"), ("branch", "BUILD_BRANCH"))}) + "\n")'
 # Only public examples enter the image (also enforced by .dockerignore).
 RUN mkdir -p sample_config audio_cache config data logs \
     && cp config/example_* sample_config/ \

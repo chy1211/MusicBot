@@ -7,8 +7,9 @@ const injected = [
   {url:"/icon-512.png"}, {url:"/assets/app.js"}, {url:"/assets/app.css"},
   {url:"/catalog.json"}
 ];
-const code = source.replace("self.__WB_MANIFEST", JSON.stringify(injected));
-const version = code.match(/const VERSION = "([^"]+)"/)[1];
+const versionSource = fs.readFileSync(path.join(__dirname, "../frontend/src/version.ts"), "utf8");
+const version = versionSource.match(/export const SW_VERSION = "([^"]+)"/)[1];
+const code = source.replace('import {SW_VERSION as VERSION} from "./version";', `const VERSION = ${JSON.stringify(version)};`).replace("self.__WB_MANIFEST", JSON.stringify(injected));
 function setup() {
   const handlers = {}, cache = new Map(), puts = [], fetches = [], deleted = [];
   let offline = false, skipped = 0, claimed = 0, failPath = null, quota = false;

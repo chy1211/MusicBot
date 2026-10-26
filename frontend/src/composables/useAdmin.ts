@@ -11,7 +11,7 @@ export interface NotifySettings { channels: Channel[]; channel_id: string | null
 export interface EmptyQueueSettings { empty_queue: EmptyQueueMode; radio_min_seconds: number; radio_max_seconds: number; seed_count: number; seed_titles: string[]; radio_suspended_seconds: number }
 export interface AplTrack { index: number; title: string; url: string }
 export interface AplPage { total: number; matched: number; page: number; page_size: number; revision: number; tracks: AplTrack[] }
-export interface Maintenance { cookie?: {status?: string; warning?: boolean; earliest_expiry?: string; remaining_days?: number; updated_at?: string; cookies?: Array<{name:string; expires_at?:string; remaining_days:number}>}; versions?: Record<string,string>; started_at?: string; last_stop?: {time?:string; classification?:string} | null; dashboard_version?:string; viewers?:number; host_status?: {status?:string; written_at?:string; ytdlp_update?: Record<string,string>; cookie_sync?: {result?:string;last_run?:string;next_run?:string}} }
+export interface Maintenance { cookie?: {status?: string; warning?: boolean; earliest_expiry?: string; remaining_days?: number; updated_at?: string; cookies?: Array<{name:string; expires_at?:string; remaining_days:number}>}; versions?: Record<string,string>; started_at?: string; last_stop?: {time?:string; classification?:string} | null; dashboard_version?:string; build_info?: {commit?:string;time?:string;branch?:string}; viewers?:number; host_status?: {status?:string; written_at?:string; ytdlp_update?: Record<string,string>; cookie_sync?: {result?:string;last_run?:string;next_run?:string}} }
 
 export function useAdmin() {
  const guild = computed(() => dashboard.snapshot?.guild_id || '')

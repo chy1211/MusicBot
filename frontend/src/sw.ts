@@ -1,5 +1,5 @@
 // Change VERSION on every static release; never intercept authentication or data.
-const VERSION = "musicbot-dashboard-r27-vue-rebuild";
+import {SW_VERSION as VERSION} from "./version";
 const PREFIX = "musicbot-dashboard-";
 // vite-plugin-pwa injectManifest replaces this placeholder at build time.
 const INJECTED = self.__WB_MANIFEST;
