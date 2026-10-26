@@ -20,6 +20,7 @@ class DelayedOpus(AudioSource):
     empty = False
     fail = False
     block = False
+    packets = 2
 
     def __init__(self, *args, **kwargs):
         type(self).last = self
@@ -46,7 +47,7 @@ class DelayedOpus(AudioSource):
             if self.fail:
                 raise OSError("DemoUser source failed")
             return b"" if self.empty else self.packet
-        return self.packet if self.calls == 2 else b""
+        return self.packet if self.calls <= self.packets else b""
 
     packet = b"opus"
 
@@ -218,6 +219,43 @@ class PrefetchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(player._source.frames, 0)
         self.assertEqual(player._source.progress, 20)
         player._source.cleanup()
+
+
+    async def test_volume_seek_and_restart_rebuilds_fill_buffer_in_all_modes(self):
+        modes = [
+            dict(opus=True, probe=True, eq=False),
+            dict(opus=True, probe=False, eq=False),
+            dict(opus=True, probe=False, eq=True),
+            dict(opus=False, probe=False, eq=True),
+        ]
+        for options in modes:
+            for measured in ((False, True) if options['eq'] else (False,)):
+                with self.subTest(**options, measured=measured):
+                    player, entry = self.fixture(**options)
+                    if measured:
+                        entry.set_audio_filter('loudnorm', 'I=-16:measured_I=-19:measured_LRA=3')
+                    for volume, position in ((.15, 0), (.35, 0), (.35, 20), (.35, 0)):
+                        previous = player._source if hasattr(player, '_source') else None
+                        if previous:
+                            previous.cleanup()
+                        player.volume = volume
+                        entry.set_start_time(position)
+                        with patch.object(DelayedOpus, 'delay', 0), patch.object(DelayedOpus, 'packets', runtime.STARTUP_BUFFER_FRAMES + 2):
+                            await self.run_player(player)
+                        counter = player._source
+                        self.assertIsNot(counter, previous)
+                        raw = counter._source
+                        if isinstance(raw, PCMVolumeTransformer):
+                            self.assertEqual(raw.volume, volume)
+                            raw = raw.original
+                        self.assertEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
+                        self.assertEqual(counter.frames, 0)
+                        self.assertEqual(counter.progress, position)
+                        self.assertTrue(counter.read())
+                        self.assertEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
+                        self.assertEqual(counter.frames, 1)
+                    player._source.cleanup()
+                    self.assertEqual(self.errors, [])
 
 
 class PacketSource(AudioSource):

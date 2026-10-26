@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 FIRST_FRAME_TIMEOUT = 10.0
 # Offline AudioPlayer startup matrix: packet 1 ready, packets 2/3 each stall
 # 200/300/400 ms. Three packets is the smallest buffer with zero catch-up;
-# preparation absorbs 400/600/800 ms before the playback clock starts.
+# with 1 ms/read, preparation takes 403/603/803 ms before the clock starts.
 STARTUP_BUFFER_FRAMES = 3
 
 
