@@ -39,10 +39,12 @@ FFmpegSources = Union[PCMVolumeTransformer[FFmpegPCMAudio], FFmpegOpusAudio]
 
 log = logging.getLogger(__name__)
 FIRST_FRAME_TIMEOUT = 10.0
-# Offline AudioPlayer startup matrix: packet 1 ready, packets 2/3 each stall
-# 200/300/400 ms. Three packets is the smallest buffer with zero catch-up;
-# with 1 ms/read, preparation takes 403/603/803 ms before the clock starts.
-STARTUP_BUFFER_FRAMES = 3
+# Buffer the first 10 packets (0.2 s), moving warm-up stalls anywhere in that
+# window before the playback clock starts, rather than only packets 2/3.
+# Offline measurements at 1 ms/read: N=3 takes ~3.6 ms normally, N=10 ~11.2 ms
+# (only ~8 ms more). With packets 2/3 stalled by 200/300/400 ms each, N>=3
+# produced zero catch-up sends in every case; N=10 also covers later stalls.
+STARTUP_BUFFER_FRAMES = 10
 
 
 class MusicPlayerState(Enum):

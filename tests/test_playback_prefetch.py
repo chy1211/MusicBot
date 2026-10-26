@@ -313,6 +313,22 @@ class StartupBufferTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(counter.frames, runtime.STARTUP_BUFFER_FRAMES)
         self.assertAlmostEqual(counter.progress, runtime.STARTUP_BUFFER_FRAMES * .02)
 
+    async def test_sixth_300ms_packet_is_ready_before_playback(self):
+        self.assertEqual(runtime.STARTUP_BUFFER_FRAMES, 10)
+        source = PacketSource(delays={6: .3})
+        counter = runtime.SourcePlaybackCounter(source)
+        started = time.perf_counter()
+        await counter.prepare()
+        self.assertGreaterEqual(time.perf_counter() - started, .29)
+        self.assertEqual((counter.frames, counter.progress), (0, 0))
+        started = time.perf_counter()
+        packets = [counter.read() for _ in range(runtime.STARTUP_BUFFER_FRAMES)]
+        self.assertLess(time.perf_counter() - started, .05)
+        self.assertEqual(packets, [bytes([i]) for i in range(1, runtime.STARTUP_BUFFER_FRAMES + 1)])
+        self.assertEqual(source.calls, runtime.STARTUP_BUFFER_FRAMES)
+        self.assertEqual(counter.frames, runtime.STARTUP_BUFFER_FRAMES)
+        self.assertAlmostEqual(counter.progress, runtime.STARTUP_BUFFER_FRAMES * .02)
+
     async def test_five_packet_song_shorter_than_buffer_preserves_order_and_eof(self):
         source = PacketSource(count=5)
         counter = runtime.SourcePlaybackCounter(source, start_time=12, playback_speed=2)
