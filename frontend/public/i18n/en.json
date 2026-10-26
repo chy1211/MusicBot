@@ -725,7 +725,7 @@
   "admin.maintenance.buildBranch": "Build branch",
   "admin.maintenance.frontendVersion": "Frontend service worker version",
   "admin.maintenance.controllerVersion": "Active service worker version",
-  "palette": "Palette",
+  "palette": "Color theme",
   "palette.mint": "Mint Charcoal",
   "palette.amber": "Amber Night",
   "palette.ocean": "Deep Ocean",

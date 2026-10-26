@@ -1345,6 +1345,12 @@ const r46Palettes = {
   ocean: { dark: ["#141b26", "#7aa7ff"], light: ["#f2f5fa", "#2f5fcf"] },
   rose: { dark: ["#1f1a1d", "#f29bb8"], light: ["#faf4f6", "#b03a66"] }
 };
+async function r46Select(page, palette) {
+  await page.locator('#palette-toggle').click();
+  await page.locator('.palette-swatch[data-palette="'+palette+'"]').click();
+  assert.equal(await page.locator('#palette-toggle').getAttribute('aria-expanded'),'false');
+  assert.equal(await page.locator('#palette-toggle').evaluate(el=>document.activeElement===el),true);
+}
 async function r46State(page) {
   return page.evaluate(() => {
     const root = document.documentElement, css = getComputedStyle(root);
@@ -1382,17 +1388,19 @@ test("R46 palette default mint preserves all original day/night tokens", async t
 });
 test("R46 palette selections persist and day/night stays independent", async t => {
   const app = await openDashboard({width:1280,height:1000},{context:{colorScheme:"dark"},setup:r46Setup}); t.after(()=>app.context.close());
-  const select = app.page.locator("#dashboard-palette");
-  assert.equal(await select.getAttribute("aria-label"),"配色");
-  assert.equal(await app.page.locator('label[for="dashboard-palette"]').evaluate(el=>el.control.id),"dashboard-palette");
+  const select = app.page.locator("#palette-toggle");
+  assert.equal(await select.getAttribute("aria-label"),"\u914d\u8272");
+  assert.equal(await app.page.locator('#dashboard-palette').count(),0);
   for(const palette of Object.keys(r46Palettes)){
-    await select.selectOption(palette);
+    await r46Select(app.page,palette);
     for(const mode of ["dark","light"]){
       if((await r46State(app.page)).mode!==mode)await app.page.locator("#theme-toggle").click();
       assert.deepEqual(await r46State(app.page),r46Expected(palette,mode));
       await app.page.reload(); await select.waitFor();
       assert.deepEqual(await r46State(app.page),r46Expected(palette,mode));
-      assert.equal(await select.inputValue(),palette);
+      await select.click();
+      assert.equal(await app.page.locator('.palette-swatch[aria-checked="true"]').getAttribute('data-palette'),palette);
+      await app.page.keyboard.press('Escape');
       assert.equal(await app.page.evaluate(()=>localStorage.getItem("musicbot-palette")),palette);
       if(process.env.R46_SCREENSHOTS_DIR){
         require("node:fs").mkdirSync(process.env.R46_SCREENSHOTS_DIR,{recursive:true});
@@ -1413,22 +1421,22 @@ test("R46 palette invalid or blocked storage falls back to mint", async t => {
       },blocked);
     }}); t.after(()=>app.context.close());
     assert.deepEqual(await r46State(app.page),r46Expected("mint","dark"));
-    await app.page.locator("#dashboard-palette").selectOption("amber");
+    await r46Select(app.page,"amber");
     assert.deepEqual(await r46State(app.page),r46Expected("amber","dark"));
     assert.deepEqual(app.errors,[]);
   }
 });
 test("R46 palette mobile controls fit and opaque fallbacks follow the palette", async t => {
   const app = await openDashboard({width:390,height:844},{context:{colorScheme:"dark",hasTouch:true,isMobile:true},setup:r46Setup});t.after(()=>app.context.close());
-  await app.page.locator("#dashboard-palette").selectOption("amber");
-  for(const selector of ["#theme-toggle","#dashboard-language","#dashboard-palette"]){
+  await r46Select(app.page,"amber");
+  for(const selector of ["#theme-toggle","#dashboard-language","#palette-toggle"]){
     const box = await app.page.locator(selector).boundingBox();
     assert.ok(box.width>=44 && box.height>=44 && box.x>=0 && box.x+box.width<=390,JSON.stringify({selector,box}));
   }
   const bar = await app.page.locator(".language-preference").boundingBox(), brand = await app.page.locator(".sidebar .brand").boundingBox();
   assert.ok(bar.y+bar.height<=brand.y || bar.x>=brand.x+brand.width);
   for(const palette of Object.keys(r46Palettes))for(const mode of ["dark","light"]){
-    await app.page.locator("#dashboard-palette").selectOption(palette);
+    await r46Select(app.page,palette);
     if((await r46State(app.page)).mode!==mode)await app.page.locator("#theme-toggle").click();
     await app.page.emulateMedia({contrast:"more"});
     assert.equal(await app.page.locator(".playback-bar").evaluate(el=>getComputedStyle(el).backgroundColor),await app.page.evaluate(()=>{const el=document.createElement("div");el.style.color="var(--opaque)";document.body.append(el);const color=getComputedStyle(el).color;el.remove();return color;}));
@@ -1437,7 +1445,7 @@ test("R46 palette mobile controls fit and opaque fallbacks follow the palette", 
     assert.equal(await app.page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()),await app.page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--opaque").trim()));
     await app.page.evaluate(()=>delete document.documentElement.dataset.glass);
   }
-  await app.page.locator("#dashboard-palette").selectOption("amber");
+  await r46Select(app.page,"amber");
   if((await r46State(app.page)).mode!=="dark")await app.page.locator("#theme-toggle").click();
   if(process.env.R46_SCREENSHOTS_DIR){
     await app.page.locator("#nav-play").click();await app.page.waitForTimeout(400);
@@ -1453,7 +1461,7 @@ test("R46 palette follows system day/night and reduced transparency", async t =>
   const app=await openDashboard(undefined,{context:{colorScheme:"dark"}});t.after(()=>app.context.close());
   const cdp=await app.context.newCDPSession(app.page);
   for(const palette of Object.keys(r46Palettes)){
-    await app.page.locator("#dashboard-palette").selectOption(palette);
+    await r46Select(app.page,palette);
     for(const mode of ["light","dark"]){
       await app.page.emulateMedia({colorScheme:mode});
       await app.page.waitForFunction(value=>document.documentElement.dataset.theme===value,mode);
@@ -1476,4 +1484,75 @@ test("R46 palette follows system day/night and reduced transparency", async t =>
   }
   assert.equal(await app.page.evaluate(()=>localStorage.getItem("musicbot-theme")),null);
   assert.deepEqual(app.errors,[]);
+});
+
+
+test("R46 palette popup supports radios, focus, dismissal and icon-only labels", async t => {
+  const app=await openDashboard({width:1280,height:900},{context:{colorScheme:'dark'},setup:r46Setup});t.after(()=>app.context.close());
+  const page=app.page,toggle=page.locator('#palette-toggle'),panel=page.locator('#palette-panel');
+  assert.equal(await toggle.getAttribute('aria-haspopup'),'true');
+  for(const locale of ['zh-TW','en']){
+    await page.locator('#dashboard-language').selectOption(locale);
+    await toggle.click();
+    assert.equal(await panel.getAttribute('role'),'radiogroup');
+    assert.equal(await panel.getAttribute('aria-label'),locale==='en'?'Color theme':'\u914d\u8272');
+    assert.doesNotMatch(await page.locator('body').innerText(),/\u914d\u8272|Color theme/);
+    const radios=panel.locator('[role=radio]');assert.equal(await radios.count(),4);
+    for(let i=0;i<4;i++){
+      const radio=radios.nth(i),box=await radio.boundingBox();assert.ok(box.width>=44&&box.height>=44);
+      assert.ok(await radio.getAttribute('aria-label'));assert.equal(await radio.getAttribute('title'),await radio.getAttribute('aria-label'));
+      assert.equal(await radio.getAttribute('tabindex'),i===0?'0':'-1');
+      assert.equal(await radio.getAttribute('aria-checked'),String(i===0));
+      assert.equal(await radio.locator('span').evaluate(el=>el.getBoundingClientRect().width),28);
+      assert.equal(await radio.locator('span').evaluate(el=>el.getBoundingClientRect().height),28);
+      assert.equal(await radio.locator('span').evaluate(el=>el.style.backgroundColor),{mint:'rgb(143, 214, 196)',amber:'rgb(255, 163, 26)',ocean:'rgb(122, 167, 255)',rose:'rgb(242, 155, 184)'}[Object.keys(r46Palettes)[i]]);
+    }
+    for(const [key,expected] of [['ArrowLeft','rose'],['ArrowRight','mint'],['ArrowRight','amber'],['ArrowRight','ocean'],['ArrowRight','rose'],['ArrowRight','mint']]){
+      await page.keyboard.press(key);
+      const checked=panel.locator('[aria-checked="true"]');assert.equal(await checked.count(),1);
+      assert.equal(await checked.getAttribute('data-palette'),expected);
+      assert.equal(await checked.getAttribute('tabindex'),'0');
+      assert.equal(await checked.evaluate(el=>document.activeElement===el),true);
+      assert.equal(await panel.locator('[tabindex="0"]').count(),1);
+      assert.equal((await r46State(page)).palette,expected);
+    }
+    await page.keyboard.press('Escape');assert.equal(await panel.count(),0);
+    assert.equal(await toggle.getAttribute('aria-expanded'),'false');assert.equal(await toggle.evaluate(el=>document.activeElement===el),true);
+    await toggle.click();await page.locator('.page-heading h1').click();assert.equal(await panel.count(),0);
+    assert.equal(await toggle.evaluate(el=>document.activeElement===el),true);
+  }
+  assert.deepEqual(app.errors,[]);
+});
+
+test("R46 palette layout fits phones and desktop with unobstructed popups", async t => {
+  const fs=require('node:fs');const dir=process.env.R46B_SCREENSHOTS_DIR;if(dir)fs.mkdirSync(dir,{recursive:true});
+  const overlaps=(a,b)=>a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+  for(const width of [320,390,430,1280]){
+    const app=await openDashboard({width,height:width===1280?900:844},{context:{colorScheme:'dark',hasTouch:width<761,isMobile:width<761},setup:r46Setup});t.after(()=>app.context.close());
+    const page=app.page;
+    for(const locale of ['en','zh-TW']){
+      await page.locator('#dashboard-language').selectOption(locale);
+      const controls=await page.locator('.language-preference').boundingBox(),brand=await page.locator('.sidebar .brand').boundingBox(),account=await page.locator('.account-actions>summary').boundingBox();
+      assert.ok(!overlaps(controls,brand),JSON.stringify({width,locale,controls,brand}));
+      assert.ok(!overlaps(controls,account),JSON.stringify({width,locale,controls,account}));
+      for(const selector of ['#theme-toggle','#palette-toggle','#dashboard-language']){const r=await page.locator(selector).boundingBox();assert.ok(r.width>=44&&r.height>=44&&r.x>=0&&r.x+r.width<=width,JSON.stringify({width,selector,r}));}
+      console.log('R46B_LAYOUT_'+width+'_'+locale+'='+JSON.stringify({controls,brand,account}));
+    }
+    const shot=async name=>{if(dir)await page.screenshot({path:path.join(dir,name),animations:'disabled',...(width===1280?{clip:{x:0,y:0,width,height:480}}:{})})};
+    if(width===320||width===390)await shot('mint-dark-'+width+'-closed.png');
+    for(const [palette,mode] of [['amber',width===1280?'dark':'light'],['mint','light']]){
+      await r46Select(page,palette);if((await r46State(page)).mode!==mode)await page.locator('#theme-toggle').click();
+      await page.locator('#palette-toggle').click();
+      const panel=page.locator('#palette-panel'),r=await panel.boundingBox();assert.ok(r.x>=0&&r.x+r.width<=width&&r.y>=0&&r.y+r.height<=844);
+      assert.equal(await panel.evaluate(el=>{const r=el.getBoundingClientRect();return [12,r.width-12].every(x=>el.contains(document.elementFromPoint(r.x+x,r.y+r.height/2)))}),true);
+      if(width===1280||width===390&&palette==='amber')await shot(palette+'-'+mode+'-'+width+'-open.png');
+      if(width===1280){
+        await page.evaluate(()=>{const n=document.querySelector('#notice');n.classList.add('visible');Object.assign(n.style,{position:'fixed',top:'55px',right:'0',left:'auto',width:'250px',height:'100px'})});
+        assert.equal(await panel.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}),true);
+        await page.locator('#notice').evaluate(el=>{el.classList.remove('visible');el.removeAttribute('style')});
+      }
+      await page.keyboard.press('Escape');
+    }
+    assert.deepEqual(app.errors,[]);
+  }
 });

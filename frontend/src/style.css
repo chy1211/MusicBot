@@ -264,8 +264,8 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
 .account-actions[open]>summary::before{transform:rotate(90deg)}
 
 /* Current effective theme: line icons rotate and cross-fade in a 44px circle. */
-#theme-toggle{position:relative;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;flex:0 0 44px;padding:0;border-radius:50%;background:var(--flat);color:var(--text)}
-#theme-toggle svg{position:absolute;width:24px;height:24px;pointer-events:none;transition:transform 250ms ease,opacity 250ms ease}
+#theme-toggle,#palette-toggle{position:relative;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;flex:0 0 44px;padding:0;border-radius:50%;background:var(--flat);color:var(--text)}
+#theme-toggle svg,#palette-toggle svg{position:absolute;width:24px;height:24px;pointer-events:none;transition:transform 250ms ease,opacity 250ms ease}
 #theme-toggle .theme-sun{opacity:0;transform:rotate(-90deg)}
 #theme-toggle .theme-moon{opacity:1;transform:rotate(0)}
 #theme-toggle[data-mode=light] .theme-sun{opacity:1;transform:rotate(0)}
@@ -311,14 +311,21 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
 @keyframes resolution-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){#enqueue[aria-busy="true"]::before,.preview-actions button[aria-busy="true"]::before,.library-toolbar button[aria-busy="true"]::before,.popular-add[aria-busy="true"]::before{animation:none}}
 
-/* R46: keep all preference controls reachable without colliding with the brand. */
-.language-preference{flex-wrap:wrap;row-gap:8px}
-.palette-preference{display:flex;align-items:center;gap:8px;min-width:0}
+/* R46B: compact palette controls and a viewport-aligned color panel. */
+.language-preference{z-index:90;flex-wrap:nowrap}
 .language-preference select{min-height:44px}
-#dashboard-palette{max-width:220px}
+.palette-picker{position:relative;display:flex;flex:0 0 44px}
+.palette-panel{position:absolute;top:calc(100% + 8px);left:0;display:flex;padding:8px;gap:0;background:var(--popover);border:1px solid var(--line);border-radius:16px;box-shadow:var(--glass-shadow);z-index:1}
+.palette-swatch{display:grid;place-items:center;box-sizing:border-box;width:44px;height:44px;min-width:44px;min-height:44px;padding:8px;border:0;border-radius:50%;background:transparent;box-shadow:none}
+.palette-swatch>span{display:block;box-sizing:border-box;width:28px;height:28px;border:1px solid var(--line);border-radius:50%}
+.palette-swatch[aria-checked=true]>span{outline:2px solid var(--text);outline-offset:2px}
+.palette-swatch:hover:enabled{background:var(--raised)}
+.palette-swatch:focus-visible{outline:2px solid var(--text);outline-offset:-2px}
 @media(max-width:760px){
- .language-preference{position:relative;top:auto;right:auto;margin:8px max(16px,var(--safe-right)) 8px max(16px,var(--safe-left));gap:6px}
- .palette-preference{gap:6px}.palette-preference>label{display:none}
- #dashboard-palette{width:160px;max-width:100%}
+ .sidebar .brand{max-width:calc(100% - 220px);white-space:normal}
+}
+/* Narrow phones cannot fit the brand plus 212px of preference controls. */
+@media(max-width:389px){
+ .language-preference{position:relative;top:auto;right:auto;margin:8px max(16px,var(--safe-right)) 8px max(16px,var(--safe-left))}
  .sidebar .brand{max-width:100%;margin-right:0}
 }
