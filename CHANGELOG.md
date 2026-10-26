@@ -7,6 +7,9 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
+- 解析結果不再保留用不到的字幕清單，網頁點歌較少需要重新解析，佇列存檔變小。
+  Discard unused subtitle lists from extraction results, reducing repeat extraction for web requests and shrinking saved queues.
+
 - 開播前先在背景執行緒預讀第一個音訊封包，最多等候 10 秒，避免來源啟動慢造成開頭連續補送；支援 PCM、Opus、響度正規化及重新開啟來源。
   Prepare the first audio frame off the event loop with a 10-second timeout before playback, preventing startup catch-up bursts across PCM, Opus, normalization and source rebuilds.
 - Discord 指令與網頁點歌會排在尚未播放的舊式自動播放清單歌曲前面；插到下一首仍優先，目前播放的歌曲不受影響。

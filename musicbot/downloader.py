@@ -45,6 +45,21 @@ else:
 log = logging.getLogger(__name__)
 
 
+def strip_caption_data(info: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop unused subtitle payloads in place, including nested playlist entries."""
+    pending = [info]
+    while pending:
+        item = pending.pop()
+        if not isinstance(item, dict):
+            continue
+        for key in ("automatic_captions", "subtitles", "requested_subtitles"):
+            item.pop(key, None)
+        entries = item.get("entries")
+        if isinstance(entries, (list, tuple)):
+            pending.extend(entries)
+    return info
+
+
 class YtdlpLogHook:
     def debug(self, msg: Any) -> None:
         """Debug or info level log from yt_dlp"""
@@ -571,7 +586,7 @@ class Downloader:
             self.thread_pool,
             functools.partial(self._run_ytdl, False, "process_ie_result", src, download=True),
         )
-        result = self.ytdl.sanitize_info(result)
+        result = strip_caption_data(self.ytdl.sanitize_info(result))
         result.update(private)
         result["__expected_filename"] = self.ytdl.prepare_filename(result)
         return YtdlpResponseDict(result)
@@ -689,7 +704,7 @@ class Downloader:
             data = await self._extract_with_client(song_subject, *args, **kwargs)
 
         # make sure the ytdlp data is serializable to make it more predictable.
-        data = self.ytdl.sanitize_info(data)
+        data = strip_caption_data(self.ytdl.sanitize_info(data))
 
         # Extractor youtube:search returns a playlist-like result, usually with one entry
         # when searching via a play command.

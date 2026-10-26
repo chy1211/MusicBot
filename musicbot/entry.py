@@ -15,7 +15,7 @@ from yt_dlp.utils import (  # type: ignore[import-untyped]
 from .web_dashboard_extraction import playback_context
 
 from .constructs import Serializable
-from .downloader import YtdlpResponseDict
+from .downloader import YtdlpResponseDict, strip_caption_data
 from .exceptions import ExtractionError, InvalidDataError, MusicbotException
 from .i18n import _X
 from .spotify import Spotify
@@ -418,7 +418,7 @@ class URLPlaylistEntry(BasePlaylistEntry):
             return None
 
         try:
-            info = YtdlpResponseDict(raw_json["info"])
+            info = YtdlpResponseDict(strip_caption_data(raw_json["info"]))
             downloaded = (
                 raw_json["downloaded"] if playlist.bot.config.save_videos else False
             )
@@ -900,7 +900,7 @@ class StreamPlaylistEntry(BasePlaylistEntry):
             return None
 
         try:
-            info = YtdlpResponseDict(raw_json["info"])
+            info = YtdlpResponseDict(strip_caption_data(raw_json["info"]))
             filename = raw_json["filename"]
 
             channel_id = raw_json.get("channel_id", None)
@@ -1110,7 +1110,7 @@ class LocalFilePlaylistEntry(BasePlaylistEntry):
             return None
 
         try:
-            info = YtdlpResponseDict(raw_json["info"])
+            info = YtdlpResponseDict(strip_caption_data(raw_json["info"]))
             # Local entries have never serialized a "downloaded" field.
             # Retain their local path; readiness will rebuild transient filters.
             filename = raw_json.get("filename", "") or info.get("__expected_filename", "")
