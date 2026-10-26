@@ -32,61 +32,19 @@ jobs:
           BUILD_BRANCH: ${{ github.event_name == 'schedule' && 'dev' || github.head_ref || github.ref_name }}
           CAN_PUBLISH: ${{ github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.ref == 'refs/heads/dev' || startsWith(github.ref, 'refs/tags/v')) }}
         run: |
-          echo "name=ghcr.io/${REPOSITORY_OWNER,,}/musicbot" >> "$GITHUB_OUTPUT"
-          echo "publish=$CAN_PUBLISH" >> "$GITHUB_OUTPUT"
-          echo "shortsha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-          echo "branch=$BUILD_BRANCH" >> "$GITHUB_OUTPUT"
+          {
+            echo "name=ghcr.io/${REPOSITORY_OWNER,,}/musicbot"
+            echo "publish=$CAN_PUBLISH"
+            echo "shortsha=$(git rev-parse --short=7 HEAD)"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "branch=$BUILD_BRANCH"
+          } >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
       - uses: docker/setup-buildx-action@v4
-      - name: Build and load amd64 candidate (never push)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          build-args: |
-            BUILD_COMMIT=${{ steps.image.outputs.sha }}
-            BUILD_TIME=${{ steps.image.outputs.time }}
-            BUILD_BRANCH=${{ steps.image.outputs.branch }}
-          platforms: linux/amd64
-          load: true
-          push: false
-          pull: true
-          no-cache: ${{ github.event_name == 'schedule' }}
-          tags: musicbot-webtest-amd64:ci
-          cache-from: type=gha,scope=musicbot-amd64
-          cache-to: type=gha,scope=musicbot-amd64,mode=max
-      - name: Required amd64 smoke tests and informational YouTube test
-        run: python3 tools/smoke_test_image.py musicbot-webtest-amd64:ci --platform linux/amd64
-      - name: Build and load arm64 candidate (never push)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          build-args: |
-            BUILD_COMMIT=${{ steps.image.outputs.sha }}
-            BUILD_TIME=${{ steps.image.outputs.time }}
-            BUILD_BRANCH=${{ steps.image.outputs.branch }}
-          platforms: linux/arm64
-          load: true
-          push: false
-          pull: true
-          no-cache: ${{ github.event_name == 'schedule' }}
-          tags: musicbot-webtest-arm64:ci
-          cache-from: type=gha,scope=musicbot-arm64
-          cache-to: type=gha,scope=musicbot-arm64,mode=max
-      - name: Required arm64 checks under QEMU
-        run: python3 tools/smoke_test_image.py musicbot-webtest-arm64:ci --platform linux/arm64 --basic-only
-      # No registry login, metadata publication or push until BOTH gates pass.
-      - uses: docker/login-action@v4
-        if: steps.image.outputs.publish == 'true'
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Tags and OCI metadata
-        if: steps.image.outputs.publish == 'true'
+      - name: Tags and OCI metadata (local calculation only)
         id: meta
         uses: docker/metadata-action@v6
         with:
@@ -100,8 +58,25 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
             org.opencontainers.image.revision=${{ steps.image.outputs.sha }}
-      - name: Publish tested amd64 and arm64 layers
-        if: steps.image.outputs.publish == 'true'
+      - name: Check digest gate helper regressions
+        run: python3 -m unittest tools.test_ci_image_digest
+      - name: Install OCI copy tool and start runner-local registry
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends skopeo
+          mkdir -p "$RUNNER_TEMP/musicbot-registry"
+          docker run -d --name musicbot-ci-registry \
+            -p 127.0.0.1:5000:5000 \
+            --mount "type=bind,src=$RUNNER_TEMP/musicbot-registry,dst=/var/lib/registry" \
+            registry:2
+          for attempt in {1..30}; do
+            echo "Waiting for local registry ($attempt/30)"
+            if curl -fsS http://127.0.0.1:5000/v2/; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Build both platforms ONCE into an OCI archive (never push)
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -110,29 +85,90 @@ jobs:
             BUILD_TIME=${{ steps.image.outputs.time }}
             BUILD_BRANCH=${{ steps.image.outputs.branch }}
           platforms: linux/amd64,linux/arm64
-          push: true
-          # Scheduled candidates already refreshed all layers with no-cache.
-          # Reuse exactly those layers here instead of resolving dependencies again.
-          pull: false
-          no-cache: false
-          tags: ${{ steps.meta.outputs.tags }}
+          outputs: type=oci,dest=${{ runner.temp }}/musicbot-candidate.tar
+          push: false
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha,scope=musicbot-amd64
-            type=gha,scope=musicbot-arm64
+          cache-from: type=gha,scope=musicbot-multiarch
+          cache-to: type=gha,scope=musicbot-multiarch,mode=max
+      - name: Stage archive without changing its digest
+        id: candidate
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          python3 tools/ci_image_digest.py stage \
+            "$RUNNER_TEMP/musicbot-candidate.tar" "$BUILD_DIGEST" localhost:5000/musicbot
+      - name: Required amd64 smoke tests and informational YouTube test
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.reference }}
+        run: |
+          docker pull --platform linux/amd64 "$CANDIDATE"
+          python3 tools/smoke_test_image.py "$CANDIDATE" --platform linux/amd64
+      - name: Required arm64 checks under QEMU
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.reference }}
+        run: |
+          docker pull --platform linux/arm64 "$CANDIDATE"
+          python3 tools/smoke_test_image.py "$CANDIDATE" --platform linux/arm64 --basic-only
+      - name: Record the digest that passed BOTH gates
+        id: tested
+        env:
+          CANDIDATE_DIGEST: ${{ steps.candidate.outputs.digest }}
+        run: |
+          echo "TESTED_DIGEST=$CANDIDATE_DIGEST"
+          echo "digest=$CANDIDATE_DIGEST" >> "$GITHUB_OUTPUT"
+      # No external registry login or publication until BOTH gates pass.
+      - uses: docker/login-action@v4
+        if: steps.image.outputs.publish == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the tested index and verify every official tag (NO build)
+        if: steps.image.outputs.publish == 'true'
+        id: publish
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.reference }}
+          TESTED_DIGEST: ${{ steps.tested.outputs.digest }}
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.name }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          python3 tools/ci_image_digest.py publish \
+            "$CANDIDATE" "$TESTED_DIGEST" "$IMAGE_REPOSITORY" \
+            --authfile "$HOME/.docker/config.json"
       - name: Record gate outcome
         if: always()
         env:
           RESULT: ${{ job.status }}
           CAN_PUBLISH: ${{ steps.image.outputs.publish }}
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+          TESTED_DIGEST: ${{ steps.tested.outputs.digest }}
+          PUBLISHED_DIGEST: ${{ steps.publish.outputs.digest }}
         run: |
           {
             echo '### Image publication gate'
             echo "Job result: $RESULT; publication allowed by ref policy: $CAN_PUBLISH."
+            echo "Build digest: ${BUILD_DIGEST:-unavailable}"
+            echo "Tested digest: ${TESTED_DIGEST:-required gates did not both pass}"
+            echo "Published digest (all official tags): ${PUBLISHED_DIGEST:-not published or verification failed}"
             echo 'Required: amd64 startup/import/tools/public audio and arm64 offline checks.'
             echo 'YouTube: informational; datacenter IP blocking does not prevent publication.'
-            echo 'Any required failure skips publication and leaves registry tags unchanged.'
+            echo 'Required gate failures skip publication. Digest/copy failures fail the job.'
+            echo 'Only a runner-local ci tag is used; no temporary ghcr tag is created.'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Remove candidate images
+          if [[ -n "$PUBLISHED_DIGEST" && "$TESTED_DIGEST" != "$PUBLISHED_DIGEST" ]]; then
+            echo '::error::Published digest differs from tested digest'
+            exit 1
+          fi
+      - name: Remove runner-local candidate storage
         if: always()
-        run: docker image rm musicbot-webtest-amd64:ci musicbot-webtest-arm64:ci >/dev/null 2>&1 || true
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.reference }}
+        run: |
+          if [[ -n "$CANDIDATE" ]]; then
+            docker image rm "$CANDIDATE" >/dev/null 2>&1 || true
+          fi
+          docker rm -fv musicbot-ci-registry >/dev/null 2>&1 || true
+          rm -f "$RUNNER_TEMP/musicbot-candidate.tar"
+          sudo rm -rf -- "$RUNNER_TEMP/musicbot-registry"
