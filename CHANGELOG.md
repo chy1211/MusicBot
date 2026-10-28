@@ -5,6 +5,11 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### 變更 / Changed
+
+- 網頁控制台「最近播過」的按鈕改成按一下直接加入佇列，不用再經過搜尋預覽。
+  Recently played buttons in the web dashboard now add the song to the queue in one click instead of opening a search preview.
+
 ### 修正 / Fixed
 
 - 準備下一首時若語音已斷線，播放器會安靜停止並把該首留在佇列最前面，不再留下錯誤紀錄。
