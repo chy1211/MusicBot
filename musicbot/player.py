@@ -473,6 +473,7 @@ class MusicPlayer(EventEmitter, Serializable):
             if self.is_stopped or _continue:
                 # Get the entry before we try to ready it, so it can be passed to error callbacks.
                 entry_up_next = self.playlist.peek()
+                playback_voice_client = self.voice_client
                 try:
                     entry = await self.playlist.get_next_entry()
                 except IndexError as e:
@@ -484,7 +485,7 @@ class MusicPlayer(EventEmitter, Serializable):
                     self.emit("error", player=self, entry=entry_up_next, ex=e)
                     entry = None
 
-                def abandon_disconnected_playback() -> None:
+                async def abandon_disconnected_playback(*, restore_entry: bool = True) -> None:
                     self._preparing_source = None
                     self._pending_seek = None
                     self._current_entry = None
@@ -493,6 +494,17 @@ class MusicPlayer(EventEmitter, Serializable):
                     self._skip_preparing = False
                     if not self.is_dead:
                         self.state = MusicPlayerState.STOPPED
+                        if restore_entry and entry is not None:
+                            # Restore this ready entry without entry-added side effects,
+                            # round-robin reordering, or starting another download.
+                            self.playlist.entries.appendleft(entry)
+                            guild = (
+                                playback_voice_client.guild
+                                if playback_voice_client is not None
+                                else entry.channel.guild if entry.channel else None
+                            )
+                            if guild is not None:
+                                await self.bot.serialize_queue(guild)
                     log.voicedebug(  # type: ignore[attr-defined]
                         "Player stopped or voice disconnected while preparing playback."
                     )
@@ -503,7 +515,7 @@ class MusicPlayer(EventEmitter, Serializable):
                     or self.voice_client is None
                     or not self.voice_client.is_connected()
                 ):
-                    abandon_disconnected_playback()
+                    await abandon_disconnected_playback()
                     return
 
                 # If nothing left to play, transition to the stopped state.
@@ -643,7 +655,10 @@ class MusicPlayer(EventEmitter, Serializable):
                     or not voice_client.is_connected()
                 ):
                     asyncio.get_running_loop().run_in_executor(None, discard_source)
-                    abandon_disconnected_playback()
+                    # A concurrent stop/skip has already discarded this entry.
+                    await abandon_disconnected_playback(
+                        restore_entry=self._preparing_source is prepared_source
+                    )
                     return
 
                 if self._preparing_source is not prepared_source:
@@ -669,7 +684,7 @@ class MusicPlayer(EventEmitter, Serializable):
                     if str(exc) != "Not connected to voice.":
                         raise
                     asyncio.get_running_loop().run_in_executor(None, discard_source)
-                    abandon_disconnected_playback()
+                    await abandon_disconnected_playback()
                     return
 
                 self._current_player = voice_client

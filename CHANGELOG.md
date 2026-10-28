@@ -7,8 +7,8 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
-- Stop the player quietly when the voice connection drops while the next song is being prepared.
-
+- 準備下一首時若語音已斷線，播放器會安靜停止並把該首留在佇列最前面，不再留下錯誤紀錄。
+  Stop the player quietly when voice disconnects while preparing the next song, keeping it at the front of the queue for reconnection without logging an error.
 - 解析結果不再保留用不到的字幕清單，網頁點歌較少需要重新解析，佇列存檔變小。
   Discard unused subtitle lists from extraction results, reducing repeat extraction for web requests and shrinking saved queues.
 

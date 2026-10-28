@@ -1,5 +1,6 @@
 """Startup-buffer preparation uses real player control flow, without Discord I/O."""
 import asyncio
+import json
 import logging
 import threading
 import time
@@ -9,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from discord import AudioSource, ClientException, PCMVolumeTransformer
 import musicbot.player as runtime
+from musicbot.playlist import Playlist
 import test_loudness_normalization as loudness
 
 # The application registers this custom level at startup; standalone tests do not.
@@ -433,12 +435,16 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
         helper = loudness.RealModuleLoudnessTests()
         helper.setUp()
         entry = helper.entry()
-        voice = Mock(channel=NS(bitrate=128000))
+        entry._is_downloaded = True
+        entry._download = AsyncMock()
+        following = helper.entry()
+        following.info["title"] = "Following queued track"
+        following.filename = "/tmp/following.ogg"
+        following._is_downloaded = True
+        voice = Mock(channel=NS(bitrate=128000), guild=NS(id=123))
         voice.is_connected.return_value = True
-        playlist = Mock()
-        playlist.peek.return_value = entry
-        playlist.get_next_entry = AsyncMock(return_value=entry)
         self.tasks = []
+        self.serialized = []
 
         def create_task(coro, **kwargs):
             task = asyncio.create_task(coro, **kwargs)
@@ -447,8 +453,15 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
 
         bot = NS(loop=asyncio.get_running_loop(), create_task=create_task,
                  config=NS(default_volume=.15, use_opus_audio=True,
-                           use_opus_probe=False, use_experimental_equalization=False))
+                           use_opus_probe=False, use_experimental_equalization=False,
+                           pre_download_next_song=False))
+        playlist = Playlist(bot)
+        playlist.entries.extend((entry, following))
+        playlist.get_next_entry = AsyncMock(wraps=playlist.get_next_entry)
+        playlist.emit = Mock()
         player = runtime.MusicPlayer(bot, voice, playlist)
+        bot.serialize_queue = AsyncMock(
+            side_effect=lambda guild: self.serialized.append(player.serialize()))
         player.emit = Mock()
         return player, entry, voice
 
@@ -457,7 +470,7 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
         player._current_entry = entry
         player._source = Mock()
 
-    def assert_abandoned(self, player, *, dead=False):
+    def assert_abandoned(self, player, *, dead=False, restored=True):
         self.assertEqual(player.state, runtime.MusicPlayerState.DEAD if dead
                          else runtime.MusicPlayerState.STOPPED)
         for name in ('_pending_seek', '_current_entry', '_current_player',
@@ -466,9 +479,23 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(player._skip_preparing)
         player.emit.assert_not_called()
         self.assertFalse(player._play_lock.locked())
+        player.playlist.emit.assert_not_called()
+        if dead or not restored:
+            player.bot.serialize_queue.assert_not_awaited()
+            self.assertEqual(self.serialized, [])
+        else:
+            player.bot.serialize_queue.assert_awaited_once()
+            snapshot = json.loads(self.serialized[-1])
+            self.assertIsNone(snapshot["data"]["current_entry"]["entry"])
+            queued = snapshot["data"]["entries"]["data"]["entries"]
+            self.assertEqual(queued[0]["data"]["info"]["title"], "DemoUser track")
+            self.assertTrue(queued[0]["data"]["downloaded"])
+            self.assertEqual(queued[1]["data"]["info"]["title"], "Following queued track")
 
     async def assert_can_restart(self, player, entry, voice):
-        # Exercise public play() after reconnecting this same live player.
+        # The real deque must supply the restored entry before the following song.
+        self.assertEqual(list(player.playlist.entries)[0], entry)
+        self.assertEqual(len(player.playlist.entries), 2)
         player.voice_client = voice
         voice.is_connected.return_value = True
         voice.play.reset_mock(side_effect=True)
@@ -483,6 +510,10 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(player.is_paused)
         self.assertIsNone(player._pending_seek)
         player.emit.assert_called_once_with('play', player=player, entry=entry)
+        self.assertEqual(len(player.playlist.entries), 1)
+        self.assertEqual(player.playlist.peek().title, "Following queued track")
+        entry._download.assert_not_awaited()
+        player.playlist.emit.assert_not_called()
 
     async def test_disconnect_during_download_does_not_build_source(self):
         for change in ('disconnect', 'missing_voice', 'dead'):
@@ -490,21 +521,29 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
                 player, entry, voice = self.fixture()
                 self.seed_seek(player, entry)
 
+                get_next_entry = player.playlist.get_next_entry
+
                 async def download():
+                    result = await get_next_entry()
                     if change == 'dead':
                         player.kill()
                     elif change == 'missing_voice':
                         player.voice_client = None
                     else:
                         voice.is_connected.return_value = False
-                    return entry
+                    return result
 
-                player.playlist.get_next_entry.side_effect = download
+                player.playlist.get_next_entry = AsyncMock(side_effect=download)
                 with patch.object(runtime, 'FFmpegOpusAudio') as source:
                     await runtime.MusicPlayer._play(player)
                 source.assert_not_called()
                 voice.play.assert_not_called()
                 self.assert_abandoned(player, dead=change == 'dead')
+                if change == 'dead':
+                    self.assertNotIn(entry, player.playlist.entries)
+                else:
+                    player.playlist.get_next_entry = get_next_entry
+                    await self.assert_can_restart(player, entry, voice)
 
     async def test_disconnect_during_prepare_cleans_source_without_play_event(self):
         for change in ('disconnect', 'missing_voice', 'dead'):
@@ -537,6 +576,8 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
                 self.assert_abandoned(player, dead=change == 'dead')
                 if change != 'dead':
                     await self.assert_can_restart(player, entry, voice)
+                else:
+                    self.assertNotIn(entry, player.playlist.entries)
 
     async def test_voice_play_disconnect_race_cleans_source_and_resets_seek(self):
         player, entry, voice = self.fixture()
@@ -580,3 +621,61 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
                         player.emit.assert_not_called()
                     finally:
                         DelayedOpus.last.cleanup()
+
+    async def test_continue_disconnect_restores_selected_next_entry(self):
+        player, entry, voice = self.fixture()
+        player.state = runtime.MusicPlayerState.PLAYING
+        voice.is_connected.return_value = False
+        await runtime.MusicPlayer._play(player, _continue=True)
+        self.assert_abandoned(player)
+        await self.assert_can_restart(player, entry, voice)
+
+    async def test_disconnected_empty_queue_does_not_restore_or_serialize(self):
+        player, _, voice = self.fixture()
+        player.playlist.entries.clear()
+        voice.is_connected.return_value = False
+        await runtime.MusicPlayer._play(player)
+        self.assert_abandoned(player, restored=False)
+        self.assertEqual(list(player.playlist.entries), [])
+
+    async def test_disconnect_after_skip_or_stop_does_not_restore_entry(self):
+        for action in ("skip", "stop"):
+            with self.subTest(action=action):
+                player, entry, voice = self.fixture()
+                with patch.object(DelayedOpus, "block", True):
+                    task = asyncio.create_task(self.run_player(player))
+                    try:
+                        async with asyncio.timeout(1):
+                            while (player._preparing_source is None
+                                   or not player._preparing_source._source.started.is_set()):
+                                if task.done():
+                                    await task
+                                await asyncio.sleep(.001)
+                        raw = player._preparing_source._source
+                        getattr(player, action)()
+                        player.emit.reset_mock()
+                        voice.is_connected.return_value = False
+                    finally:
+                        if hasattr(DelayedOpus, "last"):
+                            DelayedOpus.last.released.set()
+                        await task
+                self.assertTrue(await asyncio.to_thread(raw.cleaned.wait, .5))
+                self.assert_abandoned(player, restored=False)
+                self.assertNotIn(entry, player.playlist.entries)
+                self.assertEqual(player.playlist.peek().title, "Following queued track")
+
+
+    async def test_dead_during_voice_play_disconnect_does_not_restore(self):
+        player, entry, voice = self.fixture()
+
+        def disconnect(source, **kwargs):
+            player.kill()
+            raise ClientException("Not connected to voice.")
+
+        voice.play.side_effect = disconnect
+        with patch.object(DelayedOpus, "delay", 0):
+            await self.run_player(player)
+        self.assertTrue(await asyncio.to_thread(DelayedOpus.last.cleaned.wait, .5))
+        self.assertTrue(DelayedOpus.last.stderr.closed)
+        self.assert_abandoned(player, dead=True)
+        self.assertNotIn(entry, player.playlist.entries)
