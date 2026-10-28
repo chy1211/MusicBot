@@ -128,6 +128,9 @@ class FakeVoice:
         self.channel = SimpleNamespace(bitrate=128000)
         self.last = None
 
+    def is_connected(self):
+        return True
+
     def play(self, source, after):
         self.last = source
 

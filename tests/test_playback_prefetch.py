@@ -5,9 +5,9 @@ import threading
 import time
 import unittest
 from types import MethodType, SimpleNamespace as NS
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
-from discord import AudioSource, PCMVolumeTransformer
+from discord import AudioSource, ClientException, PCMVolumeTransformer
 import musicbot.player as runtime
 import test_loudness_normalization as loudness
 
@@ -24,6 +24,7 @@ class DelayedOpus(AudioSource):
 
     def __init__(self, *args, **kwargs):
         type(self).last = self
+        self.stderr = kwargs.get("stderr")
         self.calls = 0
         self.released = threading.Event()
         self.started = threading.Event()
@@ -422,3 +423,160 @@ class PartialTimeoutPlayerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(player._source.frames, 1)
         player._source.cleanup()
         self.assertTrue(await asyncio.to_thread(player._source._prefetch_done.wait, .5))
+
+
+class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
+    setUp = PrefetchTests.setUp
+    run_player = PrefetchTests.run_player
+
+    def fixture(self):
+        helper = loudness.RealModuleLoudnessTests()
+        helper.setUp()
+        entry = helper.entry()
+        voice = Mock(channel=NS(bitrate=128000))
+        voice.is_connected.return_value = True
+        playlist = Mock()
+        playlist.peek.return_value = entry
+        playlist.get_next_entry = AsyncMock(return_value=entry)
+        self.tasks = []
+
+        def create_task(coro, **kwargs):
+            task = asyncio.create_task(coro, **kwargs)
+            self.tasks.append(task)
+            return task
+
+        bot = NS(loop=asyncio.get_running_loop(), create_task=create_task,
+                 config=NS(default_volume=.15, use_opus_audio=True,
+                           use_opus_probe=False, use_experimental_equalization=False))
+        player = runtime.MusicPlayer(bot, voice, playlist)
+        player.emit = Mock()
+        return player, entry, voice
+
+    def seed_seek(self, player, entry):
+        player._pending_seek = dict(entry=entry, position=20, paused=True)
+        player._current_entry = entry
+        player._source = Mock()
+
+    def assert_abandoned(self, player, *, dead=False):
+        self.assertEqual(player.state, runtime.MusicPlayerState.DEAD if dead
+                         else runtime.MusicPlayerState.STOPPED)
+        for name in ('_pending_seek', '_current_entry', '_current_player',
+                     '_source', '_preparing_source', '_stderr_future'):
+            self.assertIsNone(getattr(player, name), name)
+        self.assertFalse(player._skip_preparing)
+        player.emit.assert_not_called()
+        self.assertFalse(player._play_lock.locked())
+
+    async def assert_can_restart(self, player, entry, voice):
+        # Exercise public play() after reconnecting this same live player.
+        player.voice_client = voice
+        voice.is_connected.return_value = True
+        voice.play.reset_mock(side_effect=True)
+        with patch.multiple(runtime, Thread=loudness.FakeThread,
+                            FFmpegOpusAudio=DelayedOpus), patch.object(DelayedOpus, 'delay', 0):
+            player.play()
+            await self.tasks[-1]
+        self.addCleanup(player._source.cleanup)
+        voice.play.assert_called_once()
+        self.assertEqual(player.state, runtime.MusicPlayerState.PLAYING)
+        self.assertIs(player.current_entry, entry)
+        self.assertFalse(player.is_paused)
+        self.assertIsNone(player._pending_seek)
+        player.emit.assert_called_once_with('play', player=player, entry=entry)
+
+    async def test_disconnect_during_download_does_not_build_source(self):
+        for change in ('disconnect', 'missing_voice', 'dead'):
+            with self.subTest(change=change):
+                player, entry, voice = self.fixture()
+                self.seed_seek(player, entry)
+
+                async def download():
+                    if change == 'dead':
+                        player.kill()
+                    elif change == 'missing_voice':
+                        player.voice_client = None
+                    else:
+                        voice.is_connected.return_value = False
+                    return entry
+
+                player.playlist.get_next_entry.side_effect = download
+                with patch.object(runtime, 'FFmpegOpusAudio') as source:
+                    await runtime.MusicPlayer._play(player)
+                source.assert_not_called()
+                voice.play.assert_not_called()
+                self.assert_abandoned(player, dead=change == 'dead')
+
+    async def test_disconnect_during_prepare_cleans_source_without_play_event(self):
+        for change in ('disconnect', 'missing_voice', 'dead'):
+            with self.subTest(change=change):
+                player, entry, voice = self.fixture()
+                self.seed_seek(player, entry)
+                with patch.object(DelayedOpus, 'block', True):
+                    task = asyncio.create_task(self.run_player(player))
+                    try:
+                        async with asyncio.timeout(1):
+                            while (player._preparing_source is None
+                                   or not player._preparing_source._source.started.is_set()):
+                                if task.done():
+                                    await task
+                                await asyncio.sleep(.001)
+                        raw = player._preparing_source._source
+                        if change == 'dead':
+                            player.kill()
+                        elif change == 'missing_voice':
+                            player.voice_client = None
+                        else:
+                            voice.is_connected.return_value = False
+                    finally:
+                        if hasattr(DelayedOpus, 'last'):
+                            DelayedOpus.last.released.set()
+                        await task
+                self.assertTrue(await asyncio.to_thread(raw.cleaned.wait, .5))
+                self.assertTrue(raw.stderr.closed)
+                voice.play.assert_not_called()
+                self.assert_abandoned(player, dead=change == 'dead')
+                if change != 'dead':
+                    await self.assert_can_restart(player, entry, voice)
+
+    async def test_voice_play_disconnect_race_cleans_source_and_resets_seek(self):
+        player, entry, voice = self.fixture()
+        self.seed_seek(player, entry)
+        voice.play.side_effect = ClientException('Not connected to voice.')
+        with patch.object(DelayedOpus, 'delay', 0):
+            await self.run_player(player)
+        voice.play.assert_called_once()
+        self.assertTrue(await asyncio.to_thread(DelayedOpus.last.cleaned.wait, .5))
+        self.assertTrue(DelayedOpus.last.stderr.closed)
+        self.assert_abandoned(player)
+        await self.assert_can_restart(player, entry, voice)
+
+    async def test_connected_playback_keeps_source_and_emits_play(self):
+        player, entry, voice = self.fixture()
+        with patch.object(DelayedOpus, 'delay', 0):
+            await self.run_player(player)
+        self.addCleanup(player._source.cleanup)
+        source = player._source
+        self.assertFalse(DelayedOpus.last.cleaned.is_set())
+        voice.play.assert_called_once_with(source, after=player._playback_finished)
+        self.assertIs(player._current_player, voice)
+        self.assertIs(player.current_entry, entry)
+        self.assertEqual(player.state, runtime.MusicPlayerState.PLAYING)
+        self.assertEqual(source.frames, 0)
+        self.assertIsNone(player._preparing_source)
+        self.assertIsNone(player._pending_seek)
+        player.emit.assert_called_once_with('play', player=player, entry=entry)
+
+    async def test_other_play_errors_still_propagate(self):
+        for error in (TypeError('Invalid audio source'),
+                      ClientException('Already playing audio.')):
+            with self.subTest(error=error):
+                player, _, voice = self.fixture()
+                voice.play.side_effect = error
+                with patch.object(DelayedOpus, 'delay', 0):
+                    try:
+                        with self.assertRaises(type(error)) as raised:
+                            await self.run_player(player)
+                        self.assertIs(raised.exception, error)
+                        player.emit.assert_not_called()
+                    finally:
+                        DelayedOpus.last.cleanup()

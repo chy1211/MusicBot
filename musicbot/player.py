@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from discord import (
     AudioSource,
+    ClientException,
     FFmpegOpusAudio,
     FFmpegPCMAudio,
     PCMVolumeTransformer,
@@ -483,6 +484,28 @@ class MusicPlayer(EventEmitter, Serializable):
                     self.emit("error", player=self, entry=entry_up_next, ex=e)
                     entry = None
 
+                def abandon_disconnected_playback() -> None:
+                    self._preparing_source = None
+                    self._pending_seek = None
+                    self._current_entry = None
+                    self._current_player = None
+                    self._source = None
+                    self._skip_preparing = False
+                    if not self.is_dead:
+                        self.state = MusicPlayerState.STOPPED
+                    log.voicedebug(  # type: ignore[attr-defined]
+                        "Player stopped or voice disconnected while preparing playback."
+                    )
+
+                # Downloading may outlive the voice connection or the player.
+                if (
+                    self.is_dead
+                    or self.voice_client is None
+                    or not self.voice_client.is_connected()
+                ):
+                    abandon_disconnected_playback()
+                    return
+
                 # If nothing left to play, transition to the stopped state.
                 if not entry:
                     self.stop()
@@ -613,6 +636,16 @@ class MusicPlayer(EventEmitter, Serializable):
                         self.play(_continue=True)
                     return
 
+                voice_client = self.voice_client
+                if (
+                    self.is_dead
+                    or voice_client is None
+                    or not voice_client.is_connected()
+                ):
+                    asyncio.get_running_loop().run_in_executor(None, discard_source)
+                    abandon_disconnected_playback()
+                    return
+
                 if self._preparing_source is not prepared_source:
                     asyncio.get_running_loop().run_in_executor(None, discard_source)
                     if self._skip_preparing and not self.is_dead:
@@ -629,9 +662,17 @@ class MusicPlayer(EventEmitter, Serializable):
                     "Playing %(source)r using %(client)r",
                     {"source": self._source, "client": self.voice_client},
                 )
-                self.voice_client.play(self._source, after=self._playback_finished)
+                try:
+                    voice_client.play(self._source, after=self._playback_finished)
+                except ClientException as exc:
+                    # Discord checks again inside play(), after our connection check.
+                    if str(exc) != "Not connected to voice.":
+                        raise
+                    asyncio.get_running_loop().run_in_executor(None, discard_source)
+                    abandon_disconnected_playback()
+                    return
 
-                self._current_player = self.voice_client
+                self._current_player = voice_client
 
                 # I need to add ytdl hooks
                 self.state = MusicPlayerState.PLAYING
