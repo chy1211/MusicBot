@@ -6,10 +6,12 @@ const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{p
 const settle=async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve()};
 function runtime(handler=async()=>({tracks:[song]})){
  const dashboard={guildId:"1",authenticated:true,connected:true,busy:false,epoch:0},requests=[],commands=[],notices=[];let changed;
- const c=load("frontend/src/composables/usePopular.ts",{vue:{ref:vue.ref,computed:vue.computed,watch:(_,fn)=>changed=fn},
+ const imports={vue:{ref:vue.ref,computed:vue.computed,watch:(_,fn)=>changed=fn},
  '../store':{dashboard},'../api':{request:async(path,options)=>{requests.push({path,options});return handler(path,options)}},
  './useDashboard':{command:async(action,body)=>{commands.push({action,body});return{}},notice:(...args)=>notices.push(args)},
- './useLocale':{t:key=>key},'./useTrack':{safeURL:value=>{try{const u=new URL(value);return /^https?:$/.test(u.protocol)&&!u.username&&!u.password?value:""}catch{return""}}}},{Error});
+ './useLocale':{t:key=>key},'./useTrack':{safeURL:value=>{try{const u=new URL(value);return /^https?:$/.test(u.protocol)&&!u.username&&!u.password?value:""}catch{return""}}}};
+ imports["./useAddToQueue"]=load("frontend/src/composables/useAddToQueue.ts",imports,{Error});
+ const c=load("frontend/src/composables/usePopular.ts",imports,{Error});
  return{popular:c.usePopular(),dashboard,requests,commands,notices,changed:()=>changed()};
 }
 test("popular lists rank, count and duration through member API",async()=>{

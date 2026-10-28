@@ -1,7 +1,7 @@
 ﻿import { computed, ref, watch } from 'vue'
 import { dashboard } from '../store'
 import { request } from '../api'
-import { command, notice } from './useDashboard'
+import { useAddToQueue } from './useAddToQueue'
 import { t } from './useLocale'
 import { safeURL } from './useTrack'
 import type { LibraryTrack } from './useLibrary'
@@ -15,10 +15,8 @@ const tracks = ref<PopularTrack[]>([])
 const loading = ref(false)
 const error = ref('')
 const empty = ref(false)
-const adding = ref<string | null>(null)
-const resolutionState = ref<'queued'|'resolving'>('queued')
+const { adding, resolutionState, add } = useAddToQueue(error)
 let requestEpoch = 0
-let actionEpoch = 0
 
 function errorMessage(value: unknown): string { return value instanceof Error && value.message ? value.message : t('m0221') }
 function safeUrl(value: unknown): string { return safeURL(value) }
@@ -48,28 +46,6 @@ async function load(): Promise<void> {
       error.value = errorMessage(cause)
     }
   } finally { if (epoch === requestEpoch && sessionEpoch === dashboard.epoch) loading.value = false }
-}
-async function add(track: PopularTrack): Promise<void> {
-  const guild = dashboard.guildId
-  if (!guild || !dashboard.authenticated || !dashboard.connected || dashboard.busy || adding.value || !safeUrl(track.url)) return
-  const epoch = ++actionEpoch
-  const sessionEpoch = dashboard.epoch
-  adding.value = track.url
-  resolutionState.value = 'queued'
-  error.value = ''
-  try {
-    const result = await request<{ results?: Array<{ kind: string; allowed: boolean; preview_id?: string; url: string; reason?: string }> }>(
-      '/api/guilds/' + encodeURIComponent(guild) + '/resolve',
-      { method: 'POST', body: { query: track.url, action: 'play' }, onResolutionState: state => { if (epoch === actionEpoch) resolutionState.value = state } },
-    )
-    if (epoch !== actionEpoch || sessionEpoch !== dashboard.epoch || guild !== dashboard.guildId || !dashboard.connected) return
-    const candidate = result.results?.find(row => row.kind === 'track' && row.allowed && row.preview_id && safeUrl(row.url))
-    if (!candidate?.preview_id) throw new Error(result.results?.[0]?.reason || t('m0613'))
-    if (dashboard.busy) throw new Error(t('m0614'))
-    await command('play', { query: candidate.url, preview_id: candidate.preview_id })
-  } catch (cause) {
-    if (epoch === actionEpoch && sessionEpoch === dashboard.epoch && guild === dashboard.guildId) { error.value = errorMessage(cause); notice(error.value, true) }
-  } finally { if (epoch === actionEpoch) adding.value = null }
 }
 function setPeriod(value: string): void {
   if ((validPeriods as readonly string[]).includes(value) && period.value !== value) {

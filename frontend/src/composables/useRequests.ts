@@ -2,7 +2,7 @@ import {reactive,watch} from 'vue'
 import {request,APIError} from '../api'
 import {dashboard,usable,type Track} from '../store'
 import {command,notice} from './useDashboard'
-import {songIdentity,safeURL} from './useTrack'
+import {songIdentity} from './useTrack'
 import {t} from './useLocale'
 export interface PreviewEntry extends Track {item_id:string;allowed:boolean;default_selected?:boolean;is_requested?:boolean;reason?:string}
 export interface Preview extends Track {kind:string;allowed:boolean;preview_id:string;entries?:PreviewEntry[];count?:number;checked_count?:number;eligible_count?:number;reason?:string;warning?:string;source_url?:string;saveable?:boolean;save_revision?:string;can_playnext?:boolean;selected:string[];name:string;pending:boolean}
@@ -14,4 +14,3 @@ export async function resolveQuery(){if(!usable.value||requests.loading||!reques
 export async function confirmPreview(song:Preview,action:'play'|'playnext'='play'){if(!usable.value||song.pending||!song.allowed||action==='playnext'&&(song.kind==='playlist'||song.can_playnext===false)||song.kind==='playlist'&&!song.selected.length)return;song.pending=true;try{const value=await command(action,{query:song.url,preview_id:song.preview_id,...(song.kind==='playlist'?{selected_items:song.entries?.filter(e=>song.selected.includes(e.item_id)).map(e=>e.item_id)}:{})});if(value){clearPreview();requests.query=''}}catch(error){if(error instanceof APIError&&Array.isArray(error.body.results))requests.results=(error.body.results as Preview[]).map(s=>({...s,selected:[],name:s.title,pending:false}))}finally{song.pending=false}}
 export function selectPreview(song:Preview,all:boolean){song.selected=all&&song.allowed?(song.entries||[]).filter(e=>e.allowed).map(e=>e.item_id):[]}
 export function duplicateMessage(url:string,batch=false){const key=songIdentity(url);if(!key)return '';const position=dashboard.snapshot?.queue.find(s=>songIdentity(s.url)===key)?.position,current=key===songIdentity(dashboard.snapshot?.current?.url);return position!==undefined?batch?t('m0074'):t('m0075')+position+t('m0033')+(current?t('m0076'):''):current?batch?t('m0077'):t('m0078'):''}
-export async function previewHistory(song:Track){if(!safeURL(song.url)||!usable.value)return;requests.query=song.url;await resolveQuery();document.querySelector('#preview-panel')?.scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})}
