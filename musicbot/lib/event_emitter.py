@@ -1,12 +1,14 @@
 import asyncio
 import collections
+import inspect
 import traceback
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, DefaultDict, List, Set
 
 if TYPE_CHECKING:
-    AsyncTask = asyncio.Task[Any]
+    AsyncFuture = asyncio.Future[Any]
 else:
-    AsyncTask = asyncio.Task
+    AsyncFuture = asyncio.Future
 
 EventCallback = Callable[..., Any]
 EventList = List[EventCallback]
@@ -21,29 +23,46 @@ class EventEmitter:
         """
         self._events: EventDict = collections.defaultdict(list)
         self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
-        self._task_pool: Set[AsyncTask] = set()
+        self._task_pool: Set[AsyncFuture] = set()
 
     def emit(self, event: str, *args: Any, **kwargs: Any) -> None:
         """
         Trigger all callbacks registered with `event` to be fired using
         the arguments passed to this function.
         """
+        if self.loop.is_closed():
+            return
+
+        # Audio/FFmpeg callbacks can arrive from worker threads. Dispatch the
+        # entire event (including synchronous listeners) on the owning loop.
+        # Preserve direct dispatch when the loop has not started yet.
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if self.loop.is_running() and running_loop is not self.loop:
+            try:
+                self.loop.call_soon_threadsafe(partial(self.emit, event, *args, **kwargs))
+            except RuntimeError:
+                # The loop can close between is_closed() and scheduling.
+                return
+            return
+
         if event not in self._events:
             return
 
         for cb in list(self._events[event]):
             try:
-                if asyncio.iscoroutinefunction(cb):
-                    # Create the task and save a reference to ensure it is not
-                    # garbage collected early.
-                    t = self.loop.create_task(
-                        cb(*args, **kwargs),
-                        name=f"MB_EE_{type(self).__name__}_{cb.__name__}",
-                    )
-                    self._task_pool.add(t)
-                    t.add_done_callback(self._task_pool.discard)
-                else:
-                    cb(*args, **kwargs)
+                result = cb(*args, **kwargs)
+                # once() unregisters before an async callback starts running.
+                if inspect.isawaitable(result):
+                    task = asyncio.ensure_future(result, loop=self.loop)
+                    if isinstance(task, asyncio.Task):
+                        task.set_name(
+                            f"MB_EE_{type(self).__name__}_{getattr(cb, '__name__', type(cb).__name__)}"
+                        )
+                    self._task_pool.add(task)
+                    task.add_done_callback(self._task_pool.discard)
 
             except Exception:  # pylint: disable=broad-exception-caught
                 traceback.print_exc()

@@ -5859,15 +5859,28 @@ class MusicBot(commands.Bot):
         if 0 < int_volume <= 100:
             player.volume = int_volume / 100.0
 
+            previous = getattr(player, "_pending_seek", None)
+            entry = player.current_entry or (previous["entry"] if previous else None)
+            previous = previous if previous and previous["entry"] is entry else None
             if (
-                self.config.use_opus_audio
-                and player.current_entry
-                and player.is_playing
+                (self.config.use_opus_audio or self.config.use_opus_probe)
+                and entry
+                and (player.is_playing or player.is_paused or previous)
             ):
-                # Set current playback progress and restart playback.
-                entry = player.current_entry
-                if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
-                    entry.set_start_time(player.progress)
+                # FFmpeg filters are fixed for one source. Rebuild it at the
+                # current position and retain pause state, even with probing.
+                seekable = isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry))
+                position = (previous["position"] if previous else player.progress) if seekable else 0.0
+                paused = previous["paused"] if previous else player.is_paused
+                if previous:
+                    player.playlist.entries = type(player.playlist.entries)(
+                        item for item in player.playlist.entries if item is not entry)
+                if seekable:
+                    entry.set_start_time(position)
+                player._pending_seek = {
+                    "entry": entry, "position": position,
+                    "paused": paused,
+                }
                 player.playlist.insert_entry_at_index(0, entry)
 
                 # handle history playlist updates.
@@ -5877,7 +5890,7 @@ class MusicBot(commands.Bot):
                 ):
                     ssd_.current_playing_url = ""
 
-                player.skip()
+                player.skip(_seek=True)
 
             return Response(
                 _D("Updated volume from **%(old)d** to **%(new)d**", ssd_)
@@ -5918,14 +5931,17 @@ class MusicBot(commands.Bot):
         """
         Check for playing entry and apply a speed to ffmpeg for playback.
         """
-        if not player.current_entry:
+        previous = getattr(player, "_pending_seek", None)
+        entry = player.current_entry or (previous["entry"] if previous else None)
+        previous = previous if previous and previous["entry"] is entry else None
+        if not entry:
             raise exceptions.CommandError(
                 "No track is playing, cannot set speed.\n"
                 "Use the config command to set a default playback speed.",
             )
 
         if not isinstance(
-            player.current_entry, (URLPlaylistEntry, LocalFilePlaylistEntry)
+            entry, (URLPlaylistEntry, LocalFilePlaylistEntry)
         ):
             raise exceptions.CommandError(
                 "Speed cannot be applied to streamed media.",
@@ -5945,10 +5961,18 @@ class MusicBot(commands.Bot):
                 "The speed you provided is invalid. Use a number between 0.5 and 100.",
             ) from e
 
-        # Set current playback progress and speed then restart playback.
-        entry = player.current_entry
-        entry.set_start_time(player.progress)
+        # Rebuild FFmpeg at the current position, preserving paused state.
+        position = previous["position"] if previous else player.progress
+        paused = previous["paused"] if previous else player.is_paused
+        if previous:
+            player.playlist.entries = type(player.playlist.entries)(
+                item for item in player.playlist.entries if item is not entry)
+        entry.set_start_time(position)
         entry.set_playback_speed(speed)
+        player._pending_seek = {
+            "entry": entry, "position": position,
+            "paused": paused,
+        }
         player.playlist.insert_entry_at_index(0, entry)
 
         # handle history playlist updates.
@@ -5958,7 +5982,7 @@ class MusicBot(commands.Bot):
         ):
             self.server_data[guild.id].current_playing_url = ""
 
-        player.skip()
+        player.skip(_seek=True)
 
         return Response(
             _D("Setting playback speed to `%(speed).3f` for current track.", ssd_)

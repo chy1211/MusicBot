@@ -300,6 +300,9 @@ class MusicPlayer(EventEmitter, Serializable):
         self._play_generation = 0
         self._play_task: Optional[asyncio.Task] = None
         self._play_queued_generation: Optional[int] = None
+        # Dashboard hint for the track selected but not yet started.
+        self._preparing_entry: Optional[EntryTypes] = None
+        self._transitioning_to_next = False
         self._stop_requested = False
         self._current_player: Optional[VoiceClient] = None
         self._current_entry: Optional[EntryTypes] = None
@@ -360,6 +363,8 @@ class MusicPlayer(EventEmitter, Serializable):
                 and task is not asyncio.current_task()):
             task.cancel()
         self._preparing_source = None
+        self._preparing_entry = None
+        self._transitioning_to_next = False
         self._skip_preparing = False
 
     def _clear_pending_seek(self) -> None:
@@ -559,7 +564,11 @@ class MusicPlayer(EventEmitter, Serializable):
                 self._handle_file_cleanup(entry), name="MB_CacheCleanup"
             )
 
-        # finally, tell the rest of MusicBot that playback is done.
+        # Dashboard can now show the known next track while the bot
+        # asynchronously schedules/starts it; never show a phantom track
+        # when the queue is actually empty.
+        self._transitioning_to_next = self.playlist.peek() is not None
+        self._preparing_entry = None
         self.emit("finished-playing", player=self, entry=entry)
 
     def _kill_current_player(self) -> bool:
@@ -603,6 +612,10 @@ class MusicPlayer(EventEmitter, Serializable):
         if self._play_queued_generation == self._play_generation:
             return
         self._stop_requested = False
+        if self._current_entry is None:
+            # Set before scheduling: there may be a gap before _play() runs.
+            self._preparing_entry = self.playlist.peek()
+            self._transitioning_to_next = self._preparing_entry is not None
         self._play_queued_generation = self._play_generation
         self.bot.create_task(
             self._play(_continue=_continue, _generation=self._play_generation),
@@ -649,6 +662,10 @@ class MusicPlayer(EventEmitter, Serializable):
                 if self.is_stopped or _continue:
                     # Get the entry before we try to ready it, so it can be passed to error callbacks.
                     entry_up_next = self.playlist.peek()
+                    # Keep selected metadata visible after get_next_entry()
+                    # removes the item from the public playlist queue.
+                    self._preparing_entry = entry_up_next
+                    self._transitioning_to_next = entry_up_next is not None
                     playback_voice_client = self.voice_client
                     try:
                         entry = await self.playlist.get_next_entry()
@@ -672,6 +689,8 @@ class MusicPlayer(EventEmitter, Serializable):
                         if generation != self._play_generation:
                             return
                         self._preparing_source = None
+                        self._preparing_entry = None
+                        self._transitioning_to_next = False
                         self._pending_seek = None
                         self._current_entry = None
                         self._current_player = None
@@ -713,39 +732,30 @@ class MusicPlayer(EventEmitter, Serializable):
 
                     boptions = "-nostdin"
                     aoptions = "-vn -sn -dn"  # "-b:a 192k"
-                    # Prefer measured two-pass loudnorm for completed downloads.
-                    # Live streams and failed analyses use the one-pass filter.
-                    if (
-                        not self.bot.config.use_experimental_equalization
-                        or self.bot.config.use_opus_probe
-                    ):
+                    # Preserve measured two-pass loudnorm on downloaded files,
+                    # including with Opus probing. Streams use one-pass loudnorm.
+                    if not self.bot.config.use_experimental_equalization:
                         entry.remove_audio_filter("loudnorm")
-                    if not self.bot.config.use_opus_probe:
-                        if (
-                            self.bot.config.use_experimental_equalization
-                            and not entry.has_audio_filter("loudnorm")
-                        ):
-                            entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
-                        if self.bot.config.use_opus_audio:
+                    elif not entry.has_audio_filter("loudnorm"):
+                        entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
+
+                    if self.bot.config.use_opus_audio or self.bot.config.use_opus_probe:
+                        # At unity gain no filter is necessary; Opus passthrough
+                        # can still save CPU if loudnorm and tempo are also off.
+                        if self.volume != 1.0:
                             entry.set_audio_filter("volume", f"{self.volume:.2f}")
                         else:
-                            # PCMVolumeTransformer applies volume after FFmpeg;
-                            # prevent a retained FFmpeg filter from reducing it twice.
                             entry.remove_audio_filter("volume")
+                    else:
+                        # PCMVolumeTransformer applies volume after FFmpeg.
+                        entry.remove_audio_filter("volume")
 
-                        if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
-                            entry_options = entry.aoptions
-                        else:
-                            entry_options = entry.get_audio_filters()
-                        if entry_options:
-                            aoptions += f" {entry_options}"
-                    elif (
-                        isinstance(entry, StreamPlaylistEntry)
-                        and self.bot.config.use_opus_audio
-                    ):
-                        # Preserve stream volume with probing, without normalization.
-                        entry.set_audio_filter("volume", f"{self.volume:.2f}")
-                        aoptions += f" {entry.get_audio_filters()}"
+                    if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
+                        entry_options = entry.aoptions
+                    else:
+                        entry_options = entry.get_audio_filters()
+                    if entry_options:
+                        aoptions += f" {entry_options}"
 
                     if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
                         if entry.boptions:
@@ -755,7 +765,7 @@ class MusicPlayer(EventEmitter, Serializable):
 
                     if self.bot.config.use_opus_probe or self.bot.config.use_opus_audio:
                         # Note: ffmpeg filters require encoding to work.
-                        # So copy codec will not allow speed, volume or other filters.
+                        # Filtered output must be encoded, even if the input is Opus.
                         if (
                             self.bot.config.use_opus_probe and not entry.probed_codec
                         ) or not entry.probed_bitrate:
@@ -909,6 +919,8 @@ class MusicPlayer(EventEmitter, Serializable):
                     # I need to add ytdl hooks
                     self.state = MusicPlayerState.PLAYING
                     self._current_entry = entry
+                    self._preparing_entry = None
+                    self._transitioning_to_next = False
                     pending = self._pending_seek
                     self._pending_seek = None
                     if pending and pending["entry"] is entry and pending["paused"]:
@@ -934,6 +946,12 @@ class MusicPlayer(EventEmitter, Serializable):
         finally:
             if self._play_task is task:
                 self._play_task = None
+            # Failure or cancellation must not leave a stale loading card.
+            # Old generations must never clear a newer request's hint.
+            if (generation == self._play_generation
+                    and self._current_entry is None):
+                self._preparing_entry = None
+                self._transitioning_to_next = False
 
     async def _handle_file_cleanup(self, entry: EntryTypes) -> None:
         """

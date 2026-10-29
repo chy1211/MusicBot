@@ -91,6 +91,7 @@ class FakeBot:
                          auto_unpause_on_play=False, enable_local_media=False,
                          default_search_service="ytsearch", spotify_enabled=False,
                          allow_author_skip=True, legacy_skip=True, use_opus_audio=False,
+                         use_opus_probe=False,
                          enable_queue_history_global=False, enable_queue_history_guilds=False,
                          song_blocklist_enabled=False)
         self.perms = NS(max_songs=0, max_song_length=0, max_playlist_length=0,

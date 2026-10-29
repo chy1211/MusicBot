@@ -7,6 +7,15 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
+- 平板橫直向的側欄依播放列實際高度預留間距，避免兩者重疊。
+  Reserve sidebar clearance from the measured playback bar height in tablet portrait and landscape layouts.
+
+- 換歌準備下載或音源時保留下一首的封面與歌名，顯示準備中；停止、失敗或斷線時清除過場提示。
+  Keep the next track's cover and title visible while preparing playback, and clear the transition hint on stop, failure or disconnection.
+
+- 事件監聽器統一在所屬事件迴圈執行，非同步單次監聽器不再被遺漏；Opus 格式偵測保留音量、速度與正規化效果，必要時重新編碼，暫停中及連續調整仍保留進度與暫停狀態。
+  Dispatch event listeners on their owning loop and await asynchronous once callbacks; preserve volume, speed and normalization with Opus probing by re-encoding filtered audio, retaining position and pause state across repeated adjustments.
+
 - 下載、格式偵測與音源準備期間的停止、跳過和連續調整進度會依最後有效的操作執行；舊任務與音源回呼不再覆蓋新的播放狀態，暫停中調整進度仍保持暫停。
   Respect the latest stop, skip and seek request during download, codec probing and source preparation; prevent stale tasks and audio callbacks from overwriting replacement playback, and preserve paused seeks.
 

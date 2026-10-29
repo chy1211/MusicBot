@@ -318,8 +318,11 @@ class URLPlaylistEntry(BasePlaylistEntry):
     def aoptions(self) -> str:
         """After input options for ffmpeg to use with this entry."""
         # Set playback speed options if needed.
-        if self._playback_rate is not None or self.playback_speed != 1.0:
+        if self.playback_speed != 1.0:
             self.set_audio_filter("atempo", f"{self.playback_speed:.3f}")
+        else:
+            # A reset to normal speed must not leave stale FFmpeg atempo.
+            self.remove_audio_filter("atempo")
 
         return self.get_audio_filters()
 
@@ -594,10 +597,7 @@ class URLPlaylistEntry(BasePlaylistEntry):
                         {"time": self.duration, "file": self.filename},
                     )
 
-            if (
-                self.playlist.bot.config.use_experimental_equalization
-                and not self.playlist.bot.config.use_opus_probe
-            ):
+            if self.playlist.bot.config.use_experimental_equalization:
                 try:
                     await self.get_mean_volume(self.filename)
 
@@ -1012,8 +1012,11 @@ class LocalFilePlaylistEntry(BasePlaylistEntry):
     def aoptions(self) -> str:
         """After input options for ffmpeg to use with this entry."""
         # Set playback speed options if needed.
-        if self._playback_rate is not None or self.playback_speed != 1.0:
+        if self.playback_speed != 1.0:
             self.set_audio_filter("atempo", f"{self.playback_speed:.3f}")
+        else:
+            # A reset to normal speed must not leave stale FFmpeg atempo.
+            self.remove_audio_filter("atempo")
 
         return self.get_audio_filters()
 
@@ -1235,10 +1238,7 @@ class LocalFilePlaylistEntry(BasePlaylistEntry):
                         {"seconds": self.duration, "file": self.filename},
                     )
 
-            if (
-                self.playlist.bot.config.use_experimental_equalization
-                and not self.playlist.bot.config.use_opus_probe
-            ):
+            if self.playlist.bot.config.use_experimental_equalization:
                 try:
                     await self.get_mean_volume(self.filename)
 

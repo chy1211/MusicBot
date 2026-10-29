@@ -45,7 +45,21 @@ class DashboardStateRoutes:
                     "current": None, "progress": 0, "volume": None,
                     "repeat": "off", "queue": [], "revision": ""}
         pending = getattr(player, "_pending_seek", None)
-        current = pending["entry"] if pending else player.current_entry
+        # Explicit transition state, rather than guessing from STOPPED:
+        # a manually stopped player can still have queued songs.
+        preparing = (not pending and player.current_entry is None
+                     and getattr(player, "_transitioning_to_next", False)
+                     and not getattr(player, "_stop_requested", False)
+                     and not getattr(player, "is_dead", False)
+                     and not getattr(player, "guild_or_net_unavailable", False)
+                     and community["listeners"]["connected"])
+        incoming = None
+        if preparing:
+            incoming = (getattr(player, "_preparing_entry", None)
+                        or player.playlist.peek())
+            preparing = incoming is not None
+        current = (pending["entry"] if pending else
+                   player.current_entry or incoming)
         entries = [entry for entry in player.playlist.entries
                    if not pending or entry is not pending["entry"]]
         known = self.queue_arrivals[guild.id]
@@ -56,11 +70,13 @@ class DashboardStateRoutes:
         return {
             **community, "guild_id": str(guild.id),
             "status": (("paused" if pending["paused"] else "playing") if pending else
+                       "preparing" if preparing else
                        "paused" if player.is_paused else "playing" if player.is_playing else "stopped"),
             "current": (dict(track(current, guild, viewer),
-                             seekable=self.is_seekable(current),
+                             seekable=(not preparing and self.is_seekable(current)),
                              track_token=self.track_token(player)) if current else None),
-            "progress": max(0, float(pending["position"] if pending else player.progress)),
+            "progress": (0 if preparing else
+                         max(0, float(pending["position"] if pending else player.progress))),
             "volume": round(player.volume * 100),
             "repeat": ("song" if player.repeatsong else
                        "all" if player.loopqueue else "off"),

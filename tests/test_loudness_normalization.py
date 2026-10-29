@@ -301,12 +301,41 @@ class LoudnessTests(unittest.TestCase):
         self.assertIn("-ss 4.0", source.kwargs["before_options"])
         self.assertIn(f"loudnorm={LOUDNORM_TARGET}", source.kwargs["options"])
 
-    def test_probe_compat_disables_filters(self):
+    def test_probe_compat_filters_force_reencode(self):
         _, URL, _, _ = entry_runtime()
         entry = URL("song.wav")
         p = asyncio.run(self.async_run(entry, probe=True))
-        self.assertNotIn("-af", p.voice_client.last.source.kwargs["options"])
-        self.assertFalse(entry.has_audio_filter("loudnorm"))
+        kwargs = p.voice_client.last.source.kwargs
+        self.assertIn("loudnorm=", kwargs["options"])
+        self.assertIn("volume=0.15", kwargs["options"])
+        self.assertIsNone(kwargs["codec"])
+
+    def test_probe_unity_volume_no_effects_allows_passthrough(self):
+        _, URL, _, _ = entry_runtime()
+        entry = URL("song.wav")
+        p = asyncio.run(self.async_run(entry, probe=True, eq=False, volume=1.0))
+        kwargs = p.voice_client.last.source.kwargs
+        self.assertNotIn("-af", kwargs["options"])
+        self.assertEqual(kwargs["codec"], "libopus")
+
+    def test_probe_tempo_requires_reencode(self):
+        _, URL, _, _ = entry_runtime()
+        entry = URL("song.wav")
+        entry.set_audio_filter("atempo", "1.250")
+        player = asyncio.run(self.async_run(entry, probe=True, eq=False, volume=1.0))
+        kwargs = player.voice_client.last.source.kwargs
+        self.assertIn("atempo=1.250", kwargs["options"])
+        self.assertIsNone(kwargs["codec"])
+
+    def test_probe_preserves_downloaded_two_pass_loudnorm(self):
+        _, URL, _, _ = entry_runtime()
+        entry = URL("song.wav")
+        entry.set_audio_filter("loudnorm", f"{LOUDNORM_TARGET}:linear=true:measured_I=-20")
+        player = asyncio.run(self.async_run(entry, probe=True, volume=.35))
+        kwargs = player.voice_client.last.source.kwargs
+        self.assertIn("measured_I=-20", kwargs["options"])
+        self.assertEqual(kwargs["options"].count("loudnorm="), 1)
+        self.assertIsNone(kwargs["codec"])
 
     def test_equalization_off_default_preserved(self):
         _, URL, _, _ = entry_runtime()
@@ -484,13 +513,16 @@ class RealModuleLoudnessTests(unittest.IsolatedAsyncioTestCase):
         entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
         player = await self.play(entry, probe=True)
         source = player.voice_client.last.source
-        self.assertIn("-af volume=0.15", source.kwargs["options"])
-        self.assertNotIn("loudnorm", source.kwargs["options"])
+        self.assertIn("loudnorm=", source.kwargs["options"])
+        self.assertIn("volume=0.15", source.kwargs["options"])
         self.assertIsNone(source.kwargs["codec"])
 
-    async def test_real_probe_url_still_omits_filters(self):
+    async def test_real_probe_url_applies_effects_and_reencodes(self):
         player = await self.play(self.entry(), probe=True)
-        self.assertNotIn("-af", player.voice_client.last.source.kwargs["options"])
+        kwargs = player.voice_client.last.source.kwargs
+        self.assertIn("loudnorm=", kwargs["options"])
+        self.assertIn("volume=0.15", kwargs["options"])
+        self.assertIsNone(kwargs["codec"])
 
     async def test_real_persistent_queue_old_and_new_aoptions_are_not_reused(self):
         for kind in ("URLPlaylistEntry", "LocalFilePlaylistEntry"):

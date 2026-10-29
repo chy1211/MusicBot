@@ -55,14 +55,14 @@ a:hover,a:focus-visible{text-decoration:underline;text-underline-offset:.18em}
 .language-preference{position:relative;margin-top:12px;margin-right:max(20px,var(--safe-right))}
 h1{font-weight:720;letter-spacing:-.055em;font-size:clamp(27px,3.2vw,42px)}
 h2{letter-spacing:-.035em;font-weight:680}
-.sidebar{top:calc(var(--safe-top) + 16px);left:max(16px,var(--safe-left));border-radius:var(--r-sheet);padding:24px 16px;background:var(--panel)}
+.sidebar{top:calc(var(--safe-top) + 16px);bottom:calc(var(--dock-player-height,var(--bar)) + var(--safe-bottom) + 32px);left:max(16px,var(--safe-left));border-radius:var(--r-sheet);padding:24px 16px;background:var(--panel)}
 .playback-bar{background:var(--panel)}
 .login-card{background:var(--flat)}
 .sidebar .brand{justify-content:flex-start;font-size:17px;gap:9px;padding:0 10px;margin-bottom:24px}
 .brand .brand-icon{font-size:28px;color:var(--green)}
 .sidebar .page-tabs{gap:6px}
 .sidebar .page-tabs button{border-radius:var(--r-control)}
-main{padding-top:16px;padding-bottom:calc(var(--bar) + var(--safe-bottom) + 56px)}
+main{padding-top:16px;padding-bottom:calc(var(--dock-player-height,var(--bar)) + var(--safe-bottom) + 56px)}
 .page-heading{margin-bottom:28px;align-items:center}
 .card{border-radius:var(--r-sheet);padding:28px;border:1px solid var(--line);background:var(--flat)}
 .request h2{font-size:20px;line-height:1.45}

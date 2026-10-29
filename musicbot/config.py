@@ -628,7 +628,8 @@ class Config:
             comment=_Dd(
                 "Similar to UseOpusAudio, but reduces CPU usage even more where possible.\n"
                 "If the media is already Opus encoded (like YouTube) no re-encoding is done.\n"
-                "This option will disable speed, volume, and UseExperimentalEqualization options."
+                "Without audio filters, Opus can be copied without re-encoding.\n"
+                "Volume, speed, and UseExperimentalEqualization remain available but require FFmpeg re-encoding."
             ),
         )
         self.default_search_service: str = self.register.init_option(
