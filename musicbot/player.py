@@ -7,8 +7,10 @@ import sys
 import time
 from collections import deque
 from enum import Enum
-from threading import Event, Thread
+from threading import Condition, Event, Thread
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
+from discord.player import OPUS_SILENCE
 
 from discord import (
     AudioSource,
@@ -46,6 +48,11 @@ FIRST_FRAME_TIMEOUT = 10.0
 # (only ~8 ms more). With packets 2/3 stalled by 200/300/400 ms each, N>=3
 # produced zero catch-up sends in every case; N=10 also covers later stalls.
 STARTUP_BUFFER_FRAMES = 10
+# Keep up to one second of decoded/encoded 20 ms frames ahead of the voice
+# sender. Unlike startup-only prefetch, this also covers stalls mid-track.
+CONTINUOUS_BUFFER_FRAMES = 50
+# Do not play silence indefinitely if FFmpeg stops delivering packets.
+MAX_CONSECUTIVE_UNDERRUNS = 500
 
 
 class MusicPlayerState(Enum):
@@ -67,6 +74,7 @@ class SourcePlaybackCounter(AudioSource):
         source: FFmpegSources,
         start_time: float = 0,
         playback_speed: float = 1.0,
+        continuous: bool = False,
     ) -> None:
         """
         Manage playback source and attempt to count progress frames used
@@ -87,12 +95,18 @@ class SourcePlaybackCounter(AudioSource):
         self._start_time: float = start_time
         self._playback_speed: float = playback_speed
         self._is_opus_audio: bool = isinstance(source, FFmpegOpusAudio)
+        self._continuous = continuous
+        self._buffer_cond = Condition()
+        self._streaming = Event()
+        self._worker_done = Event()
+        self._underrun_frames = 0
+        self._consecutive_underruns = 0
 
     def is_opus(self) -> bool:
         return self._is_opus_audio
 
     def _prepare_frames(self) -> None:
-        """One worker owns source reads until preparation has finished."""
+        """One worker owns all source reads during preparation and playback."""
         try:
             for _ in range(STARTUP_BUFFER_FRAMES):
                 if self._prefetch_stop.is_set():
@@ -101,20 +115,54 @@ class SourcePlaybackCounter(AudioSource):
                 if not frame:
                     self._source_eof = True
                     break
-                self._prefetched_frames.append(frame)
+                with self._buffer_cond:
+                    self._prefetched_frames.append(frame)
+
+            # Continuous sources leave the same reader running after playback
+            # starts, so an in-flight read can never race with AudioPlayer.read().
+            self._prefetch_done.set()
+            if not self._continuous or self._source_eof:
+                return
+
+            while not self._prefetch_stop.is_set():
+                if not self._streaming.wait(0.05):
+                    continue
+                with self._buffer_cond:
+                    while (
+                        len(self._prefetched_frames) >= CONTINUOUS_BUFFER_FRAMES
+                        and not self._prefetch_stop.is_set()
+                    ):
+                        self._buffer_cond.wait(0.05)
+                    if self._prefetch_stop.is_set():
+                        break
+                frame = self._source.read()
+                if not frame:
+                    self._source_eof = True
+                    break
+                with self._buffer_cond:
+                    self._prefetched_frames.append(frame)
         except Exception as exc:
             self._prefetch_error = exc
         finally:
             self._prefetch_done.set()
+            self._worker_done.set()
 
     async def prepare(self, timeout: float = FIRST_FRAME_TIMEOUT) -> None:
         """Buffer startup packets off-loop under one total timeout."""
         self._prefetch_done.clear()
         worker = asyncio.get_running_loop().run_in_executor(None, self._prepare_frames)
         try:
-            await asyncio.wait_for(worker, timeout=timeout)
+            if self._continuous:
+                # The reader stays alive to fill the live buffer. Only wait
+                # for the startup window, not for the worker to terminate.
+                await asyncio.wait_for(
+                    asyncio.to_thread(self._prefetch_done.wait), timeout=timeout
+                )
+            else:
+                await asyncio.wait_for(worker, timeout=timeout)
         except asyncio.TimeoutError:
-            self._prefetch_stop.set()
+            if not self._prefetched_frames or not self._continuous:
+                self._prefetch_stop.set()
             if not self._prefetched_frames:
                 raise
             log.debug(
@@ -130,7 +178,40 @@ class SourcePlaybackCounter(AudioSource):
         if not self._prefetched_frames:
             raise FFmpegError("Audio source returned no first frame.")
 
+    def start_streaming(self) -> None:
+        """Allow the single producer to refill after VoiceClient.play()."""
+        if self._continuous:
+            self._streaming.set()
+
+    @property
+    def underrun_frames(self) -> int:
+        return self._underrun_frames
+
     def _read_frame(self) -> bytes:
+        if self._continuous:
+            with self._buffer_cond:
+                if self._prefetched_frames:
+                    frame = self._prefetched_frames.popleft()
+                    self._buffer_cond.notify()
+                elif self._prefetch_error is not None:
+                    raise self._prefetch_error
+                elif self._source_eof or self._prefetch_stop.is_set():
+                    return b""
+                else:
+                    self._underrun_frames += 1
+                    self._consecutive_underruns += 1
+                    if self._consecutive_underruns > MAX_CONSECUTIVE_UNDERRUNS:
+                        raise FFmpegError("Audio source stalled for over 10 seconds.")
+                    if self._underrun_frames == 1 or self._underrun_frames % 100 == 0:
+                        log.warning(
+                            "Audio buffer underrun: %d silent frames sent.",
+                            self._underrun_frames,
+                        )
+                    # A 20 ms silence frame prevents blocking Discord's sender
+                    # and the subsequent burst of zero-delay catch-up packets.
+                    return OPUS_SILENCE if self._is_opus_audio else bytes(3840)
+            self._consecutive_underruns = 0
+            return frame
         if self._prefetched_frames:
             return self._prefetched_frames.popleft()
         # A timed-out executor read cannot be cancelled. Let its final packet
@@ -146,8 +227,10 @@ class SourcePlaybackCounter(AudioSource):
         return self._source.read()
 
     def read(self) -> bytes:
+        underruns = self._underrun_frames
         res = self._read_frame()
-        if res:
+        # Concealment silence is not part of the media timeline.
+        if res and self._underrun_frames == underruns:
             self._num_reads += 1
         return res
 
@@ -156,6 +239,9 @@ class SourcePlaybackCounter(AudioSource):
             "Cleanup got called on the audio source:  %r", self
         )
         self._prefetch_stop.set()
+        self._streaming.set()
+        with self._buffer_cond:
+            self._buffer_cond.notify_all()
         self._source.cleanup()
 
     @property
@@ -617,6 +703,7 @@ class MusicPlayer(EventEmitter, Serializable):
                     source,
                     start_time=entry.start_time,
                     playback_speed=entry.playback_speed,
+                    continuous=True,
                 )
                 self._preparing_source = prepared_source
                 self._skip_preparing = False
@@ -679,6 +766,9 @@ class MusicPlayer(EventEmitter, Serializable):
                 )
                 try:
                     voice_client.play(self._source, after=self._playback_finished)
+                    # A full startup window protects the tiny gap before the
+                    # producer is released to replenish the ongoing buffer.
+                    prepared_source.start_streaming()
                 except ClientException as exc:
                     # Discord checks again inside play(), after our connection check.
                     if str(exc) != "Not connected to voice.":
