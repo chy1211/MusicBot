@@ -59,6 +59,9 @@ class FakePlaybackCounter:
     async def prepare(self, timeout=10):
         pass
 
+    def start_streaming(self):
+        pass
+
 
 class FakeThread:
     def __init__(self, *args, **kwargs):
