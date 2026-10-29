@@ -251,11 +251,13 @@ class PrefetchTests(unittest.IsolatedAsyncioTestCase):
                         if isinstance(raw, PCMVolumeTransformer):
                             self.assertEqual(raw.volume, volume)
                             raw = raw.original
-                        self.assertEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
+                        # Continuous prefetch may already have refilled beyond
+                        # the initial ten frames; reads must still be in order.
+                        self.assertGreaterEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
                         self.assertEqual(counter.frames, 0)
                         self.assertEqual(counter.progress, position)
                         self.assertTrue(counter.read())
-                        self.assertEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
+                        self.assertGreaterEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
                         self.assertEqual(counter.frames, 1)
                     player._source.cleanup()
                     self.assertEqual(self.errors, [])
