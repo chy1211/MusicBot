@@ -5,6 +5,11 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### 修正 / Fixed
+
+- 下載、格式偵測與音源準備期間的停止、跳過和連續調整進度會依最後有效的操作執行；舊任務與音源回呼不再覆蓋新的播放狀態，暫停中調整進度仍保持暫停。
+  Respect the latest stop, skip and seek request during download, codec probing and source preparation; prevent stale tasks and audio callbacks from overwriting replacement playback, and preserve paused seeks.
+
 ## [1.0.1] - 2026-10-29
 
 ### 變更 / Changed

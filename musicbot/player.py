@@ -7,6 +7,7 @@ import sys
 import time
 from collections import deque
 from enum import Enum
+from functools import partial
 from threading import Condition, Event, Thread
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -296,6 +297,10 @@ class MusicPlayer(EventEmitter, Serializable):
 
         self._volume = bot.config.default_volume
         self._play_lock = asyncio.Lock()
+        self._play_generation = 0
+        self._play_task: Optional[asyncio.Task] = None
+        self._play_queued_generation: Optional[int] = None
+        self._stop_requested = False
         self._current_player: Optional[VoiceClient] = None
         self._current_entry: Optional[EntryTypes] = None
         self._stderr_future: Optional[AsyncFuture] = None
@@ -345,27 +350,58 @@ class MusicPlayer(EventEmitter, Serializable):
         """
         self.emit("error", player=self, entry=entry, ex=error)
 
-    def skip(self) -> None:
-        """Skip the current playing entry but just killing playback."""
-        log.noise(  # type: ignore[attr-defined]
-            "MusicPlayer.skip() is called:  %s", repr(self)
-        )
-        if self._preparing_source is not None:
-            self._skip_preparing = True
-        self._kill_current_player()
+    def _invalidate_play_request(self) -> None:
+        """Invalidate startup without cancelling the entry's download task."""
+        self._play_generation += 1
+        task = self._play_task
+        self._play_task = None
+        self._play_queued_generation = None
+        if (task is not None and not task.done() and not task.cancelling()
+                and task is not asyncio.current_task()):
+            task.cancel()
+        self._preparing_source = None
+        self._skip_preparing = False
+
+    def _clear_pending_seek(self) -> None:
+        pending = self._pending_seek
+        if pending:
+            self.playlist.entries = deque(
+                entry for entry in self.playlist.entries
+                if entry is not pending["entry"]
+            )
+        self._pending_seek = None
+
+    def skip(self, *, _seek: bool = False) -> None:
+        """Discard the selected track, or restart it for an explicit seek."""
+        log.noise("MusicPlayer.skip() is called:  %s", repr(self))  # type: ignore[attr-defined]
+        pending = self._play_task
+        starting = ((pending is not None and not pending.done())
+                    or self._play_queued_generation is not None
+                    or self._preparing_source is not None
+                    or self._pending_seek is not None)
+        self._invalidate_play_request()
+        self._stop_requested = False
+        if not _seek:
+            self._clear_pending_seek()
+        # A live VoiceClient finishes through its source-bound callback.
+        if self._kill_current_player():
+            return
+        if starting:
+            if not _seek:
+                self._current_entry = None
+                self._source = None
+            self.play(_continue=True)
 
     def stop(self) -> None:
-        """
-        Immediately halt playback, killing current player source, setting
-        state to stopped and emitting an event.
-        """
-        log.noise(  # type: ignore[attr-defined]
-            "MusicPlayer.stop() is called:  %s", repr(self)
-        )
+        """Stop current and pending playback without scheduling another track."""
+        log.noise("MusicPlayer.stop() is called:  %s", repr(self))  # type: ignore[attr-defined]
+        self._stop_requested = True
+        self._invalidate_play_request()
+        self._clear_pending_seek()
         self.state = MusicPlayerState.STOPPED
-        self._skip_preparing = False
-        self._kill_current_player()
-
+        if not self._kill_current_player():
+            self._current_entry = None
+            self._source = None
         self.emit("stop", player=self)
 
     def resume(self) -> None:
@@ -424,12 +460,21 @@ class MusicPlayer(EventEmitter, Serializable):
         log.noise(  # type: ignore[attr-defined]
             "MusicPlayer.kill() is called:  %s", repr(self)
         )
+        self._stop_requested = True
+        self._invalidate_play_request()
+        self._pending_seek = None
+        self._current_entry = None
+        self._source = None
         self.state = MusicPlayerState.DEAD
         self.playlist.clear()
         self._events.clear()
         self._kill_current_player()
 
-    def _playback_finished(self, error: Optional[Exception] = None) -> None:
+    def _playback_finished(
+        self, error: Optional[Exception] = None, *,
+        source: Optional[SourcePlaybackCounter] = None,
+        stderr_future: Optional[AsyncFuture] = None,
+    ) -> None:
         """
         Event fired by discord.VoiceClient after playback has finished
         or when playback stops due to an error.
@@ -439,6 +484,26 @@ class MusicPlayer(EventEmitter, Serializable):
 
         :param: error:  An exception, if any, raised by playback.
         """
+        # Discord invokes after() from its audio thread. Serialize all player
+        # mutations with commands, and ignore a callback from a replaced source.
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if running_loop is not self.loop:
+            if not self.loop.is_closed():
+                self.loop.call_soon_threadsafe(
+                    partial(self._playback_finished, error, source=source,
+                            stderr_future=stderr_future)
+                )
+            return
+        # The old stderr reader must exit even when its playback callback is
+        # stale. It must never complete the replacement source's future.
+        if stderr_future is not None and not stderr_future.done():
+            stderr_future.set_result(True)
+        if self.is_dead or (source is not None and source is not self._source):
+            return
+
         # Ensure the stderr stream reader for ffmpeg is exited.
         if (
             isinstance(self._stderr_future, asyncio.Future)
@@ -452,9 +517,9 @@ class MusicPlayer(EventEmitter, Serializable):
             return
 
         seeking = self._pending_seek and self._pending_seek['entry'] is entry
-        if self.repeatsong and not seeking:
+        if self.repeatsong and not seeking and not self._stop_requested:
             self.playlist.entries.appendleft(entry)
-        elif self.loopqueue and not seeking:
+        elif self.loopqueue and not seeking and not self._stop_requested:
             self.playlist.entries.append(entry)
 
         # TODO: investigate if this is cruft code or not.
@@ -465,7 +530,10 @@ class MusicPlayer(EventEmitter, Serializable):
 
         self._current_entry = None
         self._source = None
-        self.stop()
+        self.state = MusicPlayerState.STOPPED
+        self.emit("stop", player=self)
+        if self._stop_requested:
+            return
 
         # if an error was set, report it and return...
         if error:
@@ -527,284 +595,345 @@ class MusicPlayer(EventEmitter, Serializable):
         log.noise(  # type: ignore[attr-defined]
             "MusicPlayer.play() is called:  %s", repr(self)
         )
-        self.bot.create_task(self._play(_continue=_continue), name="MB_Play")
+        if self.is_dead:
+            return
+        pending = self._play_task
+        if pending is not None and not pending.done() and not pending.cancelling():
+            return
+        if self._play_queued_generation == self._play_generation:
+            return
+        self._stop_requested = False
+        self._play_queued_generation = self._play_generation
+        self.bot.create_task(
+            self._play(_continue=_continue, _generation=self._play_generation),
+            name="MB_Play",
+        )
 
-    async def _play(self, _continue: bool = False) -> None:
+    async def _play(
+        self, _continue: bool = False, *, _generation: Optional[int] = None,
+    ) -> None:
         """
         Plays the next entry from the playlist, or resumes playback of the current entry if paused.
         """
-        if self.is_dead:
-            log.voicedebug(  # type: ignore[attr-defined]
-                "MusicPlayer is dead, cannot play."
-            )
+        generation = self._play_generation if _generation is None else _generation
+        task = asyncio.current_task()
+        owner = self._play_task
+        if self._play_queued_generation == generation:
+            self._play_queued_generation = None
+        if generation != self._play_generation:
             return
-
-        if self.guild_or_net_unavailable:
-            log.warning("Guild or network unavailable, cannot start playback.")
+        if (owner is not None and owner is not task and not owner.done()
+                and not owner.cancelling()):
             return
+        self._play_task = task
+        try:
+            if self.is_dead:
+                log.voicedebug(  # type: ignore[attr-defined]
+                    "MusicPlayer is dead, cannot play."
+                )
+                return
 
-        if self.is_paused and self._current_player:
-            log.voicedebug(  # type: ignore[attr-defined]
-                "MusicPlayer was previously paused, resuming current player."
-            )
-            return self.resume()
+            if self.guild_or_net_unavailable:
+                log.warning("Guild or network unavailable, cannot start playback.")
+                return
 
-        if self._play_lock.locked():
-            log.voicedebug(  # type: ignore[attr-defined]
-                "MusicPlayer already locked for playback, this call is ignored."
-            )
-            return
+            if self.is_paused and self._current_player:
+                log.voicedebug(  # type: ignore[attr-defined]
+                    "MusicPlayer was previously paused, resuming current player."
+                )
+                return self.resume()
 
-        async with self._play_lock:
-            if self.is_stopped or _continue:
-                # Get the entry before we try to ready it, so it can be passed to error callbacks.
-                entry_up_next = self.playlist.peek()
-                playback_voice_client = self.voice_client
-                try:
-                    entry = await self.playlist.get_next_entry()
-                except IndexError as e:
-                    log.warning("Failed to get next entry.", exc_info=e)
-                    self.emit("error", player=self, entry=entry_up_next, ex=e)
-                    entry = None
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    log.warning("Failed to process entry for playback.", exc_info=e)
-                    self.emit("error", player=self, entry=entry_up_next, ex=e)
-                    entry = None
-
-                async def abandon_disconnected_playback(*, restore_entry: bool = True) -> None:
-                    self._preparing_source = None
-                    self._pending_seek = None
-                    self._current_entry = None
-                    self._current_player = None
-                    self._source = None
-                    self._skip_preparing = False
-                    if not self.is_dead:
-                        self.state = MusicPlayerState.STOPPED
-                        if restore_entry and entry is not None:
-                            # Restore this ready entry without entry-added side effects,
-                            # round-robin reordering, or starting another download.
-                            self.playlist.entries.appendleft(entry)
-                            guild = (
-                                playback_voice_client.guild
-                                if playback_voice_client is not None
-                                else entry.channel.guild if entry.channel else None
-                            )
-                            if guild is not None:
-                                await self.bot.serialize_queue(guild)
-                    log.voicedebug(  # type: ignore[attr-defined]
-                        "Player stopped or voice disconnected while preparing playback."
-                    )
-
-                # Downloading may outlive the voice connection or the player.
-                if (
-                    self.is_dead
-                    or self.voice_client is None
-                    or not self.voice_client.is_connected()
-                ):
-                    await abandon_disconnected_playback()
+            async with self._play_lock:
+                if generation != self._play_generation or self.is_dead:
                     return
+                if self.is_stopped or _continue:
+                    # Get the entry before we try to ready it, so it can be passed to error callbacks.
+                    entry_up_next = self.playlist.peek()
+                    playback_voice_client = self.voice_client
+                    try:
+                        entry = await self.playlist.get_next_entry()
+                    except IndexError as e:
+                        if generation != self._play_generation:
+                            return
+                        log.warning("Failed to get next entry.", exc_info=e)
+                        self.emit("error", player=self, entry=entry_up_next, ex=e)
+                        entry = None
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        if generation != self._play_generation:
+                            return
+                        log.warning("Failed to process entry for playback.", exc_info=e)
+                        self.emit("error", player=self, entry=entry_up_next, ex=e)
+                        entry = None
 
-                # If nothing left to play, transition to the stopped state.
-                if not entry:
-                    self.stop()
-                    return
+                    if generation != self._play_generation:
+                        return
 
-                # In-case there was a player, kill it. RIP.
-                self._kill_current_player()
+                    async def abandon_disconnected_playback(*, restore_entry: bool = True) -> None:
+                        if generation != self._play_generation:
+                            return
+                        self._preparing_source = None
+                        self._pending_seek = None
+                        self._current_entry = None
+                        self._current_player = None
+                        self._source = None
+                        self._skip_preparing = False
+                        if not self.is_dead:
+                            self.state = MusicPlayerState.STOPPED
+                            if restore_entry and entry is not None:
+                                # Restore this ready entry without entry-added side effects,
+                                # round-robin reordering, or starting another download.
+                                self.playlist.entries.appendleft(entry)
+                                guild = (
+                                    playback_voice_client.guild
+                                    if playback_voice_client is not None
+                                    else entry.channel.guild if entry.channel else None
+                                )
+                                if guild is not None:
+                                    await self.bot.serialize_queue(guild)
+                        log.voicedebug(  # type: ignore[attr-defined]
+                            "Player stopped or voice disconnected while preparing playback."
+                        )
 
-                boptions = "-nostdin"
-                aoptions = "-vn -sn -dn"  # "-b:a 192k"
-                # Prefer measured two-pass loudnorm for completed downloads.
-                # Live streams and failed analyses use the one-pass filter.
-                if (
-                    not self.bot.config.use_experimental_equalization
-                    or self.bot.config.use_opus_probe
-                ):
-                    entry.remove_audio_filter("loudnorm")
-                if not self.bot.config.use_opus_probe:
+                    # Downloading may outlive the voice connection or the player.
                     if (
-                        self.bot.config.use_experimental_equalization
-                        and not entry.has_audio_filter("loudnorm")
+                        self.is_dead
+                        or self.voice_client is None
+                        or not self.voice_client.is_connected()
                     ):
-                        entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
-                    if self.bot.config.use_opus_audio:
+                        await abandon_disconnected_playback()
+                        return
+
+                    # If nothing left to play, transition to the stopped state.
+                    if not entry:
+                        self.stop()
+                        return
+
+                    # In-case there was a player, kill it. RIP.
+                    self._kill_current_player()
+
+                    boptions = "-nostdin"
+                    aoptions = "-vn -sn -dn"  # "-b:a 192k"
+                    # Prefer measured two-pass loudnorm for completed downloads.
+                    # Live streams and failed analyses use the one-pass filter.
+                    if (
+                        not self.bot.config.use_experimental_equalization
+                        or self.bot.config.use_opus_probe
+                    ):
+                        entry.remove_audio_filter("loudnorm")
+                    if not self.bot.config.use_opus_probe:
+                        if (
+                            self.bot.config.use_experimental_equalization
+                            and not entry.has_audio_filter("loudnorm")
+                        ):
+                            entry.set_audio_filter("loudnorm", LOUDNORM_TARGET)
+                        if self.bot.config.use_opus_audio:
+                            entry.set_audio_filter("volume", f"{self.volume:.2f}")
+                        else:
+                            # PCMVolumeTransformer applies volume after FFmpeg;
+                            # prevent a retained FFmpeg filter from reducing it twice.
+                            entry.remove_audio_filter("volume")
+
+                        if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
+                            entry_options = entry.aoptions
+                        else:
+                            entry_options = entry.get_audio_filters()
+                        if entry_options:
+                            aoptions += f" {entry_options}"
+                    elif (
+                        isinstance(entry, StreamPlaylistEntry)
+                        and self.bot.config.use_opus_audio
+                    ):
+                        # Preserve stream volume with probing, without normalization.
                         entry.set_audio_filter("volume", f"{self.volume:.2f}")
-                    else:
-                        # PCMVolumeTransformer applies volume after FFmpeg;
-                        # prevent a retained FFmpeg filter from reducing it twice.
-                        entry.remove_audio_filter("volume")
+                        aoptions += f" {entry.get_audio_filters()}"
 
                     if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
-                        entry_options = entry.aoptions
-                    else:
-                        entry_options = entry.get_audio_filters()
-                    if entry_options:
-                        aoptions += f" {entry_options}"
-                elif (
-                    isinstance(entry, StreamPlaylistEntry)
-                    and self.bot.config.use_opus_audio
-                ):
-                    # Preserve stream volume with probing, without normalization.
-                    entry.set_audio_filter("volume", f"{self.volume:.2f}")
-                    aoptions += f" {entry.get_audio_filters()}"
+                        if entry.boptions:
+                            boptions += f" {entry.boptions}"
 
-                if isinstance(entry, (URLPlaylistEntry, LocalFilePlaylistEntry)):
-                    if entry.boptions:
-                        boptions += f" {entry.boptions}"
+                    stderr_io = io.BytesIO()
 
-                stderr_io = io.BytesIO()
+                    if self.bot.config.use_opus_probe or self.bot.config.use_opus_audio:
+                        # Note: ffmpeg filters require encoding to work.
+                        # So copy codec will not allow speed, volume or other filters.
+                        if (
+                            self.bot.config.use_opus_probe and not entry.probed_codec
+                        ) or not entry.probed_bitrate:
+                            try:
+                                codec, bitrate = await FFmpegOpusAudio.probe(
+                                    entry.filename,
+                                    method="native",
+                                )
+                            except Exception:
+                                if generation != self._play_generation:
+                                    return
+                                raise
+                            if generation != self._play_generation:
+                                return
+                            if self.voice_client is None or not self.voice_client.is_connected():
+                                await abandon_disconnected_playback()
+                                return
+                            log.everything(  # type: ignore[attr-defined]
+                                "Probed codec and bitrate: %(name)s at %(rate)s kbps",
+                                {"name": codec, "rate": bitrate},
+                            )
+                        if self.bot.config.use_opus_probe and not entry.probed_codec:
+                            # If the probe returned opus, libopus, or copy, copy is used.
+                            entry.probed_codec = codec
 
-                if self.bot.config.use_opus_probe or self.bot.config.use_opus_audio:
-                    # Note: ffmpeg filters require encoding to work.
-                    # So copy codec will not allow speed, volume or other filters.
-                    if (
-                        self.bot.config.use_opus_probe and not entry.probed_codec
-                    ) or not entry.probed_bitrate:
-                        codec, bitrate = await FFmpegOpusAudio.probe(
+                        if not entry.probed_bitrate:
+                            entry.probed_bitrate = bitrate
+
+                        # Determine bitrate to use based on probe, channel setting, and bot limit.
+                        vc_kbitrate = self.voice_client.channel.bitrate / 1000
+                        kbitrate = min(vc_kbitrate, entry.probed_bitrate)
+                        kbitrate = min(kbitrate, MUSICBOT_VOICE_MAX_KBITRATE)
+                        source: FFmpegSources = FFmpegOpusAudio(
                             entry.filename,
-                            method="native",
-                        )
-                        log.everything(  # type: ignore[attr-defined]
-                            "Probed codec and bitrate: %(name)s at %(rate)s kbps",
-                            {"name": codec, "rate": bitrate},
-                        )
-                    if self.bot.config.use_opus_probe and not entry.probed_codec:
-                        # If the probe returned opus, libopus, or copy, copy is used.
-                        entry.probed_codec = codec
-
-                    if not entry.probed_bitrate:
-                        entry.probed_bitrate = bitrate
-
-                    # Determine bitrate to use based on probe, channel setting, and bot limit.
-                    vc_kbitrate = self.voice_client.channel.bitrate / 1000
-                    kbitrate = min(vc_kbitrate, entry.probed_bitrate)
-                    kbitrate = min(kbitrate, MUSICBOT_VOICE_MAX_KBITRATE)
-                    source: FFmpegSources = FFmpegOpusAudio(
-                        entry.filename,
-                        # FFmpeg cannot stream-copy Opus while applying filters.
-                        codec=None if "-af " in aoptions else entry.probed_codec,
-                        bitrate=kbitrate,
-                        before_options=boptions,
-                        options=aoptions,
-                        stderr=stderr_io,
-                    )
-                else:
-                    source = PCMVolumeTransformer(
-                        FFmpegPCMAudio(
-                            entry.filename,
+                            # FFmpeg cannot stream-copy Opus while applying filters.
+                            codec=None if "-af " in aoptions else entry.probed_codec,
+                            bitrate=kbitrate,
                             before_options=boptions,
                             options=aoptions,
                             stderr=stderr_io,
-                        ),
-                        self.volume,
+                        )
+                    else:
+                        source = PCMVolumeTransformer(
+                            FFmpegPCMAudio(
+                                entry.filename,
+                                before_options=boptions,
+                                options=aoptions,
+                                stderr=stderr_io,
+                            ),
+                            self.volume,
+                        )
+
+                    prepared_source = SourcePlaybackCounter(
+                        source,
+                        start_time=entry.start_time,
+                        playback_speed=entry.playback_speed,
+                        continuous=True,
                     )
+                    self._preparing_source = prepared_source
+                    self._skip_preparing = False
 
-                prepared_source = SourcePlaybackCounter(
-                    source,
-                    start_time=entry.start_time,
-                    playback_speed=entry.playback_speed,
-                    continuous=True,
-                )
-                self._preparing_source = prepared_source
-                self._skip_preparing = False
+                    def discard_source() -> None:
+                        # FFmpeg cleanup can wait for its process/pipe threads.
+                        try:
+                            prepared_source.cleanup()
+                            worker_done = getattr(prepared_source, "_worker_done", None)
+                            if worker_done is not None:
+                                worker_done.wait(FIRST_FRAME_TIMEOUT)
+                        except Exception:
+                            log.exception("Failed to clean up an unstarted audio source.")
+                        finally:
+                            stderr_io.close()
 
-                def discard_source() -> None:
-                    # FFmpeg cleanup can wait for its process/pipe threads.
                     try:
-                        prepared_source.cleanup()
-                    except Exception:
-                        log.exception("Failed to clean up an unstarted audio source.")
-                    finally:
-                        stderr_io.close()
+                        await prepared_source.prepare(timeout=FIRST_FRAME_TIMEOUT)
+                    except (Exception, asyncio.CancelledError) as exc:
+                        active = (generation == self._play_generation
+                                  and self._preparing_source is prepared_source)
+                        if active:
+                            self._preparing_source = None
+                        await asyncio.shield(asyncio.get_running_loop().run_in_executor(None, discard_source))
+                        if isinstance(exc, asyncio.CancelledError):
+                            raise
+                        if active and generation == self._play_generation:
+                            self.stop()
+                            self.emit("error", player=self, entry=entry, ex=exc)
+                        return
 
-                try:
-                    await prepared_source.prepare(timeout=FIRST_FRAME_TIMEOUT)
-                except (Exception, asyncio.CancelledError) as exc:
-                    active = self._preparing_source is prepared_source
-                    if active:
-                        self._preparing_source = None
-                    asyncio.get_running_loop().run_in_executor(None, discard_source)
-                    if isinstance(exc, asyncio.CancelledError):
-                        raise
-                    if active:
-                        self._pending_seek = None
-                        self.stop()
-                        self.emit("error", player=self, entry=entry, ex=exc)
-                    elif self._skip_preparing and not self.is_dead:
-                        self._skip_preparing = False
-                        self.play(_continue=True)
-                    return
+                    if generation != self._play_generation:
+                        await asyncio.shield(asyncio.get_running_loop().run_in_executor(None, discard_source))
+                        return
 
-                voice_client = self.voice_client
-                if (
-                    self.is_dead
-                    or voice_client is None
-                    or not voice_client.is_connected()
-                ):
-                    asyncio.get_running_loop().run_in_executor(None, discard_source)
-                    # A concurrent stop/skip has already discarded this entry.
-                    await abandon_disconnected_playback(
-                        restore_entry=self._preparing_source is prepared_source
+                    voice_client = self.voice_client
+                    if (
+                        self.is_dead
+                        or voice_client is None
+                        or not voice_client.is_connected()
+                    ):
+                        await asyncio.shield(asyncio.get_running_loop().run_in_executor(None, discard_source))
+                        # A concurrent stop/skip has already discarded this entry.
+                        await abandon_disconnected_playback(
+                            restore_entry=self._preparing_source is prepared_source
+                        )
+                        return
+
+                    if self._preparing_source is not prepared_source:
+                        await asyncio.shield(asyncio.get_running_loop().run_in_executor(None, discard_source))
+                        return
+                    self._preparing_source = None
+                    self._source = prepared_source
+                    stderr_future = asyncio.Future()
+                    log.ffmpeg(  # type: ignore[attr-defined]
+                        "Creating player with options: ffmpeg %(before)s -i %(input)s %(after)s",
+                        {"before": boptions, "input": entry.filename, "after": aoptions},
                     )
-                    return
-
-                if self._preparing_source is not prepared_source:
-                    asyncio.get_running_loop().run_in_executor(None, discard_source)
-                    if self._skip_preparing and not self.is_dead:
-                        self._skip_preparing = False
-                        self.play(_continue=True)
-                    return
-                self._preparing_source = None
-                self._source = prepared_source
-                log.ffmpeg(  # type: ignore[attr-defined]
-                    "Creating player with options: ffmpeg %(before)s -i %(input)s %(after)s",
-                    {"before": boptions, "input": entry.filename, "after": aoptions},
-                )
-                log.voicedebug(  # type: ignore[attr-defined]
-                    "Playing %(source)r using %(client)r",
-                    {"source": self._source, "client": self.voice_client},
-                )
-                try:
-                    voice_client.play(self._source, after=self._playback_finished)
-                    # A full startup window protects the tiny gap before the
-                    # producer is released to replenish the ongoing buffer.
-                    prepared_source.start_streaming()
-                except ClientException as exc:
-                    # Discord checks again inside play(), after our connection check.
-                    asyncio.get_running_loop().run_in_executor(None, discard_source)
-                    if str(exc) != "Not connected to voice.":
-                        self._source = None
+                    log.voicedebug(  # type: ignore[attr-defined]
+                        "Playing %(source)r using %(client)r",
+                        {"source": self._source, "client": self.voice_client},
+                    )
+                    try:
+                        voice_client.play(
+                            self._source,
+                            after=partial(self._playback_finished, source=prepared_source,
+                                          stderr_future=stderr_future),
+                        )
+                        # A full startup window protects the tiny gap before the
+                        # producer is released to replenish the ongoing buffer.
+                        prepared_source.start_streaming()
+                    except ClientException as exc:
+                        # Discord checks again inside play(), after our connection check.
+                        if self._source is prepared_source:
+                            self._source = None
+                        await asyncio.shield(asyncio.get_running_loop().run_in_executor(None, discard_source))
+                        if generation != self._play_generation:
+                            return
+                        if str(exc) != "Not connected to voice.":
+                            raise
+                        await abandon_disconnected_playback()
+                        return
+                    except Exception:
+                        # A rejected play() must not strand the continuous producer.
+                        if self._source is prepared_source:
+                            self._source = None
+                        await asyncio.shield(asyncio.get_running_loop().run_in_executor(None, discard_source))
+                        if generation != self._play_generation:
+                            return
                         raise
-                    await abandon_disconnected_playback()
-                    return
-                except Exception:
-                    # A rejected play() must not strand the continuous producer.
-                    asyncio.get_running_loop().run_in_executor(None, discard_source)
-                    self._source = None
-                    raise
 
-                self._current_player = voice_client
+                    self._current_player = voice_client
 
-                # I need to add ytdl hooks
-                self.state = MusicPlayerState.PLAYING
-                self._current_entry = entry
-                pending = self._pending_seek
-                self._pending_seek = None
-                if pending and pending["entry"] is entry and pending["paused"]:
-                    # Recreate the source without silently resuming a paused seek.
-                    self.pause()
+                    # I need to add ytdl hooks
+                    self.state = MusicPlayerState.PLAYING
+                    self._current_entry = entry
+                    pending = self._pending_seek
+                    self._pending_seek = None
+                    if pending and pending["entry"] is entry and pending["paused"]:
+                        # Recreate the source without silently resuming a paused seek.
+                        self.pause()
 
-                self._stderr_future = asyncio.Future()
+                    self._stderr_future = stderr_future
 
-                stderr_thread = Thread(
-                    target=filter_stderr,
-                    args=(stderr_io, self._stderr_future),
-                    name="MB_FFmpegStdErrReader",
-                )
+                    stderr_thread = Thread(
+                        target=filter_stderr,
+                        args=(stderr_io, self._stderr_future),
+                        name="MB_FFmpegStdErrReader",
+                    )
 
-                stderr_thread.start()
+                    stderr_thread.start()
 
-                self.emit("play", player=self, entry=entry)
+                    self.emit("play", player=self, entry=entry)
+        except asyncio.CancelledError:
+            # Explicit commands invalidate the generation before cancelling the
+            # waiter. External cancellation keeps its normal asyncio semantics.
+            if generation == self._play_generation:
+                raise
+        finally:
+            if self._play_task is task:
+                self._play_task = None
 
     async def _handle_file_cleanup(self, entry: EntryTypes) -> None:
         """

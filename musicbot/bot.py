@@ -4142,18 +4142,20 @@ class MusicBot(commands.Bot):
         Allows for playback seeking functionality in non-streamed entries.
         """
         # TODO: perhaps a means of listing chapters and seeking to them. like `seek ch1` & `seek list`
-        if not player or not player.current_entry:
+        pending = getattr(player, "_pending_seek", None) if player else None
+        entry = (player.current_entry or (pending["entry"] if pending else None)) if player else None
+        if entry is None:
             raise exceptions.CommandError(
                 "Cannot use seek if there is nothing playing.",
             )
 
-        if player.current_entry.duration is None:
+        if entry.duration is None:
             raise exceptions.CommandError(
                 "Cannot use seek on current track, it has an unknown duration.",
             )
 
         if not isinstance(
-            player.current_entry, (URLPlaylistEntry, LocalFilePlaylistEntry)
+            entry, (URLPlaylistEntry, LocalFilePlaylistEntry)
         ):
             raise exceptions.CommandError("Seeking is not supported for streams.")
 
@@ -4192,8 +4194,8 @@ class MusicBot(commands.Bot):
         if relative_seek != 0:
             f_seek_time = player.progress + (relative_seek * f_seek_time)
 
-        if f_seek_time > player.current_entry.duration or f_seek_time < 0:
-            td = format_song_duration(player.current_entry.duration_td)
+        if f_seek_time > entry.duration or f_seek_time < 0:
+            td = format_song_duration(entry.duration_td)
             prog = format_song_duration(player.progress)
             raise exceptions.CommandError(
                 "Cannot seek to `%(input)s` (`%(seconds)s` seconds) in the current track with a length of `%(progress)s / %(total)s`",
@@ -4205,7 +4207,6 @@ class MusicBot(commands.Bot):
                 },
             )
 
-        entry = player.current_entry
         # A seek restarts an audio source asynchronously. Keep one transition
         # record so state/ETA never combines the new entry offset with old frames.
         previous = getattr(player, "_pending_seek", None)
@@ -4224,7 +4225,7 @@ class MusicBot(commands.Bot):
         ):
             self.server_data[guild.id].current_playing_url = ""
 
-        player.skip()
+        player.skip(_seek=True)
 
         return Response(
             _D(

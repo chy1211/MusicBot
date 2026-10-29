@@ -66,7 +66,7 @@ class FakePlayer:
     def play(self):
         self.is_playing, self.is_paused, self.is_stopped = True, False, False
 
-    def skip(self):
+    def skip(self, *, _seek=False):
         self.current_entry = None
 
 

@@ -131,7 +131,7 @@ class DemoBot:
                     player.playlist.entries[index] = song
                 if index == 3:
                     song.author, song.channel = None, None
-            def skip(p=player, g=guild):
+            def skip(p=player, g=guild, *, _seek=False):
                 previous = p.current_entry
                 p.current_entry = p.playlist.entries.popleft() if p.playlist.entries else None
                 p.progress = p.current_entry.start_time if p.current_entry else 0

@@ -4,7 +4,7 @@ import logging
 logging.Logger.noise = logging.Logger.debug
 import unittest
 from types import SimpleNamespace as NS
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from musicbot.bot import MusicBot
 from musicbot.player import MusicPlayer, MusicPlayerState, SourcePlaybackCounter
 from musicbot.playlist import Playlist
@@ -29,6 +29,9 @@ class SeekTimeTests(unittest.IsolatedAsyncioTestCase):
         self.bot.player.playlist.entries.extend([entry('One'), entry('Two')])
         voice = NS(channel=self.bot.channel, stop=lambda: None)
         native = MusicPlayer(self.bot, voice, self.bot.player.playlist)
+        # These state/ETA tests simulate the replacement source below.
+        # Scheduling/cleanup is exercised with real tasks in patch2_races.
+        native.play = Mock()
         self.bot.player = native
         native._current_entry = current
         native._source = SourcePlaybackCounter(NS(cleanup=lambda: None), start_time=20)

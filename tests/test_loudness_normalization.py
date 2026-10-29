@@ -8,7 +8,7 @@ Discord and yt-dlp dependencies, without connecting to a Discord service.
 import ast
 import asyncio
 import json
-from functools import lru_cache
+from functools import lru_cache, partial
 import math
 import os
 import shlex
@@ -19,7 +19,7 @@ import unittest
 import wave
 from pathlib import Path
 from types import SimpleNamespace
-from typing import List
+from typing import List, Optional
 
 from musicbot.loudness import LOUDNORM_TARGET, measured_loudnorm_filter
 
@@ -163,6 +163,8 @@ def make_player_runtime():
         FFmpegPCMAudio=FakePCM,
         PCMVolumeTransformer=FakeTransformer,
         SourcePlaybackCounter=FakePlaybackCounter,
+        partial=partial,
+        Optional=Optional,
         MusicPlayerState=SimpleNamespace(PLAYING="playing"),
         URLPlaylistEntry=URL,
         LocalFilePlaylistEntry=Local,
@@ -183,6 +185,12 @@ class FakePlayer:
         self.voice_client = FakeVoice()
         self.volume = volume
         self._play_lock = asyncio.Lock()
+        self._play_generation = 0
+        self._play_task = None
+        self._play_queued_generation = None
+        self._stop_requested = False
+        self._preparing_source = None
+        self._skip_preparing = False
         self.is_dead = False
         self.guild_or_net_unavailable = False
         self.is_paused = False
@@ -194,6 +202,14 @@ class FakePlayer:
 
     def _kill_current_player(self):
         self._current_player = None
+
+    def _invalidate_play_request(self):
+        from musicbot.player import MusicPlayer
+        MusicPlayer._invalidate_play_request(self)
+
+    def _clear_pending_seek(self):
+        from musicbot.player import MusicPlayer
+        MusicPlayer._clear_pending_seek(self)
 
     def _playback_finished(self, *args):
         pass
@@ -513,7 +529,7 @@ class RealModuleLoudnessTests(unittest.IsolatedAsyncioTestCase):
         player.current_entry, player.progress, player.is_playing = entry, 17.5, True
         requeued, skips = [], []
         player.playlist.insert_entry_at_index = lambda index, item: requeued.append(item)
-        player.skip = lambda: skips.append(True)
+        player.skip = lambda **kwargs: skips.append(True)
         bot = SimpleNamespace(config=SimpleNamespace(use_opus_audio=True))
         with patch.object(bot_module, "_D", lambda text, ssd: text):
             await MusicBot.cmd_volume(bot, None, player, "35")
@@ -538,7 +554,7 @@ class RealModuleLoudnessTests(unittest.IsolatedAsyncioTestCase):
         player = FakePlayer(entry, volume=0.35)
         player.current_entry, player.progress = entry, 12.0
         player.playlist.insert_entry_at_index = lambda index, item: None
-        player.skip = lambda: None
+        player.skip = lambda **kwargs: None
         bot = SimpleNamespace(config=SimpleNamespace(
             enable_queue_history_global=False, enable_queue_history_guilds=False))
         with patch.object(bot_module, "_D", lambda text, ssd: text):

@@ -600,7 +600,12 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(player._source.cleanup)
         source = player._source
         self.assertFalse(DelayedOpus.last.cleaned.is_set())
-        voice.play.assert_called_once_with(source, after=player._playback_finished)
+        voice.play.assert_called_once()
+        self.assertIs(voice.play.call_args.args[0], source)
+        callback = voice.play.call_args.kwargs['after']
+        self.assertEqual(callback.func, player._playback_finished)
+        self.assertEqual(callback.keywords,
+                         {'source': source, 'stderr_future': player._stderr_future})
         self.assertIs(player._current_player, voice)
         self.assertIs(player.current_entry, entry)
         self.assertEqual(player.state, runtime.MusicPlayerState.PLAYING)
@@ -655,6 +660,9 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
         for action in ("skip", "stop"):
             with self.subTest(action=action):
                 player, entry, voice = self.fixture()
+                # Isolate the cancelled startup. Skip now schedules its next
+                # request immediately, which has its own disconnect handling.
+                player.play = Mock()
                 with patch.object(DelayedOpus, "block", True):
                     task = asyncio.create_task(self.run_player(player))
                     try:
