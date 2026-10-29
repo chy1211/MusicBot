@@ -4,6 +4,7 @@ The producer simulates a blocking FFmpeg read; the consumer simulates Discord's
 20 ms audio clock. No voice connection or external media is required.
 """
 import asyncio
+import logging
 import threading
 import time
 import unittest
@@ -11,6 +12,10 @@ from unittest.mock import patch
 
 from discord import AudioSource
 import musicbot.player as runtime
+
+# The application adds this custom log level at startup.
+if not hasattr(logging.Logger, "noise"):
+    logging.Logger.noise = logging.Logger.debug
 
 
 class PacketSource(AudioSource):
