@@ -251,11 +251,13 @@ class PrefetchTests(unittest.IsolatedAsyncioTestCase):
                         if isinstance(raw, PCMVolumeTransformer):
                             self.assertEqual(raw.volume, volume)
                             raw = raw.original
-                        self.assertEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
+                        # Continuous prefetch may already have refilled beyond
+                        # the initial ten frames; reads must still be in order.
+                        self.assertGreaterEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
                         self.assertEqual(counter.frames, 0)
                         self.assertEqual(counter.progress, position)
                         self.assertTrue(counter.read())
-                        self.assertEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
+                        self.assertGreaterEqual(raw.calls, runtime.STARTUP_BUFFER_FRAMES)
                         self.assertEqual(counter.frames, 1)
                     player._source.cleanup()
                     self.assertEqual(self.errors, [])
@@ -612,13 +614,24 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
                       ClientException('Already playing audio.')):
             with self.subTest(error=error):
                 player, _, voice = self.fixture()
-                voice.play.side_effect = error
+                sources = []
+
+                def reject(source, after):
+                    sources.append(source)
+                    raise error
+
+                voice.play.side_effect = reject
                 with patch.object(DelayedOpus, 'delay', 0):
                     try:
                         with self.assertRaises(type(error)) as raised:
                             await self.run_player(player)
                         self.assertIs(raised.exception, error)
                         player.emit.assert_not_called()
+                        self.assertIsNone(player._source)
+                        # A rejected play must not leak the live reader thread.
+                        self.assertTrue(
+                            await asyncio.to_thread(sources[0]._worker_done.wait, .5)
+                        )
                     finally:
                         DelayedOpus.last.cleanup()
 
