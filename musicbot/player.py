@@ -771,11 +771,17 @@ class MusicPlayer(EventEmitter, Serializable):
                     prepared_source.start_streaming()
                 except ClientException as exc:
                     # Discord checks again inside play(), after our connection check.
-                    if str(exc) != "Not connected to voice.":
-                        raise
                     asyncio.get_running_loop().run_in_executor(None, discard_source)
+                    if str(exc) != "Not connected to voice.":
+                        self._source = None
+                        raise
                     await abandon_disconnected_playback()
                     return
+                except Exception:
+                    # A rejected play() must not strand the continuous producer.
+                    asyncio.get_running_loop().run_in_executor(None, discard_source)
+                    self._source = None
+                    raise
 
                 self._current_player = voice_client
 
