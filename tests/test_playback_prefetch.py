@@ -614,13 +614,24 @@ class DisconnectPlaybackTests(unittest.IsolatedAsyncioTestCase):
                       ClientException('Already playing audio.')):
             with self.subTest(error=error):
                 player, _, voice = self.fixture()
-                voice.play.side_effect = error
+                sources = []
+
+                def reject(source, after):
+                    sources.append(source)
+                    raise error
+
+                voice.play.side_effect = reject
                 with patch.object(DelayedOpus, 'delay', 0):
                     try:
                         with self.assertRaises(type(error)) as raised:
                             await self.run_player(player)
                         self.assertIs(raised.exception, error)
                         player.emit.assert_not_called()
+                        self.assertIsNone(player._source)
+                        # A rejected play must not leak the live reader thread.
+                        self.assertTrue(
+                            await asyncio.to_thread(sources[0]._worker_done.wait, .5)
+                        )
                     finally:
                         DelayedOpus.last.cleanup()
 
