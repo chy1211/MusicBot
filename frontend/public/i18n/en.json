@@ -730,5 +730,18 @@
   "palette.mint": "Mint Charcoal",
   "palette.amber": "Amber Night",
   "palette.ocean": "Deep Ocean",
-  "palette.rose": "Berry Rose"
+  "palette.rose": "Berry Rose",
+  "admin.batch.overview": "System overview",
+  "admin.batch.playback": "Playback and notifications",
+  "admin.batch.sections": "Administration sections",
+  "admin.batch.audio": "Audio player",
+  "admin.batch.buffer": "Audio buffer",
+  "admin.batch.underruns": "Buffer underruns",
+  "admin.batch.partialLoad": "Some admin settings could not be loaded. Inspect the sections and retry.",
+  "admin.batch.audio.playing": "Playing",
+  "admin.batch.audio.paused": "Paused",
+  "admin.batch.audio.preparing": "Preparing",
+  "admin.batch.audio.stopped": "Stopped",
+  "admin.batch.audio.disconnected": "Disconnected",
+  "admin.batch.audio.unknown": "Unknown"
 }

@@ -269,6 +269,7 @@ test("owner permissions require confirmation and keep human readable field label
   t.after(() => app.context.close());
   await app.page.locator("#nav-admin").click();
   await app.page.locator("#admin-panel").waitFor({ state: "visible" });
+  await app.page.locator("#admin-permissions-group > summary").click();
   const field = app.page.locator("#permission-Default-AllowPlaylists");
   await app.page.locator("#admin-permissions summary").filter({ hasText: /^Default$/ }).click();
   await field.waitFor({ state: "visible" });
@@ -286,6 +287,7 @@ test("confirmed permission edits send the old and new values to the selected gui
   const app = await openDashboard();
   t.after(() => app.context.close());
   await app.page.locator("#nav-admin").click();
+  await app.page.locator("#admin-permissions-group > summary").click();
   const field = app.page.locator("#permission-Default-AllowPlaylists");
   await app.page.locator("#admin-permissions summary").filter({ hasText: /^Default$/ }).click();
   await field.waitFor({ state: "visible" });
@@ -303,14 +305,17 @@ test("vote skip setting posts one boolean and reports the saved state", async t 
   const app = await openDashboard();
   t.after(() => app.context.close());
   await app.page.locator("#nav-admin").click();
+  await app.page.locator("#admin-permissions-group > summary").click();
   const toggle = app.page.locator("#admin-vote-skip-enabled");
   await toggle.waitFor({ state: "visible" });
-  await toggle.check();
+  await app.page.waitForFunction(() => !document.querySelector("#admin-vote-skip-enabled")?.disabled);
+  const enabled = !(await toggle.isChecked());
+  await toggle.setChecked(enabled);
   await app.page.locator("#admin-vote-skip-save").click();
   await app.page.waitForFunction(() => Boolean(document.querySelector("#admin-vote-skip-status")?.textContent));
   const save = app.requests.find(r => r.method === "POST" && r.url.endsWith("/admin/vote-skip"));
   assert.ok(save);
-  assert.ok(save.body.includes('"enabled":true'));
+  assert.equal(JSON.parse(save.body).enabled, enabled);
   assert.ok(await app.page.locator("#admin-vote-skip-enabled").getAttribute("aria-describedby"));
   assert.deepEqual(app.errors, []);
 });

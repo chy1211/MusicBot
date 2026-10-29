@@ -272,6 +272,27 @@ class DashboardMaintenance:
             value = dict(self.maintenance_cached[1])
         cutoff = time.monotonic()-45
         self.web_viewers = {uid: at for uid, at in self.web_viewers.items() if at > cutoff}
+        # Sample live playback outside the 15-second cached maintenance block.
+        # No track URLs, audio payloads, FFmpeg stderr or exception messages.
+        guild, _ = self.require_owner(request)
+        player = self.bot.get_player_in(guild)
+        audio = {"state": "disconnected", "buffered_ms": 0,
+                 "capacity_ms": 0, "underrun_frames": 0, "read_error": ""}
+        if player is not None:
+            if player.is_playing:
+                audio["state"] = "playing"
+            elif player.is_paused:
+                audio["state"] = "paused"
+            elif (getattr(player, "_play_task", None) is not None
+                  and not player._play_task.done()) or getattr(player, "_play_queued_generation", None) is not None or getattr(player, "_transitioning_to_next", False):
+                audio["state"] = "preparing"
+            else:
+                audio["state"] = "stopped"
+            source = (getattr(player, "_preparing_source", None)
+                      or getattr(player, "_source", None))
+            if source is not None and callable(getattr(source, "diagnostics", None)):
+                audio.update(source.diagnostics())
         value.update(started_at=timestamp(getattr(self.bot, "_init_time", self.dashboard_started_at)),
-                     viewers=len(self.web_viewers), viewer_window_seconds=45)
+                     viewers=len(self.web_viewers), viewer_window_seconds=45,
+                     audio=audio)
         return web.json_response(value)

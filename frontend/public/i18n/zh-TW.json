@@ -730,5 +730,18 @@
   "palette.mint": "薄荷炭灰",
   "palette.amber": "琥珀夜色",
   "palette.ocean": "深海藍",
-  "palette.rose": "莓果玫瑰"
+  "palette.rose": "莓果玫瑰",
+  "admin.batch.overview": "系統概況",
+  "admin.batch.playback": "播放與通知",
+  "admin.batch.sections": "管理區段",
+  "admin.batch.audio": "播放器",
+  "admin.batch.buffer": "音訊緩衝",
+  "admin.batch.underruns": "緩衝不足次數",
+  "admin.batch.partialLoad": "部分管理設定載入失敗，請檢查各區狀態後重試。",
+  "admin.batch.audio.playing": "播放中",
+  "admin.batch.audio.paused": "已暫停",
+  "admin.batch.audio.preparing": "準備中",
+  "admin.batch.audio.stopped": "已停止",
+  "admin.batch.audio.disconnected": "未連線",
+  "admin.batch.audio.unknown": "未知"
 }

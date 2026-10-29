@@ -24,6 +24,7 @@ module.exports = ({test, assert, openDashboard, baseURL}) => {
   test("admin search ignores the older response after a newer search completes", async t => {
     const app = await openDashboard(); t.after(() => app.context.close());
     await app.page.locator("#nav-admin").click();
+    await app.page.locator("#admin-apl-group > summary").click();
     await app.page.locator("#admin-apl-list > li").first().waitFor();
     let release;
     const gate = new Promise(resolve => { release = resolve; });

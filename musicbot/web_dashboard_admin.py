@@ -69,8 +69,7 @@ class DashboardAdmin(DashboardPermissions, DashboardNotifications):
             fail(409, _web_text('m0477'))
         return apl
 
-    @staticmethod
-    def autoplaylist_page(apl, request):
+    def autoplaylist_page(self, apl, request, guild):
         from .web_dashboard import public_url
         query = request.query.get("q", "").strip()
         if len(query) > 100:
@@ -78,9 +77,56 @@ class DashboardAdmin(DashboardPermissions, DashboardNotifications):
         raw_page = request.query.get("page", "1")
         if not raw_page.isascii() or not raw_page.isdigit() or not 1 <= int(raw_page) <= 1000000:
             fail(400, _web_text('m0479'))
-        rows = [{"index": i, "url": public_url(url)[:2000],
-                 "title": _web_text('m0480') if public_url(url) else _web_text('m0481')}
-                for i, url in enumerate(apl)]
+        # Enrich only with metadata already held in guild memory; do not
+        # extract or issue remote requests when opening the admin page.
+        known = {}
+        for item in list(self.recent_history.get(guild.id, ()))[:100]:
+            url = public_url(item.get("url", ""))
+            if url:
+                known[url] = item
+        player = self.bot.get_player_in(guild)
+        if player is not None:
+            live_entries = [getattr(player, "current_entry", None)]
+            live_entries += list(player.playlist.entries)[:100]
+            for entry in live_entries:
+                if entry is None:
+                    continue
+                url = public_url(getattr(entry, "url", ""))
+                if url:
+                    known[url] = {"title": getattr(entry, "title", ""),
+                                  "thumbnail": getattr(entry, "thumbnail_url", ""),
+                                  "duration": getattr(entry, "duration", 0)}
+        from urllib.parse import urlsplit, parse_qs
+        import re
+
+        def public_cover(url):
+            # Standard public YouTube video cover, derived without extraction.
+            try:
+                parts = urlsplit(url)
+                host = (parts.hostname or "").lower()
+                video_id = ""
+                if host in ("youtube.com", "www.youtube.com", "m.youtube.com") and parts.path == "/watch":
+                    video_id = parse_qs(parts.query).get("v", [""])[0]
+                elif host in ("youtu.be", "www.youtu.be"):
+                    video_id = parts.path.strip("/")
+                if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+                    return "https://i.ytimg.com/vi/" + video_id + "/hqdefault.jpg"
+            except ValueError:
+                pass
+            return ""
+
+        rows = []
+        for i, url in enumerate(apl):
+            safe = public_url(url)[:2000]
+            meta = known.get(safe, {})
+            title = meta.get("title", "") if isinstance(meta, dict) else ""
+            valid_title = isinstance(title, str) and bool(title.strip()) and len(title) <= 300
+            rows.append({"index": i, "url": safe,
+                         "title": title.strip() if valid_title else
+                                  _web_text('m0480') if safe else _web_text('m0481'),
+                         "known": bool(valid_title),
+                         "thumbnail": (public_url(meta.get("thumbnail", "")) if isinstance(meta, dict) else "")
+                                      or public_cover(safe)})
         # Only searchable public text, never a legacy local path.
         filtered = [row for row in rows if query.lower() in (row["url"] + row["title"]).lower()]
         page = int(raw_page)
@@ -97,7 +143,7 @@ class DashboardAdmin(DashboardPermissions, DashboardNotifications):
             apl = self.current_autoplaylist(guild)
             await apl.load()
             if request.method == "GET":
-                return web.json_response(self.autoplaylist_page(apl, request))
+                return web.json_response(self.autoplaylist_page(apl, request, guild))
             data = await self.payload(request)
             if set(data) - {"revision", "url", "current", "index"}:
                 fail(400, _web_text('m0482'))
@@ -136,4 +182,4 @@ class DashboardAdmin(DashboardPermissions, DashboardNotifications):
             except OSError:
                 await apl.load(force=True)
                 fail(500, _web_text('m0488'))
-            return web.json_response(dict(self.autoplaylist_page(apl, request), message=_web_text('m0006')))
+            return web.json_response(dict(self.autoplaylist_page(apl, request, guild), message=_web_text('m0006')))

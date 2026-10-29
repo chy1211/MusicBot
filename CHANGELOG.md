@@ -7,6 +7,9 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
+- 管理頁分組顯示設定與即時音訊健康；切換伺服器清除舊設定與草稿，載入失敗或未變更時停用儲存，自動播放清單優先顯示已有曲目資料。
+  Group administration settings and live audio health, clear stale settings and drafts on guild changes, disable saves for unloaded or unchanged settings, and enrich autoplaylists from existing metadata.
+
 - 平板橫直向的側欄依播放列實際高度預留間距，避免兩者重疊。
   Reserve sidebar clearance from the measured playback bar height in tablet portrait and landscape layouts.
 

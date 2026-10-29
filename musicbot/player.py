@@ -188,6 +188,15 @@ class SourcePlaybackCounter(AudioSource):
     def underrun_frames(self) -> int:
         return self._underrun_frames
 
+    def diagnostics(self) -> dict:
+        """Small, lock-protected, content-free snapshot for owner-only health UI."""
+        with self._buffer_cond:
+            return {"buffered_ms": len(self._prefetched_frames) * 20,
+                    "capacity_ms": CONTINUOUS_BUFFER_FRAMES * 20 if self._continuous else STARTUP_BUFFER_FRAMES * 20,
+                    "underrun_frames": self._underrun_frames,
+                    "read_error": type(self._prefetch_error).__name__ if self._prefetch_error else "",
+                    "worker_done": self._worker_done.is_set()}
+
     def _read_frame(self) -> bytes:
         if self._continuous:
             with self._buffer_cond:
