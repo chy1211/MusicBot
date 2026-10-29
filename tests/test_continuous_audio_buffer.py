@@ -132,6 +132,47 @@ class ContinuousPlaybackTests(unittest.IsolatedAsyncioTestCase):
             counter.cleanup()
             self.assertTrue(await asyncio.to_thread(counter._worker_done.wait, 1))
 
+    async def test_real_discord_sender_no_catch_up_burst(self):
+        """Exercise discord.py's actual AudioPlayer clock without Discord I/O."""
+        from discord.player import AudioPlayer
+
+        async def run_sender(continuous):
+            source = PacketSource(total=55, stall_at=25, stall_seconds=.30)
+            counter = runtime.SourcePlaybackCounter(source, continuous=continuous)
+            await counter.prepare()
+            timestamps = []
+            errors = []
+
+            class FakeVoice:
+                def is_connected(self):
+                    return True
+
+                def send_audio_packet(self, data, *, encode):
+                    timestamps.append(time.perf_counter())
+
+            with patch.object(AudioPlayer, "_speak"), patch.object(
+                AudioPlayer, "send_silence"
+            ):
+                sender = AudioPlayer(counter, FakeVoice(), after=errors.append)
+                counter.start_streaming()
+                sender.start()
+                await asyncio.to_thread(sender.join, 4)
+                if sender.is_alive():
+                    sender.stop()
+                    counter.cleanup()
+                self.assertFalse(sender.is_alive(), "AudioPlayer did not finish")
+            self.assertEqual(errors, [None])
+            self.assertEqual(len(timestamps), 55)
+            self.assertTrue(await asyncio.to_thread(counter._worker_done.wait, 1))
+            return [b - a for a, b in zip(timestamps, timestamps[1:])]
+
+        baseline = await run_sender(False)
+        buffered = await run_sender(True)
+        # The old synchronous read catches up with several near-zero sleeps
+        # after the 300 ms stall. The continuous producer prevents that burst.
+        self.assertGreaterEqual(sum(gap < .005 for gap in baseline), 3)
+        self.assertLessEqual(sum(gap < .005 for gap in buffered), 1)
+
     async def test_producer_never_exceeds_bounded_buffer(self):
         source = PacketSource(total=200)
         counter = runtime.SourcePlaybackCounter(source, continuous=True)
