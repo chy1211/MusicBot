@@ -12,7 +12,7 @@ def contrast(a, b):
     return (y + .05) / (x + .05)
 
 def check():
-    css = (Path(__file__).resolve().parents[1] / 'frontend/src/style.css').read_text()
+    css = (Path(__file__).resolve().parents[1] / 'frontend/src/styles/surfaces.css').read_text()
     failures = 0
     mint_exceptions = 0
     for palette in ('mint', 'amber', 'ocean', 'rose'):

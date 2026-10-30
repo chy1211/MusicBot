@@ -1,0 +1,37 @@
+/* Segmented sidebar navigation and the mobile bottom navigation bar. */
+@media(min-width:761px){
+ .sidebar .page-tabs{display:grid;grid-template-columns:1fr}
+}
+@media(max-width:760px){
+ /* Desktop's fixed-sidebar bottom offset must not leak into relative mobile flow. */
+ .sidebar{position:relative;inset:auto;margin-top:0;margin-bottom:2px;align-content:start}
+ .sidebar .page-tabs{display:grid;position:fixed;z-index:30;bottom:max(12px,var(--safe-bottom));left:max(12px,var(--safe-left));right:max(12px,var(--safe-right));margin:0}
+ .playback-bar{bottom:calc(max(12px,var(--safe-bottom)) + 64px)}
+ main{padding-top:4px;padding-bottom:calc(var(--dock-player-height,132px) + var(--safe-bottom) + 112px)}
+ .page-heading{margin-top:0;margin-bottom:14px}
+}
+@media(max-width:760px) and (orientation:portrait){
+ .sidebar .brand{min-height:40px;margin-bottom:0}
+ .language-preference{margin-bottom:0}
+}
+/* Landscape-specific playback controls: coherent SVGs, accessible hit areas. */
+@media(orientation:landscape) and (max-height:560px) and (pointer:coarse){
+ .landscape-buttons{gap:clamp(10px,3vw,22px)}
+ .landscape-buttons button{display:inline-flex;align-items:center;justify-content:center;
+   min-width:48px;min-height:48px;width:52px;height:52px;border-radius:50%;padding:10px;line-height:1;
+   background:var(--raised);border:1px solid var(--line);color:var(--text)}
+ .landscape-buttons .landscape-toggle.primary{width:62px;height:62px;min-width:62px;min-height:62px;background:var(--green);color:var(--accent-ink);border-color:transparent}
+ .landscape-icon{display:block;width:26px;height:26px;flex:0 0 26px}
+ .landscape-buttons .landscape-toggle .landscape-icon{width:29px;height:29px;flex-basis:29px}
+ .landscape-favorite[aria-pressed=true]{color:var(--green)}
+ .landscape-favorite[aria-pressed=true] .landscape-icon path{fill:currentColor}
+ .landscape-requester{display:flex;align-items:center;gap:9px;min-width:0;font-size:clamp(12px,2vw,16px)}
+ .landscape-requester img,.landscape-requester-fallback{height:28px;width:28px;min-width:28px;flex:0 0 28px;border-radius:50%;object-fit:cover;background:var(--raised)}
+ .landscape-requester-fallback{display:grid;place-items:center}
+ .landscape-requester span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+@media(orientation:landscape) and (max-height:420px) and (pointer:coarse){
+ .landscape-buttons .landscape-toggle.primary{width:50px;height:50px;min-width:50px;min-height:50px}
+ .landscape-buttons button{width:46px;height:46px;min-width:46px;min-height:46px}
+ .landscape-requester img,.landscape-requester-fallback{width:24px;height:24px;min-width:24px;flex-basis:24px}
+}

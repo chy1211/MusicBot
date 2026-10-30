@@ -86,7 +86,7 @@ test("a command becoming busy during resolve reports the existing retry notice",
 // Render the actual two list templates as VNodes so their click handlers and
 // disabled/progress bindings are exercised without a browser or backend.
 const source=fs.readFileSync(path.resolve(__dirname,"../frontend/src/views/PlayView.vue"),"utf8");
-const lists=["recommendation-list","history-list"].map(id=>{
+const lists=["history-list"].map(id=>{
  const start=source.indexOf('<ol id="'+id+'"');
  assert.ok(start>=0,id);return source.slice(start,source.indexOf("</ol>",start)+5);
 });
@@ -103,20 +103,20 @@ function buttons(a,history=[track]){
  };
  return nodes(render(context,[])).filter(node=>node.type==="button"&&node.props?.["aria-label"]?.startsWith("m0612 "));
 }
-test("both recently played lists enqueue directly and expose disabled progress",async()=>{
+test("the single recently played list enqueues directly and exposes disabled progress",async()=>{
  const pending=deferred(),a=runtime(()=>pending.promise),history=[track,{title:"B",url:"https://example.test/b"}];
- let rows=buttons(a,history);assert.equal(rows.length,4);
+ let rows=buttons(a,history);assert.equal(rows.length,2);
  for(const row of rows){assert.equal(row.props.disabled,false);assert.equal(row.props["aria-busy"],false);assert.equal(row.children,"m0612")}
  const first=rows[0].props.onClick();
  rows=buttons(a,history);
  for(const row of rows)assert.equal(row.props.disabled,true);
- for(const row of [rows[0],rows[2]]){assert.equal(row.props["aria-busy"],true);assert.equal(row.children,"resolve.queued")}
- await rows[2].props.onClick();assert.equal(a.calls.length,1);
+ for(const row of [rows[0]]){assert.equal(row.props["aria-busy"],true);assert.equal(row.children,"resolve.queued")}
+ await rows[0].props.onClick();assert.equal(a.calls.length,1);
  a.calls[0].options.onResolutionState("resolving");
  assert.equal(buttons(a,history)[0].children,"resolve.adding");
  pending.resolve({results:[candidate]});await first;assert.equal(a.commands.length,1);
  rows=buttons(a,history);for(const row of rows){assert.equal(row.props.disabled,false);assert.equal(row.children,"m0612")}
- await rows[2].props.onClick();assert.equal(a.commands.length,2);assert.equal(a.calls.length,2);
+ await rows[0].props.onClick();assert.equal(a.commands.length,2);assert.equal(a.calls.length,2);
 });
 test("recently played buttons reuse the bilingual queue label",()=>{
  const en=require("../frontend/public/i18n/en.json"),zh=require("../frontend/public/i18n/zh-TW.json");

@@ -7,7 +7,7 @@ test('landscape player is conditional and has an escape route',()=>{
  assert.match(code,/@click="run\(state\?\.status/);
 });
 test('phone media breakpoints preserve safe areas',()=>{
- const css=read('frontend/src/round13.css');
+ const css=read('frontend/src/styles/mobile-player.css');
  assert.match(css,/@media\(max-width:760px\) and \(orientation:portrait\)/);
  assert.match(css,/@media\(orientation:landscape\)/);
  assert.match(css,/--safe-bottom/);

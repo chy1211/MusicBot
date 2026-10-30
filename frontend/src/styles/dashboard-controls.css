@@ -1,4 +1,4 @@
-/* Round 15 - visual repair; keep round12-14 structure and functional controls. */
+/* Dashboard controls and refinements, applied after the layout and palettes. */
 /* Palette control is at the right edge: open LEFT and wrap instead of overflowing. */
 .language-preference .palette-picker{isolation:isolate}
 .language-preference .palette-panel{
@@ -78,7 +78,7 @@
  .header-playlist-modal{padding:14px}
 }
 
-/* Round15 supplemental repair - toolbar, navigation and true asset-backed icons. */
+/* Toolbar, navigation and transport icon refinements. */
 #play-view>.request,#play-view>.request:has(.playlist-selection){display:none!important}
 /* Overlapping avatar circles follow the provided listening-card reference. */
 @media(min-width:1001px){

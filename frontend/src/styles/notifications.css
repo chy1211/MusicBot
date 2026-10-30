@@ -1,0 +1,21 @@
+/* Place notifications above the playback dock on desktops and tablets.
+   A wide coarse-pointer PHONE in short landscape must keep its former toast.
+   Tablets (>=761 px wide, >=561 px tall) and fine-pointer desktops qualify.
+   Preserve portrait-phone and short-landscape-phone rules exactly as they were. */
+@media (min-width:761px) and (pointer:fine),
+       (min-width:761px) and (min-height:561px){
+  #notice.notice{
+    position:fixed;
+    top:auto;
+    right:max(16px,var(--safe-right));
+    bottom:calc(var(--safe-bottom) + var(--dock-player-height,var(--bar,128px)) + 28px + var(--notice-lyrics-clearance,0px));
+    left:auto;
+    width:max-content;
+    max-width:min(420px,calc(100vw - var(--safe-left) - var(--safe-right) - 32px));
+    max-height:min(38dvh,300px);
+    overflow:auto;
+    margin:0;
+    transform:translateY(8px);
+  }
+  #notice.notice.visible{transform:translateY(0)}
+}

@@ -43,6 +43,21 @@ jobs:
         env:
           NODE_PATH: ${{ github.workspace }}/frontend/node_modules
         run: node --test tests/test_*.cjs
+      - name: Dashboard browser regressions (desktop, tablet and mobile)
+        env:
+          NODE_PATH: ${{ github.workspace }}/frontend/node_modules
+          PATCH1014_SHOTS: ${{ runner.temp }}/musicbot-dashboard-shots
+        run: |
+          python -m tools.dashboard_patch1014_fixture --port 18310 &
+          fixture_pid=$!
+          trap 'kill "$fixture_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:18310/ >/dev/null; then ready=1; break; fi
+            sleep 0.3
+          done
+          if [ "$ready" -ne 1 ]; then echo 'Demo fixture failed to start'; exit 1; fi
+          node --test --test-concurrency=1 tools/test_dashboard_round15_browser.cjs tools/test_dashboard_round17_notice_browser.cjs
       - name: Compound YouTube links
         run: python -m tools.test_compound_link
       - name: Dashboard translation consistency

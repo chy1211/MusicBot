@@ -7,6 +7,9 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
+- 恢復分段導覽與鍵盤快捷鍵入口，補上手機橫向收藏及向量播放控制；桌面和平板通知避開搜尋欄並置於播放列上方。所有播放狀態優先顯示最近播過，再顯示操作紀錄，移除佇列內重複紀錄。全域 CSS 依功能重新命名，並在 CI 執行跨尺寸瀏覽器回歸測試。
+  Restore segmented navigation and shortcut help, add landscape favorites and vector controls, and place desktop/tablet notifications above the dock. Show recent history before activity in every playback state without duplicating it inside the queue. Name global styles by feature and run responsive browser regressions in CI.
+
 - 以實際下載與檔案指紋憑證驗證未知大小音檔快取，依登入世代與解析設定短期重用完整單曲資訊；加入手動頂部搜尋、下一首卡片、手機橫向控制與兩款配色。
   Verify unknown-size audio caches with real-transfer completion receipts and reuse complete track metadata within cookie and option boundaries. Add manual header search, an up-next card, touch landscape controls and two palettes.
 
