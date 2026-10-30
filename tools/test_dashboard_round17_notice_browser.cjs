@@ -20,10 +20,13 @@ for(const scenario of [
   await page.locator('#discord-login').click();
   await page.waitForFunction(()=>document.querySelectorAll('#queue>li').length===4);
   await page.waitForSelector('#notice',{state:'attached'});
-  const actual=await page.evaluate(()=>{
+  const actual=await page.evaluate(async()=>{
     const n=document.querySelector('#notice');
     n.classList.add('visible');
     const span=n.querySelector('span');if(span)span.textContent='Preview expired: please search again to continue.';
+    // Flush the visible class and wait for its real CSS transition to finish.
+    n.getBoundingClientRect();
+    await Promise.all(n.getAnimations().map(animation=>animation.finished));
     const rect=n.getBoundingClientRect();
     const dock=document.querySelector('#playback-bar')?.getBoundingClientRect();
     const input=document.querySelector('#header-query')?.getBoundingClientRect();

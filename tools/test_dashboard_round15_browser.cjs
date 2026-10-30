@@ -8,7 +8,8 @@ before(async()=>{fs.mkdirSync(shots,{recursive:true});browser=await chromium.lau
 after(async()=>{await browser?.close();});
 async function open(t,width=1440,height=900){
  const context=await browser.newContext({viewport:{width,height},locale:'zh-TW',isMobile:width<900,hasTouch:width<900,serviceWorkers:'block'});
- t.after(()=>context.close());const page=await context.newPage(),errors=[],calls=[];
+ const page=await context.newPage(),errors=[],calls=[];
+ t.after(async()=>{await page.unrouteAll({behavior:'wait'});await context.close();});
  page.on('pageerror',e=>errors.push(String(e)));page.on('request',r=>{if(r.method()==='POST')calls.push({url:r.url(),body:r.postDataJSON()});});
  await page.goto(base+'/?demo-queue=filled&demo-lyrics=synced');
  await page.waitForFunction(()=>document.querySelector('#dashboard')?.getClientRects().length||document.querySelector('#discord-login')?.getClientRects().length);
@@ -112,7 +113,8 @@ test('history precedes activity in every playback state',async t=>{
     above:history.getBoundingClientRect().bottom<=activity.getBoundingClientRect().top+1};
   });
   assert.deepEqual(order,{dom:true,above:true},status);
-  await page.unroute('**/api/guilds/*/state');
+  await page.unrouteAll({behavior:'wait'});
+  await page.route('**/events*',route=>route.abort());
  }
  assert.deepEqual(errors,[]);
 });
