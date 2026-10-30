@@ -1,0 +1,123 @@
+/* Round 15 - visual repair; keep round12-14 structure and functional controls. */
+/* Palette control is at the right edge: open LEFT and wrap instead of overflowing. */
+.language-preference .palette-picker{isolation:isolate}
+.language-preference .palette-panel{
+  left:auto;right:0;display:grid;grid-template-columns:repeat(3,44px);
+  width:max-content;max-width:calc(100vw - var(--safe-left) - var(--safe-right) - 24px);
+  gap:5px;z-index:200;padding:9px;
+}
+/* The desktop hero uses a fixed album-art column; requester/listeners share one metadata row. */
+@media(min-width:1001px){
+ #play-view>.listening-stage{align-items:center}
+ #play-view>.listening-stage .stage-copy{display:grid;grid-template-columns:minmax(130px,.85fr) minmax(0,1.8fr);column-gap:20px;align-content:center;width:100%}
+ #play-view>.listening-stage .eyebrow,#play-view>.listening-stage #stage-title{grid-column:1/-1}
+ #play-view>.listening-stage .stage-copy h2{font-size:clamp(24px,2.2vw,37px);line-height:1.25;margin:8px 0 22px}
+ #play-view>.listening-stage .stage-request{grid-column:1;grid-row:3;align-content:center;margin:0;padding-right:16px;border-right:1px solid var(--line)}
+ #play-view>.listening-stage .stage-audience{grid-column:2;grid-row:3;margin:0;padding:0;border:0;display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap}
+ #play-view>.listening-stage .stage-audience .listeners-list{flex:0 1 auto;min-width:0;margin:0;display:flex;align-items:center}
+ #play-view>.listening-stage .stage-audience #listeners-status{margin:0}
+ #play-view>.listening-stage .stage-wave{display:none}
+}
+/* Retain original requester/listeners compact style on mobile. */
+@media(max-width:1000px){#play-view>.listening-stage .stage-wave{display:none}}
+.queue-requester{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap;color:var(--muted);font-size:11px}
+.queue-requester img{height:19px;width:19px;flex:0 0 19px;object-fit:cover;border-radius:50%}
+.queue-requester span:last-child{overflow:hidden;text-overflow:ellipsis}
+.next-track-text .queue-requester{font-size:12px}
+/* Keep only drag and delete; no extra buttons or overflow action menu. */
+#play-view>.queue #queue>li{
+ grid-template-columns:24px 40px minmax(0,1fr) 40px 92px;
+ gap:9px;min-height:62px;padding:7px 5px;border-radius:12px;
+}
+#play-view>.queue #queue .queue-art{width:40px;height:40px}
+#play-view>.queue #queue .actions{display:flex;align-items:center;flex-wrap:nowrap;grid-column:5;grid-row:1;gap:4px;justify-content:flex-end;opacity:1;min-width:0}
+#play-view>.queue #queue .actions>button:not(.drag-handle):not(.queue-remove){display:none!important}
+#play-view>.queue #queue .actions>.drag-handle,#play-view>.queue #queue .actions>.queue-remove{
+ display:inline-flex;align-items:center;justify-content:center;flex:0 0 42px;
+ min-width:42px;min-height:42px;padding:0;border-radius:10px;
+}
+#play-view>.queue #queue .song{display:grid;gap:3px;min-width:0}
+#play-view>.queue #queue .song p{line-height:1.3}
+#play-view>.queue #queue .queue-estimate{font-size:10px;line-height:1.25}
+#play-view>.queue .queue-head{grid-template-columns:24px 1fr 130px;padding-block:8px}
+/* Native dialog is a top-layer modal, not a navigation to the legacy preview. */
+.header-playlist-modal{
+ width:min(660px,calc(100vw - 28px));max-height:min(760px,calc(100dvh - var(--safe-top) - var(--safe-bottom) - 32px));
+ background:var(--opaque);color:var(--text);border:1px solid var(--line);border-radius:20px;
+ padding:20px;box-shadow:0 24px 80px #0009;overflow:auto;
+}
+.header-playlist-modal::backdrop{background:rgba(0,0,0,.7);backdrop-filter:blur(3px)}
+.playlist-modal-heading,.playlist-modal-footer{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.playlist-modal-heading h2{overflow-wrap:anywhere;font-size:clamp(18px,3vw,25px)}
+.playlist-modal-heading small{color:var(--muted)}
+.playlist-modal-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+.playlist-modal-tools span{font-size:12px;color:var(--muted)}
+.playlist-modal-entries{list-style:none;padding:0;margin:0;max-height:42vh;overflow:auto;border-block:1px solid var(--line)}
+.playlist-modal-entries li+li{border-top:1px solid var(--line)}
+.playlist-modal-entries label{display:flex;align-items:center;gap:12px;min-height:58px;padding:8px 4px;cursor:pointer}
+.playlist-modal-entries .art{width:42px;height:42px;flex:0 0 42px}
+.playlist-modal-entry-label{display:grid;gap:2px;min-width:0}.playlist-modal-entry-label strong{font-size:13px;overflow-wrap:anywhere}.playlist-modal-entry-label small{font-size:11px;color:var(--muted)}
+.playlist-modal-footer{padding-top:14px}
+/* Use coherent vector icons, not platform-specific emoji/font glyph pseudo elements. */
+#playback-bar .transport button{display:inline-flex;align-items:center;justify-content:center;position:relative;min-width:44px;min-height:44px;width:44px;height:44px;padding:8px;border-radius:50%;font-size:0!important;border-color:transparent;background:transparent;box-shadow:none;transition:background .15s,transform .15s}
+#playback-bar .transport #toggle{width:50px;height:50px;min-width:50px;min-height:50px;background:var(--green);color:var(--accent-ink)}
+#playback-bar .transport button:not(#toggle):hover:enabled{background:var(--raised)}
+#playback-bar .transport #repeat[aria-pressed=true]{color:var(--green)}
+#playback-bar .transport button::after{content:none!important;display:none!important}
+#playback-bar .transport .transport-icon{width:23px;height:23px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+#playback-bar .transport .transport-skip path:first-child{fill:currentColor;stroke:none}
+#playback-bar .transport #toggle .transport-icon{width:25px;height:25px;stroke-width:3}
+#playback-bar .transport #toggle .transport-icon path:not([d="M8 5v14M16 5v14"]){fill:currentColor;stroke:none}
+#playback-bar .transport .transport-repeat-one{position:absolute;bottom:4px;left:19px;font-size:9px;line-height:1;background:var(--panel);padding:1px;border-radius:3px}
+@media(max-width:760px){
+ #play-view>.queue #queue>li{grid-template-columns:18px 36px minmax(0,1fr) 90px;gap:6px;min-height:64px;padding:6px 2px}
+ #play-view>.queue #queue .queue-art{width:36px;height:36px}
+ #play-view>.queue #queue .song-length{display:none}
+ #play-view>.queue #queue .actions{grid-column:4;grid-row:1;justify-content:flex-end;gap:2px}
+ #play-view>.queue #queue .actions>.drag-handle,#play-view>.queue #queue .actions>.queue-remove{min-width:44px;min-height:44px;flex-basis:44px}
+ .header-playlist-modal{padding:14px}
+}
+
+/* Round15 supplemental repair - toolbar, navigation and true asset-backed icons. */
+#play-view>.request,#play-view>.request:has(.playlist-selection){display:none!important}
+/* Overlapping avatar circles follow the provided listening-card reference. */
+@media(min-width:1001px){
+ #play-view>.listening-stage .stage-audience .listeners-list{gap:0;padding-left:8px}
+ #play-view>.listening-stage .stage-audience .listeners-list .listener{width:34px;height:34px;min-width:34px;min-height:34px;padding:0;margin-left:-8px;display:grid;place-items:center;border:2px solid var(--flat);border-radius:50%;overflow:hidden;background:var(--raised)}
+ #play-view>.listening-stage .stage-audience .listeners-list .listener img{width:30px;height:30px;flex:0 0 30px;object-fit:cover;border-radius:50%}
+ #play-view>.listening-stage .stage-audience .listeners-list .listener span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+ #play-view>.listening-stage .stage-audience .listeners-list .listener:not(:has(img)){width:auto;min-width:34px;padding:0 8px}
+ #play-view>.listening-stage .stage-audience .listeners-list .listener:not(:has(img)) span{position:static;width:auto;height:auto;margin:0;clip:auto;overflow:visible;font-size:10px}
+}
+.sidebar .page-nav-label{display:block;margin-top:6px;font-size:12px;color:var(--muted)}
+.sidebar #page-nav{display:block;width:100%;max-width:100%;font-size:14px}
+#playback-bar .transport .transport-icon{display:block;flex:0 0 24px;width:24px;height:24px;background:currentColor;stroke:none!important;fill:none!important;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}
+#playback-bar .transport #toggle .transport-icon{width:25px;height:25px;flex-basis:25px}
+#playback-bar .transport .transport-play{-webkit-mask-image:url('/icons/transport-play.svg');mask-image:url('/icons/transport-play.svg')}
+#playback-bar .transport .transport-pause{-webkit-mask-image:url('/icons/transport-pause.svg');mask-image:url('/icons/transport-pause.svg')}
+#playback-bar .transport .transport-skip{-webkit-mask-image:url('/icons/transport-skip.svg');mask-image:url('/icons/transport-skip.svg')}
+#playback-bar .transport .transport-repeat{-webkit-mask-image:url('/icons/transport-repeat.svg');mask-image:url('/icons/transport-repeat.svg')}
+#play-view>.queue #queue>li .actions{white-space:nowrap}
+@media(max-width:760px){
+ .sidebar .page-nav-label,.sidebar #page-nav{grid-column:1/-1;grid-row:auto}
+ .sidebar #page-nav{max-width:100%;min-height:44px}
+ .sidebar>.badge{grid-column:2;grid-row:2}
+ .sidebar .auth,.sidebar .auth[open]{grid-column:1/-1;grid-row:auto}
+ .playback-bar{bottom:calc(var(--safe-bottom) + 12px)}
+ main{padding-bottom:calc(var(--dock-player-height,132px) + var(--safe-bottom) + 32px)}
+}
+@media(orientation:landscape) and (max-height:560px) and (pointer:coarse){
+ .sidebar .page-nav-label{display:none}
+}
+
+/* SVG fallback: use inline graphics, never platform-dependent glyphs or
+   external CSS masks. Keep currentColor for all fixed light/dark palettes. */
+#playback-bar .transport button::before,
+#playback-bar .transport button::after{content:none!important;display:none!important}
+#playback-bar .transport svg.transport-icon{
+ display:block;width:24px;height:24px;flex:0 0 24px;
+ background:none!important;-webkit-mask:none!important;mask:none!important;
+ stroke:currentColor;fill:none;overflow:visible;
+}
+#playback-bar .transport #toggle svg.transport-icon{width:25px;height:25px;flex-basis:25px}

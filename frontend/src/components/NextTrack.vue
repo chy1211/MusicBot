@@ -11,7 +11,7 @@ const next = computed(()=>dashboard.snapshot?.queue?.[0] || null)
   <div v-if="next" class="next-track-row">
    <img v-if="safeURL(next.thumbnail)" :src="safeURL(next.thumbnail)" alt="" loading="lazy" referrerpolicy="no-referrer">
    <span v-else class="next-track-fallback" aria-hidden="true">♫</span>
-   <div class="next-track-text"><strong>{{next.title}}</strong><small>{{t('m0062')}}{{next.requester?.name||t('m0045')}}</small></div>
+   <div class="next-track-text"><strong>{{next.title}}</strong><small class="queue-requester"><span>{{t('m0062')}}</span><img v-if="safeURL(next.requester?.avatar)" :src="safeURL(next.requester?.avatar)" alt="" loading="lazy" referrerpolicy="no-referrer"><span>{{next.requester?.name||t('m0045')}}</span></small></div>
    <time v-if="next.duration">{{duration(next.duration)}}</time>
    <button type="button" :disabled="!usable||(dashboard.snapshot?.queue.length||0)<2" :aria-label="t('m0069')+' '+next.title" @click="run('queue/move',{from:next.position,to:2,revision:dashboard.snapshot?.revision})">↓</button>
    <button class="next-track-remove" type="button" :disabled="!usable||dashboard.snapshot?.status==='disconnected'" :aria-label="t('m0004')+' '+next.title" @click="run('queue/'+next.position,{revision:dashboard.snapshot?.revision},'DELETE')">×</button>

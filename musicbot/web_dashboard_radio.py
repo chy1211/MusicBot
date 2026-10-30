@@ -118,6 +118,10 @@ class RadioService:
         self.suspended = defaultdict(float)
         self.marker = object()
         self.popularity = None
+        # At most one speculative radio fill for each guild. This does not
+        # replace the existing finished-playing/idle fallback.
+        self.prefill_tasks = {}
+        self.prefill_context = {}
 
     def state_path(self, guild):
         return self.state_root / self.store.path(guild).name
@@ -212,6 +216,84 @@ class RadioService:
             await self.save_locked(guild)
             return row["url"]
 
+    def prefill_eligible(self, player, entry, generation=None):
+        """Only prepare radio while this exact last track is still active."""
+        return (entry is not None and player.current_entry is entry
+                and (generation is None or getattr(player, "_play_generation", None) == generation)
+                and not player.playlist.entries
+                and not getattr(player, "_stop_requested", False)
+                and not getattr(player, "repeatsong", False)
+                and not getattr(player, "loopqueue", False)
+                and self.alive(player))
+
+    def fill_slot_available(self, player, expected_current, generation=None):
+        """Guard insertion against requests, skip/seek, stop and replacement."""
+        if not self.alive(player) or player.playlist.entries:
+            return False
+        if expected_current is None:
+            return player.current_entry is None
+        if getattr(player, "repeatsong", False) or getattr(player, "loopqueue", False):
+            return False
+        if generation is not None and getattr(player, "_play_generation", None) != generation:
+            return False
+        if getattr(player, "_stop_requested", False):
+            return False
+        if player.current_entry is None:
+            # Natural completion does not bump generation; use the extraction
+            # already in flight instead of fetching the same mix twice.
+            return not getattr(player, "_transitioning_to_next", False)
+        return self.prefill_eligible(player, expected_current, generation)
+
+    def schedule_prefill(self, player, entry):
+        """Start a bounded background fill without blocking the play callback."""
+        if not self.prefill_eligible(player, entry):
+            return
+        guild = player.voice_client.guild
+        generation = getattr(player, "_play_generation", None)
+        existing = self.prefill_tasks.get(guild.id)
+        if existing is not None and not existing.done():
+            return
+
+        async def work():
+            settings = await self.store.get(guild)
+            if settings["empty_queue"] != "radio" or not self.prefill_eligible(player, entry, generation):
+                return
+            await self.fill(player, settings, expected_current=entry,
+                            expected_generation=generation)
+
+        task = asyncio.create_task(work(), name="MB_RadioPrefill")
+        self.prefill_tasks[guild.id] = task
+        self.prefill_context[guild.id] = (player, generation)
+
+        def complete(done):
+            if self.prefill_tasks.get(guild.id) is done:
+                self.prefill_tasks.pop(guild.id, None)
+                self.prefill_context.pop(guild.id, None)
+            if not done.cancelled():
+                try:
+                    done.result()
+                except Exception as exc:
+                    # Do not log the provider response, seed URL, or credentials.
+                    log.warning("Radio prefill failed (%s)", type(exc).__name__)
+
+        task.add_done_callback(complete)
+
+    async def wait_prefill(self, player):
+        """Let a final-song finish reuse its already-running prefill."""
+        task = self.prefill_tasks.get(player.voice_client.guild.id)
+        context = self.prefill_context.get(player.voice_client.guild.id)
+        if context is not None and (context[0] is not player or context[1] != getattr(player, "_play_generation", None)):
+            return
+        if task is None or task is asyncio.current_task():
+            return
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # The ordinary idle fallback below can still try its own fill.
+            pass
+
     def failed(self, guild):
         self.failures[guild.id] += 1
         if self.failures[guild.id] >= 3:
@@ -223,9 +305,15 @@ class RadioService:
                 and not getattr(player, "is_dead", False)
                 and player.voice_client.is_connected())
 
-    async def fill(self, player, settings):
-        """Return True if handled; False requests original autoplay fallback."""
+    async def fill(self, player, settings, *, expected_current=None, expected_generation=None):
+        """Return True if handled; False requests original autoplay fallback.
+
+        expected_current permits speculative filling while the last song plays.
+        Without it, retain the original idle-only insertion policy.
+        """
         guild = player.voice_client.guild
+        if expected_current is not None and not self.prefill_eligible(player, expected_current, expected_generation):
+            return True
         if settings["empty_queue"] == "off":
             return True
         if settings["empty_queue"] != "radio":
@@ -248,8 +336,8 @@ class RadioService:
             # User requests or policy changes while extraction was in flight
             # take precedence over this automatic batch.
             current = await self.store.get(guild)
-            if (current["empty_queue"] != "radio" or player.current_entry
-                    or player.playlist.entries or not self.alive(player)):
+            if (current["empty_queue"] != "radio"
+                    or not self.fill_slot_available(player, expected_current, expected_generation)):
                 return True
             seen = {row["url"] for row in self.recent[guild.id]}
             titles = {normalized_title(row["title"]) for row in self.recent[guild.id]} - {""}
@@ -288,7 +376,16 @@ class RadioService:
                 current = await self.store.get(guild)
                 if current["empty_queue"] != "radio" or not self.alive(player):
                     return True
-                if queued == 0 and (player.current_entry or player.playlist.entries):
+                if queued == 0 and not self.fill_slot_available(player, expected_current, expected_generation):
+                    return True
+                # A stop, skip or replacement after the first radio insertion
+                # must not add more tracks on behalf of an obsolete session.
+                if queued and expected_current is not None and (
+                        (player.current_entry is not expected_current
+                         and player.current_entry is not None)
+                        or getattr(player, "_stop_requested", False)
+                        or (expected_generation is not None and
+                            getattr(player, "_play_generation", None) != expected_generation)):
                     return True
                 if duration < current["radio_min_seconds"] or current["radio_max_seconds"] and duration > current["radio_max_seconds"]:
                     continue

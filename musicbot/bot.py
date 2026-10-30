@@ -1089,6 +1089,13 @@ class MusicBot(commands.Bot):
             await radio_for(self).remember(player.voice_client.channel.guild, entry)
         except Exception as exc:
             log.warning("Radio history observation failed (%s)", type(exc).__name__)
+        # Once the last queued track has started, prepare the next radio batch
+        # concurrently. Never await a YouTube extraction on the play event.
+        try:
+            from .web_dashboard_radio import radio_for
+            radio_for(self).schedule_prefill(player, entry)
+        except Exception as exc:
+            log.warning("Radio prefill scheduling failed (%s)", type(exc).__name__)
         # Optional web metadata history observes the actual playback event.
         # It must never interrupt Discord playback if its own serialization fails.
         dashboard = getattr(self, "_web_dashboard", None)
@@ -1320,6 +1327,10 @@ class MusicBot(commands.Bot):
             settings = await service.store.get(player.voice_client.guild)
         except Exception as exc:
             log.warning("Empty-queue policy unavailable (%s)", type(exc).__name__)
+        if settings and settings["empty_queue"] == "radio":
+            # Reuse the radio lookup launched during the last track rather
+            # than starting an overlapping second provider extraction.
+            await service.wait_prefill(player)
         if settings and settings["empty_queue"] != "autoplaylist":
             lock = service.locks[player.voice_client.guild.id]
             if lock.locked():
