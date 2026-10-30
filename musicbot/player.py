@@ -1016,7 +1016,7 @@ class MusicPlayer(EventEmitter, Serializable):
                         # producer is released to replenish the ongoing buffer.
                         prepared_source.start_streaming()
                         if cadence is not None and callable(getattr(cadence, 'take_events', None)):
-                            self.loop.create_task(self._report_cadence_events(prepared_source))
+                            asyncio.get_running_loop().create_task(self._report_cadence_events(prepared_source))
                     except ClientException as exc:
                         # Discord checks again inside play(), after our connection check.
                         if self._source is prepared_source:
