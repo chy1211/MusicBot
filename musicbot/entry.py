@@ -21,6 +21,7 @@ from .i18n import _X
 from .spotify import Spotify
 from .loudness import LOUDNORM_TARGET, measured_loudnorm_filter
 from .loudnorm_cache import lookup_loudnorm, store_loudnorm, loudnorm_fingerprint
+from .cache_integrity import cache_verdict, mark_complete, _identity as cache_identity
 
 if TYPE_CHECKING:
     from .downloader import Downloader
@@ -579,23 +580,19 @@ class URLPlaylistEntry(BasePlaylistEntry):
                 if file_cache_path and self.expected_filename != file_cache_path:
                     log.debug("Download cached with different extension...")
 
-                # check if cache size matches remote, basic validation.
+                # Unknown remote length is not zero. Reuse only if an earlier
+                # successful download left a matching completion receipt.
                 if file_cache_path:
-                    local_size = os.path.getsize(file_cache_path)
-                    remote_size = int(self.info.http_header("CONTENT-LENGTH", 0))
-
-                    if local_size != remote_size:
-                        log.debug(
-                            "Local size different from remote size. Re-downloading..."
-                        )
+                    raw_length = self.info.http_header("CONTENT-LENGTH", None)
+                    hit, reason = await asyncio.to_thread(cache_verdict, file_cache_path, raw_length)
+                    log.info("Audio cache decision: %s", reason)
+                    if not hit or self.cache_busted:
                         await self._really_download()
                     else:
-                        log.debug("Download already cached at:  %s", file_cache_path)
                         self.filename = file_cache_path
                         self._is_downloaded = True
-
-                # nothing cached, time to download for real.
                 else:
+                    log.info("Audio cache decision: no-local-file")
                     await self._really_download()
 
             # check for duration and attempt to extract it if missing.
@@ -731,6 +728,9 @@ class URLPlaylistEntry(BasePlaylistEntry):
         """
         log.info("Download started:  %r", self)
 
+        # An unchanged legacy file skipped by yt-dlp is not a new completed transfer.
+        prior_path = self.filecache.get_if_cached(self.expected_filename) if self.expected_filename else None
+        prior_identity = await asyncio.to_thread(cache_identity, prior_path) if prior_path else None
         info = None
         reuse = self._reusable_extraction()
         if reuse is not None:
@@ -807,9 +807,18 @@ class URLPlaylistEntry(BasePlaylistEntry):
         self._is_downloaded = True
         self.filename = info.expected_filename or ""
 
-        # It should be safe to get our newly downloaded file size now...
-        # This should also leave self.downloaded_bytes set to 0 if the file is in cache already.
+        # Receipt is advisory, never used as evidence of an uncompleted transfer.
         self.downloaded_bytes = os.path.getsize(self.filename)
+        completed_identity = await asyncio.to_thread(cache_identity, self.filename)
+        completed_data = getattr(info, 'data', {})
+        downloads = completed_data.get('requested_downloads') or []
+        transferred = (completed_data.get('__real_download') is True or
+                       isinstance(downloads, list) and any(
+                           isinstance(item, dict) and item.get('__real_download') is True
+                           for item in downloads))
+        saved = bool(transferred and completed_identity and completed_identity != prior_identity) and await asyncio.to_thread(
+            mark_complete, self.filename, expected_identity=completed_identity)
+        log.debug("Audio cache completion receipt: %s", "stored" if saved else "unavailable")
 
 
 class StreamPlaylistEntry(BasePlaylistEntry):

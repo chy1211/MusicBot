@@ -5,7 +5,7 @@ import {command,notice} from './useDashboard'
 import {songIdentity} from './useTrack'
 import {t} from './useLocale'
 export interface PreviewEntry extends Track {item_id:string;allowed:boolean;default_selected?:boolean;is_requested?:boolean;reason?:string}
-export interface Preview extends Track {kind:string;allowed:boolean;preview_id:string;entries?:PreviewEntry[];count?:number;checked_count?:number;eligible_count?:number;reason?:string;warning?:string;source_url?:string;saveable?:boolean;save_revision?:string;can_playnext?:boolean;selected:string[];name:string;pending:boolean}
+export interface Preview extends Track {kind:string;allowed:boolean;preview_id:string;artist?:string;entries?:PreviewEntry[];count?:number;checked_count?:number;eligible_count?:number;reason?:string;warning?:string;source_url?:string;saveable?:boolean;save_revision?:string;can_playnext?:boolean;selected:string[];name:string;pending:boolean}
 export const requests=reactive({query:'',loading:false,resolutionState:'queued' as 'queued'|'resolving',error:'',results:[] as Preview[]})
 let sequence=0
 export function clearPreview(){sequence++;requests.loading=false;requests.error='';requests.results=[]}

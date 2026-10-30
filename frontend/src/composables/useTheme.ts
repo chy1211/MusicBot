@@ -1,12 +1,14 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-const palettes = ['mint', 'amber', 'ocean', 'rose'] as const
+const palettes = ['mint', 'amber', 'ocean', 'rose', 'noir', 'iris'] as const
 type Palette = typeof palettes[number]
 const backgrounds: Record<Palette, Record<'light' | 'dark', string>> = {
   mint: { light: '#f3f5f7', dark: '#1e2226' },
   amber: { light: '#f5f5f5', dark: '#1b1b1b' },
   ocean: { light: '#f2f5fa', dark: '#141b26' },
-  rose: { light: '#faf4f6', dark: '#1f1a1d' }
+  rose: { light: '#faf4f6', dark: '#1f1a1d' },
+  noir: { light: '#0F0F10', dark: '#0F0F10' },
+  iris: { light: '#F8F9FC', dark: '#F8F9FC' }
 }
 type Theme = 'light' | 'dark'
 export function useTheme() {
@@ -28,12 +30,13 @@ export function useTheme() {
     apply()
   }
   function apply(): void {
-    mode.value = preference || (media.matches ? 'light' : 'dark')
+    mode.value = palette.value === 'noir' ? 'dark' : palette.value === 'iris' ? 'light' : (preference || (media.matches ? 'light' : 'dark'))
     document.documentElement.dataset.theme = mode.value
     document.documentElement.dataset.palette = palette.value
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content', backgrounds[palette.value][mode.value])
   }
   function toggle(): void {
+    if (palette.value === 'noir' || palette.value === 'iris') return
     preference = mode.value === 'light' ? 'dark' : 'light'
     try { localStorage.setItem('musicbot-theme', preference) } catch {}
     apply()

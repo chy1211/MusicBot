@@ -580,6 +580,8 @@ class Downloader:
             the caller is expected to fall back to a fresh extraction.
         """
         src = copy.deepcopy(data)
+        # Completion evidence must come from this transfer, never old metadata.
+        src.pop('__real_download', None)
         # keep MusicBot's private keys out of yt-dlp, put them back afterwards.
         private = {k: src.pop(k) for k in list(src) if k.startswith("__")}
         result = await self.bot.loop.run_in_executor(

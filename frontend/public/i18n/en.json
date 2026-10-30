@@ -732,6 +732,8 @@
   "palette.amber": "Amber Night",
   "palette.ocean": "Deep Ocean",
   "palette.rose": "Berry Rose",
+  "palette.noir": "Red Noir",
+  "palette.iris": "Iris Light",
   "admin.batch.lastUpdated": "Last updated",
   "admin.batch.overview": "System overview",
   "admin.batch.playback": "Playback and notifications",
@@ -745,5 +747,13 @@
   "admin.batch.audio.preparing": "Preparing",
   "admin.batch.audio.stopped": "Stopped",
   "admin.batch.audio.disconnected": "Disconnected",
-  "admin.batch.audio.unknown": "Unknown"
+  "admin.batch.audio.unknown": "Unknown",
+  "player.landscape": "Landscape player",
+  "player.return": "Return to dashboard",
+  "player.returnShort": "Back",
+  "player.rotateHint": "Rotate to portrait to use the full queue",
+  "player.next": "Up next",
+  "player.nextHint": "Playing next",
+  "player.nextEmpty": "No song queued next",
+  "player.position": "Playback position"
 }

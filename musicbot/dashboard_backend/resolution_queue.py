@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import logging
 from dataclasses import dataclass
 
 
@@ -108,6 +109,7 @@ class ResolutionQueue:
             operation.close()
             raise APIError(503, _web_text('m0362'))
         loop = asyncio.get_running_loop()
+        queued_at = loop.time()
         request_id = request.headers.get('X-MusicBot-Request-ID', '') if request is not None else ''
         if not (request_id.isascii() and request_id.isalnum() and len(request_id) <= 64):
             request_id = ''
@@ -123,7 +125,13 @@ class ResolutionQueue:
                     max(0, job.deadline - loop.time()))
             except asyncio.TimeoutError:
                 raise APIError(429, _web_text('resolve.queueTimeout')) from None
-            return await asyncio.shield(task)
+            admitted_at = loop.time()
+            try:
+                return await asyncio.shield(task)
+            finally:
+                logging.getLogger(__name__).info(
+                    'Dashboard resolution timing: wait=%.3fs active=%.3fs',
+                    admitted_at - queued_at, loop.time() - admitted_at)
         finally:
             if job.task is not None:
                 if not job.task.done():

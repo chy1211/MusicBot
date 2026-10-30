@@ -269,6 +269,7 @@ class PreviewReuseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(saved), MAX_SAVED_EXTRACTIONS)
         self.assertLessEqual(sum(len(p["extraction"]) for p in saved),
                              MAX_SAVED_EXTRACTIONS * MAX_EXTRACTION_BYTES)
+        self.dashboard._complete_info_cache._items.clear()
         self.bot.info["description"] = "x" * (MAX_EXTRACTION_BYTES + 1)
         item = await self.preview()
         self.assertNotIn("extraction", self.record(item))
@@ -294,6 +295,8 @@ class PreviewReuseTests(unittest.IsolatedAsyncioTestCase):
     async def test_preview_ttl_renewal_extracts_only_once_and_transfers_fresh_data(self):
         item = await self.preview()
         self.record(item)["expires"] = time.monotonic() - 1
+        # Simulate real expiry: complete metadata TTL is shorter than preview TTL.
+        self.dashboard._complete_info_cache._items.clear()
         before = len(self.provider_calls)
         with self.assertLogs(LOG, level="INFO") as logs:
             await self.add(item)
@@ -476,5 +479,5 @@ class PreviewOwnershipTests(unittest.IsolatedAsyncioTestCase):
                 "preview_id": item["preview_id"]}, status=403)
             messages.append(response["error"])
         self.assertEqual(messages[0], messages[1])
-        self.assertEqual(len(self.provider_calls), 2)
+        self.assertEqual(len(self.provider_calls), 1)
         self.assertEqual(len(self.bot.player.playlist.entries), 3)

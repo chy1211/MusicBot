@@ -84,6 +84,7 @@ def load_source_method(path, class_name, method_name, namespace):
 def entry_runtime():
     from musicbot import loudness
     from musicbot import loudnorm_cache
+    from musicbot.cache_integrity import cache_verdict
 
     ns = dict(
         List=List,
@@ -96,6 +97,7 @@ def entry_runtime():
         lookup_loudnorm=lambda *_: None,
         loudnorm_fingerprint=lambda *_: None,
         store_loudnorm=lambda *_: True,
+        cache_verdict=cache_verdict,
         time=__import__("time"),
     )
     tree = ast.parse((ROOT / "musicbot/entry.py").read_text(encoding="utf-8"))
@@ -105,6 +107,7 @@ def entry_runtime():
     class Entry:
         def __init__(self, filename=""):
             self.filename = str(filename)
+            self.cache_busted = False
             self._a_filters = {}
             self.probed_codec = ""
             self.probed_bitrate = 0

@@ -63,8 +63,36 @@ class DashboardResolveRoutes:
                              __input_subject=item["url"]) for item in imported["tracks"]]})
                 subject = canonical
             else:
-                info = await self.bot.downloader.extract_info(
-                    subject, download=False, process=True)
+                # Restrict cross-request reuse to a direct, complete single URL.
+                # Search/playlist/Spotify choices still resolve only selected items.
+                import asyncio
+                import time
+                from ..web_dashboard_reuse import CompleteInfoCache, log
+                from ..downloader import YtdlpResponseDict
+                direct = bool(callable(getattr(getattr(self.bot.downloader, '_cookie_clients', None), 'snapshot', None))
+                              and valid_url and not imported and not search
+                              and 'open.spotify.com' not in subject.lower()
+                              and not youtube_playlist_subject(subject))
+                token = None
+                if direct:
+                    client = (await asyncio.to_thread(
+                        self.bot.downloader._cookie_clients.snapshot, refresh=True))[0]
+                    cache = self.__dict__.setdefault('_complete_info_cache', CompleteInfoCache())
+                    generation, settings = cache.scope(client, getattr(self.bot.downloader._cookie_clients, 'options', {}))
+                    token = (guild.id, owner.id, generation, settings, subject)
+                    cached, reason = cache.get(token, subject)
+                    log.info('Complete URL metadata cache: %s', reason)
+                else:
+                    cached = None
+                if cached is not None:
+                    info = YtdlpResponseDict(cached)
+                else:
+                    started = time.monotonic()
+                    info = await self.bot.downloader.extract_info(
+                        subject, download=False, process=True)
+                    log.info('Provider complete URL extraction: %.3fs', time.monotonic()-started)
+                    if direct and info:
+                        cache.put(token, subject, info.data)
             if not info or ("entries" in info and not info.entry_count):
                 raise APIError(404, _web_text('m0414'))
             try:

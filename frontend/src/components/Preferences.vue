@@ -3,8 +3,8 @@ import {nextTick,onBeforeUnmount,onMounted,ref} from 'vue'
 import {locale,setLocale,t} from '../composables/useLocale'
 import {useTheme} from '../composables/useTheme'
 const {mode,toggle,palette,palettes,setPalette}=useTheme()
-const paletteLabels={mint:'palette.mint',amber:'palette.amber',ocean:'palette.ocean',rose:'palette.rose'}
-const paletteColors={mint:'#8fd6c4',amber:'#ffa31a',ocean:'#7aa7ff',rose:'#f29bb8'}
+const paletteLabels={mint:'palette.mint',amber:'palette.amber',ocean:'palette.ocean',rose:'palette.rose',noir:'palette.noir',iris:'palette.iris'}
+const paletteColors={mint:'#8fd6c4',amber:'#ffa31a',ocean:'#7aa7ff',rose:'#f29bb8',noir:'#E53935',iris:'#6366F1'}
 const paletteToggle=ref<HTMLButtonElement|null>(null)
 const palettePanel=ref<HTMLElement|null>(null)
 const paletteOpen=ref(false)
@@ -54,7 +54,7 @@ onBeforeUnmount(()=>{document.removeEventListener('click',outsidePalette);docume
       </button>
     </div>
     </div>
-    <button id="theme-toggle" type="button" :data-mode="mode" :aria-label="t(mode === 'light' ? 'theme.light' : 'theme.dark')" @click="toggle"><svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg><svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"/></svg></button>
+    <button id="theme-toggle" type="button" :disabled="palette==='noir'||palette==='iris'" :data-mode="mode" :aria-label="t(mode === 'light' ? 'theme.light' : 'theme.dark')" @click="toggle"><svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg><svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"/></svg></button>
     <label for="dashboard-language">{{ t('language') }}</label><select id="dashboard-language" :value="locale" :aria-label="t('language')" @change="setLocale(($event.target as HTMLSelectElement).value)"><option value="en">{{ t('language.en') }}</option><option value="zh-TW">{{ t('language.zh-TW') }}</option></select>
   </div>
 </template>

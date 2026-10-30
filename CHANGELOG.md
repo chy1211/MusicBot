@@ -7,6 +7,9 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
+- 以實際下載與檔案指紋憑證驗證未知大小音檔快取，依登入世代與解析設定短期重用完整單曲資訊；加入手動頂部搜尋、下一首卡片、手機橫向控制與兩款配色。
+  Verify unknown-size audio caches with real-transfer completion receipts and reuse complete track metadata within cookie and option boundaries. Add manual header search, an up-next card, touch landscape controls and two palettes.
+
 - 首首歌未命中分析快取時使用即時音量正規化，避免等待全曲掃描；後續分析結果以音檔指紋快取。修正管理頁分區切換、概況更新與跳過提示，整合聽眾與點播者，改善觸控橫放及更新按鈕位置。
   Start an uncached first track with one-pass normalization and cache later measurements by file identity. Fix admin section navigation, health refresh and skip messages, integrate listeners and requester details, and improve touch landscape and update controls.
 
