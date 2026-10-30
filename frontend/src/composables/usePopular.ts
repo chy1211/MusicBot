@@ -38,6 +38,7 @@ async function load(): Promise<void> {
   try {
     const result = await request<PopularPayload>('/api/guilds/' + encodeURIComponent(guild) + '/popular?period=' + encodeURIComponent(period.value))
     if (epoch !== requestEpoch || sessionEpoch !== dashboard.epoch || guild !== dashboard.guildId) return
+    if (result.tracks !== undefined && !Array.isArray(result.tracks)) throw new Error(t('m0221'))
     tracks.value = (result.tracks ?? []).slice(0, 20)
     empty.value = tracks.value.length === 0
   } catch (cause) {
@@ -53,8 +54,14 @@ function setPeriod(value: string): void {
     void load()
   }
 }
-watch(() => [dashboard.guildId, dashboard.authenticated, dashboard.connected], () => { void load() })
+function cancelLoad() {
+  ++requestEpoch; tracks.value = []; empty.value = false; error.value = ''; loading.value = false
+}
+// Requests start only while PopularView is mounted. Invalidate old responses on a guild/session change.
+watch(() => [dashboard.guildId, dashboard.authenticated, dashboard.connected, dashboard.epoch], () => {
+  ++requestEpoch; tracks.value = []; empty.value = false; error.value = ''; loading.value = false
+}, { flush: 'sync' })
 const hasGuild = computed(() => Boolean(dashboard.guildId && dashboard.authenticated && dashboard.connected))
-export function usePopular() { return { period, tracks, loading, error, empty, adding, resolutionState, hasGuild, load, add, setPeriod, safeUrl } }
+export function usePopular() { return { period, tracks, loading, error, empty, adding, resolutionState, hasGuild, load, cancelLoad, add, setPeriod, safeUrl } }
 
 

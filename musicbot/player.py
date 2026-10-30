@@ -5,6 +5,9 @@ import logging
 import os
 import sys
 import time
+import hashlib
+import json
+import secrets
 from collections import deque
 from enum import Enum
 from functools import partial
@@ -28,6 +31,7 @@ from .entry import LocalFilePlaylistEntry, StreamPlaylistEntry, URLPlaylistEntry
 from .exceptions import FFmpegError, FFmpegWarning
 from .lib.event_emitter import EventEmitter
 from .loudness import LOUDNORM_TARGET
+from .read_cadence_diagnostics import ReadCadenceDiagnostics
 
 if TYPE_CHECKING:
     from .bot import MusicBot
@@ -76,6 +80,7 @@ class SourcePlaybackCounter(AudioSource):
         start_time: float = 0,
         playback_speed: float = 1.0,
         continuous: bool = False,
+        cadence: Optional[ReadCadenceDiagnostics] = None,
     ) -> None:
         """
         Manage playback source and attempt to count progress frames used
@@ -102,6 +107,9 @@ class SourcePlaybackCounter(AudioSource):
         self._worker_done = Event()
         self._underrun_frames = 0
         self._consecutive_underruns = 0
+        self._cadence = cadence
+        self._cadence_resets: deque[str] = deque(maxlen=8)
+        self._cadence_reported = False
 
     def is_opus(self) -> bool:
         return self._is_opus_audio
@@ -237,12 +245,56 @@ class SourcePlaybackCounter(AudioSource):
         return self._source.read()
 
     def read(self) -> bytes:
+        # The timestamp is the source-read *invocation*, NOT a UDP send.
+        self._drain_cadence_resets()
+        cadence = self._cadence
+        try:
+            started = time.monotonic() if cadence is not None else 0.0
+        except Exception:
+            self._cadence = cadence = None
+            started = 0.0
         underruns = self._underrun_frames
-        res = self._read_frame()
+        try:
+            res = self._read_frame()
+        except BaseException:
+            self.reset_cadence('read_error')
+            raise  # Never replace a genuine decoder/player failure.
         # Concealment silence is not part of the media timeline.
         if res and self._underrun_frames == underruns:
             self._num_reads += 1
+            if cadence is not None:
+                try:
+                    cadence.observe(started, time.monotonic(), frame=self._num_reads)
+                except Exception:
+                    self._cadence = None  # Diagnostic failure must not fail playback.
+        else:
+            self.reset_cadence('eof_or_underrun')  # No cross-boundary episode.
         return res
+
+    def reset_cadence(self, reason: str = 'boundary') -> None:
+        # Control callbacks only enqueue; the audio reader owns live counters.
+        if self._cadence is not None:
+            self._cadence_resets.append(reason)
+
+    def _drain_cadence_resets(self) -> None:
+        while self._cadence_resets:
+            reason = self._cadence_resets.popleft()
+            if self._cadence is not None:
+                try:
+                    self._cadence.break_sequence(reason)
+                except Exception:
+                    self._cadence = None
+
+    def cadence_summary(self):
+        # Called after AudioPlayer.after(), once reads have finished.
+        if self._cadence_reported or self._cadence is None:
+            return None
+        self._cadence_reported = True
+        self.reset_cadence('finished')
+        self._drain_cadence_resets()
+        if self._cadence is not None:
+            return self._cadence.summary()
+        return None
 
     def cleanup(self) -> None:
         log.noise(  # type: ignore[attr-defined]
@@ -433,6 +485,9 @@ class MusicPlayer(EventEmitter, Serializable):
             "MusicPlayer.resume() is called:  %s", repr(self)
         )
         if self.is_paused and self._current_player:
+            reset = getattr(getattr(self, '_source', None), 'reset_cadence', None)
+            if reset is not None:
+                reset('resume')
             self._current_player.resume()
             self.state = MusicPlayerState.PLAYING
             self.emit("resume", player=self, entry=self.current_entry)
@@ -454,6 +509,9 @@ class MusicPlayer(EventEmitter, Serializable):
         )
         if self.is_playing:
             self.state = MusicPlayerState.PAUSED
+            reset = getattr(getattr(self, '_source', None), 'reset_cadence', None)
+            if reset is not None:
+                reset('pause')
 
             if self._current_player:
                 self._current_player.pause()
@@ -515,9 +573,18 @@ class MusicPlayer(EventEmitter, Serializable):
         # stale. It must never complete the replacement source's future.
         if stderr_future is not None and not stderr_future.done():
             stderr_future.set_result(True)
+        # Summarize the finished source even after stop/seek replaced it. This
+        # does not touch the current source, queue, state or stderr ownership.
+        summarize = getattr(source, 'cadence_summary', None)
+        if summarize is not None:
+            try:
+                summary = summarize()
+                if summary is not None:
+                    log.info("source_read_cadence_summary %s", json.dumps(summary, sort_keys=True))
+            except Exception:
+                log.debug("Unable to summarize optional read cadence diagnostics")
         if self.is_dead or (source is not None and source is not self._source):
             return
-
         # Ensure the stderr stream reader for ffmpeg is exited.
         if (
             isinstance(self._stderr_future, asyncio.Future)
@@ -827,11 +894,23 @@ class MusicPlayer(EventEmitter, Serializable):
                             self.volume,
                         )
 
+                    cadence = None
+                    if os.environ.get('MUSICBOT_SOURCE_READ_CADENCE') == '1':
+                        try:
+                            cadence = ReadCadenceDiagnostics(
+                                session=secrets.token_hex(6), generation=generation,
+                                media_offset_s=entry.start_time,
+                                playback_speed=entry.playback_speed,
+                                track_id=hashlib.sha256(str(entry.url).encode('utf-8')).hexdigest()[:12],
+                            )
+                        except Exception:
+                            log.debug("Unable to initialize optional read cadence diagnostics")
                     prepared_source = SourcePlaybackCounter(
                         source,
                         start_time=entry.start_time,
                         playback_speed=entry.playback_speed,
                         continuous=True,
+                        cadence=cadence,
                     )
                     self._preparing_source = prepared_source
                     self._skip_preparing = False

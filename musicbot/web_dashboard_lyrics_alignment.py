@@ -197,13 +197,20 @@ class AlignmentService:
         key=video_id(entry.url)
         if not key:return dict(UNCERTAIN)
         cached=await self.store.get(key,"analysis")
-        if cached:return dict(cached,pending=False)
+        if cached:
+            # Migrate the old duration-only guess without retaining its former
+            # confidence=1.0 / seven-day lifetime after this upgrade.
+            if cached.get("source") == "duration":
+                cached = dict(cached, source="duration_assumed", confidence=0.25)
+                await self.store.put(key, cached, 3600, "analysis")
+            return dict(cached,pending=False)
         duration=lyrics.get("duration")
         if type(duration) not in (int,float) or not math.isfinite(duration) or duration<=0:
             return dict(UNCERTAIN,pending=False)
         if type(entry.duration) in (int,float) and abs(entry.duration-duration)<=2:
-            value={"offset":0.0,"source":"duration","confidence":1.0}
-            await self.store.put(key,value,7*86400,"analysis")
+            # Similar duration is a zero-offset guess, NOT verified audio alignment.
+            value={"offset":0.0,"source":"duration_assumed","confidence":0.25}
+            await self.store.put(key,value,3600,"analysis")
             return dict(value,pending=False)
         if key not in self.tasks and len(self.tasks)<4:
             details={"title":str(lyrics.get("title",""))[:200],"artist":str(lyrics.get("artist",""))[:160],
@@ -226,7 +233,9 @@ class AlignmentService:
                 value=await asyncio.wait_for(self.run_worker(downloader,details,cache_file),self.TIMEOUT)
             except (Exception,asyncio.CancelledError) as exc:
                 if isinstance(exc,asyncio.CancelledError):raise
-            try:await self.store.put(key,value,7*86400,"analysis")
+            # Do not retain uncertain results for a full week.
+            ttl = 7*86400 if value.get("source") in ("matched", "silence") and value.get("confidence",0)>=0.8 else 900
+            try:await self.store.put(key,value,ttl,"analysis")
             except OSError:pass
 
     async def run_worker(self,downloader,details,cache_file):

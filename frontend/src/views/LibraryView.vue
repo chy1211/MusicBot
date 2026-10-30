@@ -55,13 +55,13 @@ watch(() => [route.path, route.query.playlist] as const, async ([path, id]) => {
   else document.querySelector<HTMLButtonElement>('#library-playlists [aria-current=true]')?.focus({ preventScroll: true })
 }, { immediate: true })
 
-onMounted(() => { if (dashboard.authenticated) void library.load() })
+onMounted(() => { if (dashboard.authenticated && visible.value) void library.load() })
 watch(library.saveDialogOpen, async open => {
   await nextTick()
   if (open && saveDialog.value && !saveDialog.value.open) saveDialog.value.showModal()
   if (!open && saveDialog.value?.open) saveDialog.value.close()
   if (open) saveSelect.value?.focus({ preventScroll: true })
-})
+}, { immediate: true })
 </script>
 
 <template>
@@ -106,8 +106,7 @@ watch(library.saveDialogOpen, async open => {
           </div>
           <p v-if="active.source_url" id="library-source" class="library-source">{{ t('m0204') }}</p>
           <div class="library-toolbar">
-            <button id="library-play-all" class="primary" type="button" :disabled="!active.tracks.length || !dashboard.connected || dashboard.busy || library.busy.value" :aria-busy="library.busy.value" @click="library.playAll">{{ library.resolutionState.value?t(library.resolutionState.value==='queued'?'resolve.queued':'resolve.adding'):t('m0280') }}</button>
-            <button id="library-enqueue-all" type="button" :disabled="!active.tracks.length || !dashboard.connected || dashboard.busy || library.busy.value" :aria-busy="library.resolutionState.value!==null" @click="library.enqueueAll">{{ library.resolutionState.value?t(library.resolutionState.value==='queued'?'resolve.queued':'resolve.adding'):t('m0283') }}</button>
+            <button id="library-enqueue-all" class="primary" type="button" :disabled="!active.tracks.length || !dashboard.connected || dashboard.busy || library.busy.value" :aria-busy="library.resolutionState.value!==null" @click="library.enqueueAll">{{ library.resolutionState.value?t(library.resolutionState.value==='queued'?'resolve.queued':'resolve.adding'):t('m0283') }}</button>
             <button id="library-play-selected" type="button" :disabled="!library.canPlaySelected.value || !dashboard.connected || dashboard.busy" :aria-busy="library.resolutionState.value!==null" @click="library.playSelected">{{ library.resolutionState.value?t(library.resolutionState.value==='queued'?'resolve.queued':'resolve.adding'):t('m0281') }}<template v-if="library.selected.value.length"> · {{ library.selected.value.length }}</template></button>
             <details id="library-actions" class="library-actions"><summary :aria-label="t('m0282')">•••</summary>
               <div class="library-menu">

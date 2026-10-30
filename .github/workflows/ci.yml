@@ -57,7 +57,7 @@ jobs:
             sleep 0.3
           done
           if [ "$ready" -ne 1 ]; then echo 'Demo fixture failed to start'; exit 1; fi
-          node --test --test-concurrency=1 tools/test_dashboard_round15_browser.cjs tools/test_dashboard_round17_notice_browser.cjs
+          node --test --test-concurrency=1 tools/test_dashboard_round15_browser.cjs tools/test_dashboard_round17_notice_browser.cjs tools/test_dashboard_round1819_browser.cjs
       - name: Compound YouTube links
         run: python -m tools.test_compound_link
       - name: Dashboard translation consistency

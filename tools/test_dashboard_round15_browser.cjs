@@ -82,6 +82,7 @@ test('landscape has vector controls, requester avatar and favorite',async t=>{
 test('admin uses only native expandable section menus',async t=>{
  const {page,errors}=await open(t);
  await page.locator('#nav-admin').click();
+ await page.locator('#admin-playback-group').waitFor();
  assert.equal(await page.locator('.admin-jump-links button').count(),0);
  for(const id of ['admin-playback-group','admin-apl-group','admin-permissions-group','admin-maintenance-group']){
   assert.equal(await page.locator('details#'+id+' > summary').count(),1);

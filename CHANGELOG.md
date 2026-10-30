@@ -7,6 +7,11 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
+- 新增可選的來源讀取節奏診斷，獨立統計短間隔並在停止及換來源時保留摘要；不改音訊節奏，尚不量測封包送出或收聽端。改善歌詞快取優先查詢、對時信心與桌面清單布局。
+  Add optional source-read cadence diagnostics with independent short-interval statistics and summaries for replaced sources, without changing audio pacing or claiming packet-send/listener measurements. Improve cache-first lyrics, alignment confidence and compact desktop playlists.
+- 頁面與管理資料改為按需載入，隔離頂部搜尋狀態，修正輪詢逾時後重試、隱藏頁時鐘及全域存歌單流程。歌單磁碟交易移至工作執行緒並保留取消時的鎖定，傳統提取入口增加網址預檢，歌詞清理在節流時保留容量保護，Spotify 多候選保守匹配。
+  Load route views on demand, isolate header search, and fix resolution polling retries, hidden-page clocks and global playlist saves. Move playlist transactions off the event loop while retaining locks through cancellation; preflight native extraction URLs, retain lyric cache bounds during throttled pruning, and conservatively rank Spotify candidates.
+
 - 恢復分段導覽與鍵盤快捷鍵入口，補上手機橫向收藏及向量播放控制；桌面和平板通知避開搜尋欄並置於播放列上方。所有播放狀態優先顯示最近播過，再顯示操作紀錄，移除佇列內重複紀錄。全域 CSS 依功能重新命名，並在 CI 執行跨尺寸瀏覽器回歸測試。
   Restore segmented navigation and shortcut help, add landscape favorites and vector controls, and place desktop/tablet notifications above the dock. Show recent history before activity in every playback state without duplicating it inside the queue. Name global styles by feature and run responsive browser regressions in CI.
 

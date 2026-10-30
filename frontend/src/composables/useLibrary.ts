@@ -224,7 +224,7 @@ function toggleTrack(index: number, checked: boolean): void {
 function closeSave(): void { saveDialogOpen.value = false; pendingSave.value = null }
 function goToPlay(): void {
   window.dispatchEvent(new CustomEvent('musicbot:navigate', { detail: 'play' }))
-  requestAnimationFrame(() => document.getElementById('query')?.focus())
+  requestAnimationFrame(() => document.getElementById('header-query')?.focus())
 }
 function formatDuration(seconds?: number | null): string {
   if (!seconds || !Number.isFinite(seconds)) return t('m0097')

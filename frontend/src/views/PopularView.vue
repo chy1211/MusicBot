@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { dashboard } from '../store'
 import { t } from '../composables/useLocale'
@@ -10,6 +10,10 @@ const route = useRoute()
 const popular = usePopular()
 const library = useLibrary()
 const visible = computed(() => route.path === '/popular')
+const refreshVisible=()=>{if(visible.value&&dashboard.connected&&dashboard.authenticated)void popular.load()}
+onMounted(refreshVisible)
+onBeforeUnmount(()=>popular.cancelLoad())
+watch(()=>[dashboard.guildId,dashboard.connected,dashboard.authenticated,dashboard.epoch],refreshVisible)
 const statusText = computed(() => {
   if (popular.loading.value) return t('m0217')
   if (popular.error.value) return popular.error.value

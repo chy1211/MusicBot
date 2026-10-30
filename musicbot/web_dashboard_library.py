@@ -143,19 +143,42 @@ class PlaylistStore:
     def revision(value):
         return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
+    def _transact_on_worker(self, uid, change, revision):
+        """Keep read -> revision -> mutate -> durable replace atomic under the caller lock."""
+        value = self.read(uid)
+        if revision is not None and revision != self.revision(value):
+            fail(409, _web_text('m0520'))
+        if change is not None:
+            dedupe_favorites(value)
+            change(value)
+            dedupe_favorites(value)
+            atomic_write(self.path(uid), json.dumps(value, ensure_ascii=False).encode("utf-8"))
+        return dict(copy.deepcopy(value), revision=self.revision(value))
+
     async def transact(self, uid, change=None, revision=None, authorize=None):
         async with self.locks[uid]:
+            # Request/session/Discord authorization must remain on the event loop.
             if authorize is not None:
                 authorize()
-            value = self.read(uid)
-            if revision is not None and revision != self.revision(value):
-                fail(409, _web_text('m0520'))
-            if change is not None:
-                dedupe_favorites(value)
-                change(value)
-                dedupe_favorites(value)
-                atomic_write(self.path(uid), json.dumps(value, ensure_ascii=False).encode("utf-8"))
-            return dict(copy.deepcopy(value), revision=self.revision(value))
+            # to_thread propagates contextvars, including the request locale.
+            # Cancellation must NOT release the lock while a thread still writes.
+            work = asyncio.create_task(asyncio.to_thread(
+                self._transact_on_worker, uid, change, revision))
+            try:
+                return await asyncio.shield(work)
+            except asyncio.CancelledError:
+                # Keep the per-user transaction lock until the background
+                # worker terminates, even if the request is cancelled again.
+                while not work.done():
+                    try:
+                        await asyncio.shield(work)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
+                if not work.cancelled():
+                    work.exception()  # Consume a failed worker after cancellation.
+                raise
 
 
 class DashboardLibrary(DashboardImports):

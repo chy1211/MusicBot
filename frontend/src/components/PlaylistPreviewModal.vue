@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onMounted, onBeforeUnmount, ref, watch} from 'vue'
-import {requests, confirmPreview, selectPreview, type Preview} from '../composables/useRequests'
+import {headerRequests as requests, confirmHeaderPreview as confirmPreview, selectPreview, type Preview} from '../composables/useRequests'
 import {dashboard, usable} from '../store'
 import {t} from '../composables/useLocale'
 import {duration, safeURL} from '../composables/useTrack'

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import asyncio
 import math
 import re
 import time
@@ -55,16 +56,24 @@ class DashboardLyricsRoutes:
         token = self.track_token(player)
         info = getattr(entry, "info", {}) or {}
         title, artist = entry.title, info.get("artist") or info.get("creator") or ""
-        matched = await self.spotify_lookup.lookup(self.bot, entry)
-        if matched.get("mode") == "track" and matched.get("title") and matched.get("artist") and not lyrics_metadata(title, artist)["cover"]:
-            title, artist = matched["title"], matched["artist"]
-        elif not artist:
-            artist = str(info.get("channel") or info.get("uploader") or "")
-            artist = re.sub(r"\s*(?:-\s*Topic|VEVO|Official(?: Channel)?)\s*$", "", artist, flags=re.I).strip()[:160]
         track_key = hashlib.sha256(str((entry.url, entry.title, entry.duration)).encode()).hexdigest()
         key = video_id(entry.url)
+        # Check the verified, per-video persistent cache before remote Spotify.
+        # A manual query still bypasses this video cache as before.
         value = await self.lyrics_store.get(key) if key and not query else None
         if value is None:
+            if not query:
+                # Cap auxiliary metadata lookup so slow Spotify cannot starve LRCLIB.
+                try:
+                    matched = await asyncio.wait_for(self.spotify_lookup.lookup(self.bot, entry), timeout=3.0)
+                except Exception:
+                    matched = {}
+                if (matched.get("mode") == "track" and matched.get("title")
+                        and matched.get("artist") and not lyrics_metadata(title, artist)["cover"]):
+                    title, artist = matched["title"], matched["artist"]
+            if not artist:
+                artist = str(info.get("channel") or info.get("uploader") or "")
+                artist = re.sub(r"\s*(?:-\s*Topic|VEVO|Official(?: Channel)?)\s*$", "", artist, flags=re.I).strip()[:160]
             value = await self.lyrics_client.lookup(title, artist, entry.duration, query=query)
             if key and not query and value["status"] != "unavailable":
                 ttl = 3*3600 if value["status"] == "not_found" else 7*86400

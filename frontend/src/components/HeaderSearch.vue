@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref, watch, nextTick} from 'vue'
 import PlaylistPreviewModal from './PlaylistPreviewModal.vue'
-import {requests, resolveQuery, confirmPreview, clearPreview, type Preview} from '../composables/useRequests'
+import {headerRequests as requests, resolveHeaderQuery as resolveQuery, confirmHeaderPreview as confirmPreview, clearHeaderPreview as clearPreview, type Preview} from '../composables/useRequests'
 import {dashboard, usable} from '../store'
 import {t} from '../composables/useLocale'
 import {duration, safeURL} from '../composables/useTrack'

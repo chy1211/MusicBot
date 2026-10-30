@@ -22,10 +22,16 @@ class LyricsStore:
     CACHE_LIMIT = 2000
     MAX_BYTES = 50 * 1024 * 1024
     MAX_FILE = 1024 * 1024
+    PRUNE_INTERVAL = 60.0
+    PRUNE_EVERY_WRITES = 16
     def __init__(self, root):
         self.root = Path(root)
         self.lock = asyncio.Lock()
         self.allowed = {}
+        self._last_prune = 0.0
+        self._writes_since_prune = 0
+        self._estimated_cache_count = 0
+        self._estimated_cache_bytes = 0
 
     @staticmethod
     def guild_id(guild):
@@ -70,6 +76,9 @@ class LyricsStore:
             except OSError:
                 pass
 
+        self._estimated_cache_count = count
+        self._estimated_cache_bytes = size
+
     async def get(self, key, area="cache"):
         async with self.lock:
             row = await asyncio.to_thread(self.read, self.path(area, key))
@@ -85,15 +94,33 @@ class LyricsStore:
                 return row["value"]
             return None
 
+    @staticmethod
+    def _write_cache(path, row):
+        atomic_write(path, row)
+        return path.stat().st_size
+
     async def put(self, key, value, ttl, area="cache"):
         if area == "cache" and value.get("status") == "unavailable":
             return
         if area == "cache" and value.get("status") == "not_found":
             ttl = min(ttl, 3*3600)
         async with self.lock:
-            await asyncio.to_thread(atomic_write, self.path(area, key),
+            written_bytes = await asyncio.to_thread(self._write_cache, self.path(area, key),
                                     {"expires": time.time()+ttl, "value": value})
-            await asyncio.to_thread(self.prune)
+            self._writes_since_prune += 1
+            # Conservative upper bounds: overwrites can trigger an early scan,
+            # but our writes never silently bypass count/byte pressure.
+            self._estimated_cache_count += 1
+            self._estimated_cache_bytes += written_bytes
+            now = time.monotonic()
+            if (self._last_prune == 0 or self._writes_since_prune >= self.PRUNE_EVERY_WRITES
+                    or now - self._last_prune >= self.PRUNE_INTERVAL
+                    or self._estimated_cache_count > self.CACHE_LIMIT
+                    or self._estimated_cache_bytes > self.MAX_BYTES):
+                # Still off the event loop, serialized with puts under the lock.
+                await asyncio.to_thread(self.prune)
+                self._last_prune = time.monotonic()
+                self._writes_since_prune = 0
 
     async def enabled(self, guild):
         gid = int(self.guild_id(guild))

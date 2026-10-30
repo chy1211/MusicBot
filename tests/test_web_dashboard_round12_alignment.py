@@ -99,7 +99,7 @@ class JobTests(unittest.IsolatedAsyncioTestCase):
         self.service.run_worker=AsyncMock()
         self.entry.duration=181
         value=await self.service.request(self.bot,self.entry,self.lyrics)
-        self.assertEqual(value["source"],"duration");self.assertEqual(value["offset"],0)
+        self.assertEqual(value["source"],"duration_assumed");self.assertEqual(value["offset"],0);self.assertEqual(value["confidence"],0.25)
         self.service.run_worker.assert_not_awaited()
     async def test_timeout_caches_uncertainty_and_allows_event_loop(self):
         self.service.TIMEOUT=.03

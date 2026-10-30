@@ -3,13 +3,13 @@ const {test}=require("node:test"),assert=require("node:assert/strict"),vue=requi
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject}};
 const track={kind:"track",title:"A",url:"https://example.test/a",allowed:true,preview_id:"token"};
 class APIError extends Error{constructor(message,status,body={}){super(message);this.status=status;this.body=body}}
-function runtime(handler=async()=>({results:[track]}),commandHandler=async()=>({})){const dashboard={epoch:0,guildId:"1",authenticated:true,connected:true,busy:false},calls=[],commands=[],notices=[];let changed;
- const c=load("frontend/src/composables/useRequests.ts",{vue:{reactive:vue.reactive,watch:(_,fn)=>changed=fn},
+function runtime(handler=async()=>({results:[track]}),commandHandler=async()=>({})){const dashboard={epoch:0,guildId:"1",authenticated:true,connected:true,busy:false},calls=[],commands=[],notices=[];const changes=[];
+ const c=load("frontend/src/composables/useRequests.ts",{vue:{reactive:vue.reactive,watch:(_,fn)=>changes.push(fn)},
  '../api':{APIError,request:async(path,options)=>{calls.push({path,options});return handler(path,options)}},
  '../store':{dashboard,usable:{get value(){return dashboard.authenticated&&dashboard.connected&&!dashboard.busy}}},
  './useDashboard':{command:async(action,body)=>{commands.push({action,body});return commandHandler(action,body)},notice:(...args)=>notices.push(args)},
  './useTrack':{songIdentity:value=>value||"",safeURL:value=>/^https?:/.test(value||"")?value:""},'./useLocale':{t:key=>key}},{Error});
- c.requests.query="  fixture query  ";return{...c,dashboard,calls,commands,notices,changed:()=>changed()};}
+ c.requests.query="  fixture query  ";return{...c,dashboard,calls,commands,notices,changed:()=>changes.forEach(fn=>fn())};}
 test("Vue lookup waits for explicit confirmation and retains its scoped token",async()=>{
  const a=runtime();await a.resolveQuery();assert.equal(a.commands.length,0);assert.equal(a.calls[0].options.body.query,"fixture query");
  await a.confirmPreview(a.requests.results[0]);assert.deepEqual(JSON.parse(JSON.stringify(a.commands)),[{action:"play",body:{query:track.url,preview_id:"token"}}]);assert.equal(a.requests.query,"");
@@ -45,4 +45,19 @@ test("Vue playnext-only lookup retries a play permission denial with playnext",a
 });
 test("Vue lookup errors preserve the entered query and release loading state",async()=>{
  const a=runtime(async()=>{throw new APIError("fixture unavailable",500)});await a.resolveQuery();assert.equal(a.requests.error,"fixture unavailable");assert.equal(a.requests.query,"  fixture query  ");assert.equal(a.requests.loading,false);assert.equal(a.commands.length,0);
+});
+
+test("late confirmation cannot overwrite a new context after guild or query change",async()=>{
+ for(const context of ['legacy','header'])for(const invalidate of ['guild','clear'])for(const fail of [false,true]){
+  const pending=deferred(),a=runtime(undefined,()=>pending.promise);
+  const state=context==='header'?a.headerRequests:a.requests;
+  const confirm=context==='header'?a.confirmHeaderPreview:a.confirmPreview;
+  const clear=context==='header'?a.clearHeaderPreview:a.clearPreview;
+  const old={...track,pending:false};state.results=[old];
+  const first=confirm(old);
+  if(invalidate==='guild'){a.dashboard.epoch++;a.dashboard.guildId='2';a.changed()}else clear();
+  state.query='new query';state.results=[{...track,title:'New result'}];
+  if(fail)pending.reject(new APIError('old denied',403,{results:[{...track,title:'Old error'}]}));else pending.resolve({});
+  await first;assert.equal(state.query,'new query');assert.equal(state.results[0].title,'New result');assert.equal(old.pending,false);
+ }
 });

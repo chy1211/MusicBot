@@ -1,6 +1,7 @@
 """Bounded, anonymous and timeout-safe LRCLIB adapter."""
 from __future__ import annotations
 import asyncio
+import hashlib
 import difflib
 import json
 import math
@@ -124,10 +125,15 @@ def result(title, artist, item=None, status="not_found"):
     item = item or {}
     lines = parse_lrc(item.get("syncedLyrics", ""))
     plain = str(item.get("plainLyrics") or "")[:60000]
+    name = str(item.get("trackName") or title)[:200]
+    performer = str(item.get("artistName") or artist)[:160]
+    record = item.get("id")
     return {"status": "instrumental" if item.get("instrumental") is True else "synced" if lines else "plain" if plain.strip() else status,
             "duration": item.get("duration") if type(item.get("duration")) in (int, float) else None,
-            "title": str(item.get("trackName") or title)[:200],
-            "artist": str(item.get("artistName") or artist)[:160],
+            "title": name, "artist": performer,
+            "lrclib_record_id": record if type(record) is int and 0 < record < 2**63 else None,
+            "match_strategy_version": 2,
+            "metadata_fingerprint": hashlib.sha256((name.casefold()+'\0'+performer.casefold()).encode()).hexdigest()[:16],
             "plain_lyrics": plain, "lines": lines}
 
 
@@ -358,8 +364,11 @@ class LyricsClient:
                 if not math.isfinite(candidate_duration) or candidate_duration <= 0:
                     continue
                 delta = abs(candidate_duration - duration)
-                # Preserve MV intro allowance only with a known matching artist.
-                if duration > 0 and delta > (60 if expected_artist else 2):
+                # User-initiated text lookup can tolerate differing MV length,
+                # but title, performer, version and ambiguity checks stay intact.
+                # Automatic matching retains its original strict thresholds.
+                tolerance = (90 if expected_artist else 30) if manual else (60 if expected_artist else 2)
+                if duration > 0 and delta > tolerance:
                     continue
                 if not expected_artist and duration <= 0:
                     continue

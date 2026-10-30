@@ -3,6 +3,9 @@ import copy
 import datetime
 import functools
 import hashlib
+import ipaddress
+import re
+from urllib.parse import urlsplit
 import logging
 import json
 import os
@@ -29,7 +32,8 @@ from .spotify import Spotify
 from .utils import check_extractor
 from .ytdlp_cookies import CookieYtdlClients
 from .web_dashboard_extraction import (WEB_EXTRACTION, DashboardYoutubeDL, check_subject,
-    RESOLUTION_BUDGET, WEB_POOL, new_budget, run_extraction_process, youtube_playlist_subject)
+    RESOLUTION_BUDGET, WEB_POOL, new_budget, run_extraction_process, youtube_playlist_subject,
+    UnsupportedDashboardURL, SEARCH as PROVIDER_SEARCH)
 
 if TYPE_CHECKING:
     from multidict import CIMultiDictProxy
@@ -43,6 +47,44 @@ else:
 
 
 log = logging.getLogger(__name__)
+
+
+def guarded_media_subject(subject: str) -> str:
+    """Reject unsupported explicit URLs before traditional command extraction.
+
+    Text and provider-search expressions remain untouched. URL validation is
+    syntactic/dedicated-extractor preflight, not a network egress firewall.
+    """
+    if not isinstance(subject, str):
+        raise ExtractionError("Invalid media subject.")
+    candidate = subject.strip()
+    if candidate.startswith("<") and candidate.endswith(">"):
+        candidate = candidate[1:-1].strip()
+    if PROVIDER_SEARCH.match(candidate):
+        return subject
+    if candidate.lower().startswith(("file://", "mbapl://")):
+        # Existing local-media / internal-auto-playlist validation runs later.
+        return subject
+    if re.fullmatch(r"spotify:(?:track|album|playlist|artist):[A-Za-z0-9]{22}", candidate):
+        return subject  # Existing Spotify URI handling still owns this subject.
+    try:
+        host = urlsplit('//' + candidate).hostname or ''
+        ip_literal = False
+        try:
+            ipaddress.ip_address(host)
+            ip_literal = True
+        except ValueError:
+            pass
+        if ip_literal or (host.lower() == 'localhost' or host.lower().endswith(('.localhost','.local','.internal','.lan','.home'))):
+            raise UnsupportedDashboardURL()
+        explicit = (candidate.startswith('//') or re.match(r'^[A-Za-z][A-Za-z0-9+.-]*://',candidate)
+                    or candidate.lower().startswith('www.')
+                    or re.match(r'(?i)^(?:https?|ftp|ftps|rtmp|rtmps|rtsp|mms|gopher|data|javascript|spotify):', candidate))
+        if explicit:
+            return check_subject(candidate)
+    except (UnsupportedDashboardURL, ValueError) as exc:
+        raise ExtractionError("Unsafe or unsupported media URL.") from exc
+    return subject
 
 
 def strip_caption_data(info: Dict[str, Any]) -> Dict[str, Any]:
@@ -431,6 +473,7 @@ class Downloader:
 
     async def extract_public_playlist(self, song_subject: str, limit: int = 201) -> "YtdlpResponseDict":
         """Credential-free flat metadata for dashboard public YouTube imports only."""
+        song_subject = check_subject(song_subject)
         if WEB_EXTRACTION.get():
             data = await self._dashboard_extract(song_subject,
                 {"download": False, "process": False}, public=True, limit=limit)
@@ -491,6 +534,8 @@ class Downloader:
         """
         if WEB_EXTRACTION.get():
             song_subject = check_subject(song_subject)
+        else:
+            song_subject = guarded_media_subject(song_subject)
         # Only a dashboard confirmation installs this scope. Misses acquire
         # resolution admission before any provider/local/Spotify work can run.
         from .web_dashboard_preview import PREVIEW_EXTRACTION
@@ -740,8 +785,15 @@ class Downloader:
             "Called safe_extract_info with:  %(args)s, %(kws)s",
             {"args": args, "kws": kwargs},
         )
+        if args:
+            args = (guarded_media_subject(args[0]), *args[1:])
+        elif "url" in kwargs:
+            kwargs = dict(kwargs, url=guarded_media_subject(kwargs["url"]))
         if WEB_EXTRACTION.get():
-            return await self._dashboard_extract(args[0], kwargs)
+            if args:
+                return await self._dashboard_extract(args[0], kwargs)
+            return await self._dashboard_extract(kwargs.get("url"),
+                {key:value for key,value in kwargs.items() if key != "url"})
         return await self.bot.loop.run_in_executor(
             self.thread_pool,
             functools.partial(self._run_ytdl, True, "extract_info", *args, **kwargs))

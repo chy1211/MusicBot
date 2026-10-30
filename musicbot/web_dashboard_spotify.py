@@ -2,13 +2,14 @@
 from .web_dashboard_i18n import message as _web_text
 import asyncio
 import re
+import math
 import time
 import unicodedata
 from collections import OrderedDict
 from difflib import SequenceMatcher
 from urllib.parse import quote, urlencode, urlsplit
 from aiohttp import web
-from .web_dashboard_lyrics import clean_metadata
+from .web_dashboard_lyrics import clean_metadata, _VERSION
 
 def spotify_track_url(value):
     if not isinstance(value,str): return ""
@@ -60,19 +61,32 @@ class SpotifyLookup:
             cached=self.cache.get(key)
             if cached and cached[0]>time.monotonic(): return cached[1]
             if self.cooldown_until>time.monotonic(): return fallback
-            response=await spotify.make_api_req("search?"+urlencode({"q":" ".join((artist,title)).strip(),"type":"track","limit":1}))
-            rows=response.get("tracks",{}).get("items",[])
-            if not rows or not title or not artist: return fallback
-            track=rows[0];a=", ".join(str(x.get("name","")) for x in track.get("artists",[]) if isinstance(x,dict))
-            score=SequenceMatcher(None,normalized(title),normalized(track.get("name",""))).ratio()
-            artist_score=SequenceMatcher(None,normalized(artist),normalized(a)).ratio()
-            milliseconds=track.get("duration_ms")
-            length_ok=(not duration or (type(milliseconds) in (int,float) and abs(milliseconds/1000-duration)<=12))
-            url=spotify_track_url(track.get("external_urls",{}).get("spotify",""))
-            if url and score>=.94 and artist_score>=.90 and length_ok:
-                return {"url":url,"mode":"track","query":fallback["query"],
-                        "title":str(track.get("name",""))[:200],"artist":a[:160],"duration":milliseconds/1000 if type(milliseconds) in (int,float) else None}
-            return fallback
+            response=await spotify.make_api_req("search?"+urlencode({"q":" ".join((artist,title)).strip(),"type":"track","limit":5}))
+            data=response.get("tracks") if isinstance(response,dict) else None
+            rows=data.get("items",[]) if isinstance(data,dict) else []
+            if not isinstance(rows,list) or not title or not artist: return fallback
+            candidates=[]
+            seen=set()
+            for track in rows[:5]:
+                if not isinstance(track,dict) or not isinstance(track.get("artists"),list) or not isinstance(track.get("external_urls"),dict): continue
+                if set(x.casefold() for x in _VERSION.findall(title)) != set(x.casefold() for x in _VERSION.findall(str(track.get("name", "")))): continue
+                a=", ".join(str(x.get("name","")) for x in track.get("artists",[]) if isinstance(x,dict))
+                score=SequenceMatcher(None,normalized(title),normalized(track.get("name",""))).ratio()
+                artist_score=SequenceMatcher(None,normalized(artist),normalized(a)).ratio()
+                milliseconds=track.get("duration_ms")
+                if type(milliseconds) in (int,float) and (not math.isfinite(milliseconds) or milliseconds <= 0): continue
+                length_ok=(not duration or (type(milliseconds) in (int,float) and abs(milliseconds/1000-duration)<=12))
+                url=spotify_track_url(track.get("external_urls",{}).get("spotify",""))
+                if url and url not in seen and score>=.94 and artist_score>=.90 and length_ok:
+                    seen.add(url)
+                    candidates.append((score+artist_score,track,a,url,milliseconds))
+            if not candidates: return fallback
+            candidates.sort(key=lambda row:row[0],reverse=True)
+            # Similar high-quality candidates may be distinct recordings: no guess.
+            if len(candidates)>1 and candidates[0][0]-candidates[1][0]<.025: return fallback
+            _,track,a,url,milliseconds=candidates[0]
+            return {"url":url,"mode":"track","query":fallback["query"],
+                    "title":str(track.get("name",""))[:200],"artist":a[:160],"duration":milliseconds/1000 if type(milliseconds) in (int,float) else None}
 
 class DashboardSpotify:
     def init_spotify_lookup(self):

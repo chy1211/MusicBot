@@ -1,0 +1,35 @@
+/* Align the left next/history column with the right queue on desktops.
+   Grid row spanning makes the queue exactly as tall as both left cards together. */
+@media (min-width:1001px) {
+  #play-view { grid-template-rows: auto auto auto auto; align-items:stretch; }
+  #play-view>.next-track-card {
+    grid-column:1;grid-row:2;align-self:start;
+    min-height:0;height:auto;padding:16px 18px;
+  }
+  #play-view>.next-track-card h2 { margin:0 0 8px; }
+  #play-view>.next-track-card .next-track-row>img,
+  #play-view>.next-track-card .next-track-fallback {
+    width:88px;height:88px;
+  }
+  #play-view>.next-track-card .next-track-text { gap:5px; }
+  #play-view>.history {
+    grid-column:1;grid-row:3;min-width:0;min-height:0;
+    margin:0;padding:16px 18px;
+  }
+  #play-view>.history #history-list {
+    max-height:218px;overflow-y:auto;overscroll-behavior:contain;
+  }
+  #play-view>.queue {
+    grid-column:2;grid-row:2 / span 2;min-height:0;
+    align-self:stretch;display:flex;flex-direction:column;overflow:hidden;contain:size;
+  }
+  #play-view>.queue #queue { overflow-y:auto;min-height:0;flex:1;overscroll-behavior:contain; }
+  #play-view>.activity { grid-column:1/-1;grid-row:4; }
+}
+/* Preserve normal document flow and all content on tablets and phones. */
+@media (max-width:1000px) {
+  #play-view>.next-track-card,#play-view>.queue,#play-view>.history,#play-view>.activity {
+    height:auto;max-height:none;overflow:visible;
+  }
+  #play-view>.history #history-list,#play-view>.queue #queue {max-height:none;overflow:visible;}
+}
