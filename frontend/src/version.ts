@@ -1,1 +1,1 @@
-export const SW_VERSION = "musicbot-dashboard-r18-21"
+export const SW_VERSION = "musicbot-dashboard-r22"

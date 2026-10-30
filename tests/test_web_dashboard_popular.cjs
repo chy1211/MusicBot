@@ -49,6 +49,6 @@ test("popular pending resolve prevents duplicate clicks and stale guild enqueue"
 });
 test("popular resolve rejection and unavailable tracks restore button and explain error",async()=>{
  for(const handler of [async()=>{throw new Error("rejected")},async()=>({results:[{kind:"track",allowed:false,reason:"unavailable",url:song.url}]})]){
-  const a=runtime(handler);await a.popular.add(song);assert.ok(a.popular.error.value);assert.equal(a.popular.adding.value,null);assert.equal(a.commands.length,0);assert.equal(a.notices.length,1);
+  const a=runtime(handler);await a.popular.add(song);assert.ok(a.popular.error.value);assert.equal(a.popular.adding.value,null);assert.equal(a.commands.length,0);assert.equal(a.notices.length,2);
  }
 });

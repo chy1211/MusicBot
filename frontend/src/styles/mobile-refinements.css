@@ -1,0 +1,120 @@
+/* R22: mobile portrait only. Never change desktop or landscape layout. */
+@media (max-width:760px) and (orientation:portrait) {
+  /* Preferences must participate in document flow, not overlay the brand/guild. */
+  #app > .language-preference,
+  .language-preference {
+    position:relative !important;
+    inset:auto !important;
+    top:auto !important;right:auto !important;
+    z-index:22;
+    display:flex;align-items:center;justify-content:flex-end;
+    gap:5px;min-height:44px;
+    margin:4px max(16px,var(--safe-right)) 2px max(16px,var(--safe-left)) !important;
+    max-width:calc(100% - max(16px,var(--safe-right)) - max(16px,var(--safe-left)));
+  }
+  .language-preference #dashboard-language {min-width:0;width:112px;max-width:35vw;}
+  .language-preference .palette-panel {right:0;left:auto;max-width:calc(100vw - 32px);}
+  .sidebar {margin-top:0 !important;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;}
+  .sidebar .brand {grid-column:1/-1;grid-row:1;margin:0 !important;min-width:0;}
+  .sidebar #guild {grid-column:1;grid-row:2;max-width:100%;min-width:0;}
+  .sidebar > .badge {grid-column:2;grid-row:2;justify-self:end;min-width:0;}
+  .sidebar .auth,.sidebar .auth[open] {grid-column:1/-1;grid-row:auto;}
+
+  /* V1 card: artwork left, information right; transport stays in bottom dock. */
+  #play-view > .listening-stage {
+    display:grid !important;
+    grid-template-columns:clamp(94px,29vw,112px) minmax(0,1fr);
+    align-items:center;gap:12px;
+    padding:16px;margin-bottom:18px;overflow:hidden;
+  }
+  #play-view > .listening-stage .stage-art {
+    grid-column:1;grid-row:1;width:100%;max-width:none;
+    align-self:center;aspect-ratio:1;border-radius:12px;
+  }
+  #play-view > .listening-stage .stage-copy {
+    display:grid;grid-column:2;grid-row:1;grid-template-columns:auto minmax(0,1fr);
+    align-items:center;column-gap:6px;row-gap:7px;min-width:0;width:100%;
+  }
+  #play-view > .listening-stage .eyebrow {grid-column:1/-1;grid-row:1;margin:0;}
+  #play-view > .listening-stage #stage-title {
+    grid-column:2;grid-row:2;min-width:0;
+    font-size:clamp(17px,4.7vw,22px);line-height:1.25;margin:0;
+    overflow-wrap:anywhere;
+  }
+  #play-view > .listening-stage .stage-wave {
+    display:flex !important;grid-column:1;grid-row:2;align-items:center;
+    gap:2px;width:34px;height:23px;min-width:34px;margin:0;
+  }
+  #play-view > .listening-stage .stage-wave i {width:2px;min-width:2px;max-height:20px;}
+  #play-view > .listening-stage .stage-wave i:nth-child(n+9) {display:none;}
+  #play-view > .listening-stage .stage-request {
+    grid-column:1/-1;grid-row:3;display:flex;gap:5px;flex-wrap:wrap;align-items:center;
+    min-width:0;margin:0;
+  }
+  #play-view > .listening-stage .stage-request .listener {max-width:100%;}
+  #play-view > .listening-stage .stage-audience {
+    grid-column:1/-1;grid-row:4;display:flex;align-items:center;flex-wrap:wrap;
+    gap:5px 7px;min-width:0;margin:0;padding:0;border:0;
+  }
+  #play-view > .listening-stage .stage-audience h3 {font-size:12px;margin:0;}
+  #play-view > .listening-stage .stage-audience #listeners-status {
+    margin:0;font-size:11px;overflow-wrap:anywhere;
+  }
+  #play-view > .listening-stage .stage-audience .listeners-list {
+    display:flex;gap:0;flex:0 1 auto;align-items:center;
+    min-width:0;width:auto;margin:0;padding-left:7px;
+  }
+  #play-view > .listening-stage .stage-audience .listeners-list .listener {
+    width:30px;height:30px;min-width:30px;min-height:30px;
+    display:grid;place-items:center;padding:0;margin-left:-7px;
+    overflow:hidden;border:2px solid var(--flat);border-radius:50%;
+    background:var(--raised);font-size:10px;
+  }
+  #play-view > .listening-stage .stage-audience .listeners-list .listener img {
+    width:26px;height:26px;flex:0 0 26px;object-fit:cover;border-radius:50%;
+  }
+  /* Names remain in DOM for accessibility, but only avatars are visible. */
+  #play-view > .listening-stage .stage-audience .listeners-list .listener:has(img) > span {
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;
+  }
+  #play-view > .listening-stage .stage-audience .listeners-list .listener:not(:has(img)) > span {
+    display:block;font-size:0;width:100%;height:100%;
+    background:var(--raised);
+  }
+  #play-view > .listening-stage .stage-audience .listeners-list .listener:not(:has(img)) > span::after {
+    content:'●';display:grid;place-items:center;font-size:15px;color:var(--muted);height:100%;
+  }
+  #play-view > .queue {margin-bottom:18px !important;}
+  #play-view > .history {margin-top:0 !important;}
+  #play-view > .history #history-list > li {
+    display:grid;grid-template-columns:40px minmax(0,1fr) 96px;
+    align-items:center;gap:8px;padding:9px 0;min-width:0;
+  }
+  #play-view > .history #history-list .history-info {grid-column:2;grid-row:1;min-width:0;}
+  #play-view > .history #history-list .history-info p {overflow-wrap:anywhere;}
+  #play-view > .history #history-list .history-actions {
+    display:flex;grid-column:3;grid-row:1;align-items:center;justify-content:flex-end;
+    gap:4px;flex-wrap:nowrap;min-width:0;width:96px;
+  }
+  #play-view > .history #history-list .history-actions button {
+    flex:0 0 44px;width:44px;min-width:44px;min-height:44px;padding:0;
+  }
+}
+
+/* Use already-existing notice-blink animation; do not create a new keyframe. */
+#play-view #history-list .history-actions button[aria-busy="true"],
+#popular-panel .popular-add[aria-busy="true"] {animation:notice-blink 1.2s ease-in-out infinite;}
+@media(prefers-reduced-motion:reduce){
+  #play-view #history-list .history-actions button[aria-busy="true"],
+  #popular-panel .popular-add[aria-busy="true"] {animation:none;}
+}
+/* Popular actions are icons on all screen sizes; keep 44px hit areas. */
+#popular-panel .history-actions {display:flex;align-items:center;justify-content:flex-end;flex-wrap:nowrap;gap:6px;}
+#popular-panel .history-actions button {display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;min-width:44px;width:44px;min-height:44px;height:44px;padding:8px;}
+#popular-panel .history-actions button svg {display:block;stroke:currentColor;width:22px;height:22px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+@media(max-width:650px){
+  #popular-panel .popular-row{grid-template-columns:42px minmax(0,1fr) 94px;}
+  #popular-panel .history-actions {grid-column:3;grid-row:1;flex-wrap:nowrap;justify-content:flex-end;}
+  #popular-panel .history-actions button {flex:0 0 44px;width:44px;min-width:44px;}
+}

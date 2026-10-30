@@ -110,5 +110,21 @@ test('real service-worker installation precaches every icon without caching API 
   const icons=await Promise.all(['history-add','history-heart','transport-play','transport-pause','transport-skip','transport-repeat'].map(async name=>(await cache.match('/icons/'+name+'.svg'))?.status));
   return {names,icons,privateKeys:keys.map(key=>new URL(key.url).pathname).filter(path=>/^\/(api|auth|events)(\/|$)/.test(path))};
  });
- assert.deepEqual(state.names,['musicbot-dashboard-r18-21']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
+ assert.deepEqual(state.names,['musicbot-dashboard-r22']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
+});
+
+test('r22 portrait card and history retain compact controls at narrow phone widths',async t=>{
+ const {page,errors}=await open(t);
+ for(const width of [320,360,390,430]){
+  await page.setViewportSize({width,height:900});
+  const metrics=await page.evaluate(()=>{
+   const stage=document.querySelector('.listening-stage'),art=stage.querySelector('.stage-art').getBoundingClientRect(),copy=stage.querySelector('.stage-copy').getBoundingClientRect();
+   const buttons=[...document.querySelectorAll('#history-list .history-actions')].map(el=>{const r=el.getBoundingClientRect();return {height:r.height,buttons:[...el.querySelectorAll('button')].map(b=>b.getBoundingClientRect().width)}});
+   return {overflow:document.documentElement.scrollWidth>innerWidth+1,sideBySide:art.right<=copy.left+1,buttons};
+  });
+  assert.equal(metrics.overflow,false,JSON.stringify({width,...metrics}));assert.ok(metrics.sideBySide);
+  for(const row of metrics.buttons){assert.ok(row.height<=48);assert.ok(row.buttons.every(w=>w>=44));}
+  await page.screenshot({path:shots+`/r22-portrait-${width}.png`,fullPage:true});
+ }
+ assert.deepEqual(errors,[]);
 });

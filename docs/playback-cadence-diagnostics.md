@@ -31,6 +31,29 @@ Deployment integrations may share the session with an existing source monitor;
 attach only once and retain existing monitor counters. No private deployment text,
 cookies, signed media URLs or credentials belong in this module or its logs.
 
+R22 optional layered read/GC observation: add `MUSICBOT_CADENCE_LAYERS=1`
+while keeping `MUSICBOT_SOURCE_READ_CADENCE=1`. With
+`MUSICBOT_CADENCE_GC=1`, per-source bounded callbacks capture actual GC
+start/stop monotonic times; callback unregisters on source cleanup. The new
+`schema_version=2` adds `gap_context` (`immediately_after_gap`, `recent_gap`,
+`no_recent_gap`), gap age and frame distance (window <=500ms and <=10 frames),
+GC actual-window overlap/nearby indicators, and bounded live event IDs. The old
+`after_large_gap` retains its original *adjacent-gap only* semantics.
+
+Events are drained on the asyncio loop at 0.5s intervals, never logged in the
+audio thread. Ring has at most 12 pending events; summary retains aggregate
+counts even when the live ring drops samples. Time is anchored to UTC, with
+`at_utc_ms` from source monotonic origin; `logged_at_utc_ms` is only logger
+presentation time. `at_progress_ms` is approximate source-media progress,
+not the listener's timestamp. GC correlation is not causal proof.
+
+**VoiceClient/send_packet/socket_send are NOT instrumented by this safe R22
+stage:** their counters remain `not_instrumented`, not zero. Before modifying
+`discord.py 2.7.1` internals, Codex must verify a reversible instance-scoped
+hook, socket OSError semantics, and how silence frames are identified, with
+fake transport regression tests. Never infer socket success from a high-level
+`VoiceClient.send_audio_packet` returning normally.
+
 This release also prioritizes cached lyrics before Spotify lookup, caps auxiliary
 Spotify waiting at 3 seconds, and labels duration-only alignment as a low-confidence
 one-hour assumption. Existing duration-only confidence=1 caches are downgraded on

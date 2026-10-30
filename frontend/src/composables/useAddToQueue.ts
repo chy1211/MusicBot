@@ -20,6 +20,8 @@ export function useAddToQueue(error: Ref<string> = ref('')) {
     adding.value = track.url
     resolutionState.value = 'queued'
     error.value = ''
+    // Reuse the existing pulsing toast; no new animation or API request.
+    notice(t('m0121'))
     try {
       const result = await request<{ results?: Array<{ kind: string; allowed: boolean; preview_id?: string; url: string; reason?: string }> }>(
         '/api/guilds/' + encodeURIComponent(guild) + '/resolve',

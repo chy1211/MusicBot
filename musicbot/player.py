@@ -32,6 +32,7 @@ from .exceptions import FFmpegError, FFmpegWarning
 from .lib.event_emitter import EventEmitter
 from .loudness import LOUDNORM_TARGET
 from .read_cadence_diagnostics import ReadCadenceDiagnostics
+from .cadence_layered import LayeredReadCadenceDiagnostics
 
 if TYPE_CHECKING:
     from .bot import MusicBot
@@ -304,6 +305,14 @@ class SourcePlaybackCounter(AudioSource):
         self._streaming.set()
         with self._buffer_cond:
             self._buffer_cond.notify_all()
+        # Unregister only our optional GC callback on all cleanup paths,
+        # including a source abandoned before Discord playback began.
+        close_monitor = getattr(self._cadence, 'close', None)
+        if close_monitor is not None:
+            try:
+                close_monitor()
+            except Exception:
+                pass
         self._source.cleanup()
 
     @property
@@ -541,6 +550,27 @@ class MusicPlayer(EventEmitter, Serializable):
         self.playlist.clear()
         self._events.clear()
         self._kill_current_player()
+
+    async def _report_cadence_events(self, source: SourcePlaybackCounter) -> None:
+        """Periodic bounded logging only on the asyncio loop, never audio thread."""
+        while not getattr(source, '_cadence_reported', True) and source is self._source and not self.is_dead:
+            await asyncio.sleep(0.5)
+            if getattr(source, '_cadence_reported', True) or source is not self._source:
+                return
+            collector = getattr(getattr(source, '_cadence', None), 'take_events', None)
+            if collector is None:
+                return
+            try:
+                for sample in collector(4):
+                    logged_at = round(time.time() * 1000)
+                    log.info('source_read_cadence_event %s', json.dumps({
+                        **sample, 'logged_at_utc_ms': logged_at,
+                        'report_delay_ms': (max(0, logged_at - sample['at_utc_ms'])
+                                            if sample.get('at_utc_ms') is not None else None),
+                    }, sort_keys=True))
+            except Exception:
+                log.debug('Optional cadence event reporting disabled')
+                return
 
     def _playback_finished(
         self, error: Optional[Exception] = None, *,
@@ -897,11 +927,14 @@ class MusicPlayer(EventEmitter, Serializable):
                     cadence = None
                     if os.environ.get('MUSICBOT_SOURCE_READ_CADENCE') == '1':
                         try:
-                            cadence = ReadCadenceDiagnostics(
+                            layered = os.environ.get('MUSICBOT_CADENCE_LAYERS') == '1'
+                            cadence_class = LayeredReadCadenceDiagnostics if layered else ReadCadenceDiagnostics
+                            cadence = cadence_class(
                                 session=secrets.token_hex(6), generation=generation,
                                 media_offset_s=entry.start_time,
                                 playback_speed=entry.playback_speed,
                                 track_id=hashlib.sha256(str(entry.url).encode('utf-8')).hexdigest()[:12],
+                                **({'gc_enabled': os.environ.get('MUSICBOT_CADENCE_GC') == '1'} if layered else {}),
                             )
                         except Exception:
                             log.debug("Unable to initialize optional read cadence diagnostics")
@@ -982,6 +1015,8 @@ class MusicPlayer(EventEmitter, Serializable):
                         # A full startup window protects the tiny gap before the
                         # producer is released to replenish the ongoing buffer.
                         prepared_source.start_streaming()
+                        if cadence is not None and callable(getattr(cadence, 'take_events', None)):
+                            self.loop.create_task(self._report_cadence_events(prepared_source))
                     except ClientException as exc:
                         # Discord checks again inside play(), after our connection check.
                         if self._source is prepared_source:
