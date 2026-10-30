@@ -81,3 +81,6 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 版本內容依據 [GitHub Release v1.0.0](https://github.com/chy1211/MusicBot/releases/tag/v1.0.0)；安裝方式見 [README](README.md) 與[安裝說明](docs/install.zh-TW.md)。
 Release details follow [GitHub Release v1.0.0](https://github.com/chy1211/MusicBot/releases/tag/v1.0.0); see the [README](README.md) and [installation guide](docs/install.zh-TW.md).
+
+- R21 search previews rank existing provider candidates without extra extraction, deduplicate trusted media identities, and show unverified title/version labels; recent-history actions use accessible 44px icons.
+- R21 搜尋預覽只排序既有候選、依可信媒體身分去重並標示來源與未驗證的標題版本；最近播過的操作改用可及性圖示。

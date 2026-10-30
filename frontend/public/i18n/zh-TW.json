@@ -1,4 +1,11 @@
 {
+  "search.titleTagged": "標題標示：",
+  "search.version.official_audio": "官方音源（未驗證）",
+  "search.version.mv": "MV（未驗證）",
+  "search.version.live": "現場演出",
+  "search.version.cover": "翻唱",
+  "search.version.remix": "混音／重製",
+  "search.version.topic": "Topic 頻道",
   "m0000": "共 ",
   "m0001": " 首・符合 ",
   "m0002": " 首・第 ",

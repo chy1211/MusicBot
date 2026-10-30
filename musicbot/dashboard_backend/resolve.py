@@ -100,9 +100,11 @@ class DashboardResolveRoutes:
             except exceptions.MusicbotException:
                 raise APIError(403, _web_text('m0405')) from None
             if search:
+                from ..web_dashboard_search_quality import rank_search_results
                 choices = info.get_entries_objects() if info.has_entries else [info]
-                results.extend(dict(self.preview_track(item, permissions, extractor=info.extractor), kind="track")
-                               for item in choices[:limit])
+                previews = [dict(self.preview_track(item, permissions, extractor=info.extractor), kind="track")
+                            for item in choices[:limit]]
+                results.extend(rank_search_results(query, previews))
             elif info.has_entries:
                 count = max(info.playlist_count or 0, info.entry_count)
                 reason = (_web_text('m0415')

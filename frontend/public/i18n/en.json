@@ -1,4 +1,11 @@
 {
+  "search.titleTagged": "Title tag: ",
+  "search.version.official_audio": "Official Audio (unverified)",
+  "search.version.mv": "MV (unverified)",
+  "search.version.live": "Live",
+  "search.version.cover": "Cover",
+  "search.version.remix": "Remix / remaster",
+  "search.version.topic": "Topic channel",
   "m0000": "Total ",
   "m0001": " tracks · matched ",
   "m0002": " tracks · ",

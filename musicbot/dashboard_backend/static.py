@@ -93,6 +93,20 @@ class DashboardStaticRoutes:
         )
 
 
+    async def icon_asset(self, request):
+        name = request.match_info.get("name", "")
+        if name not in {
+            "history-add.svg", "history-heart.svg", "transport-play.svg",
+            "transport-pause.svg", "transport-skip.svg", "transport-repeat.svg",
+        }:
+            raise web.HTTPNotFound()
+        root = self._static_root() / "icons"
+        path = root / name
+        if path.resolve().parent != root.resolve() or not path.is_file():
+            raise web.HTTPNotFound()
+        return web.Response(body=path.read_bytes(), content_type="image/svg+xml")
+
+
     async def hashed_asset(self, request):
         name = request.match_info.get("name", "")
         if not name or Path(name).name != name or name in (".", ".."):

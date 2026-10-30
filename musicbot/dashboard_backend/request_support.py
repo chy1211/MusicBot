@@ -233,11 +233,12 @@ class DashboardRequestSupport:
 
     def preview_track(self, info, permissions, *, playlist=False, extractor=""):
         from ..web_dashboard import _web_text, public_url
+        from ..web_dashboard_search_quality import annotate_preview
         reason = self.restriction(info, permissions, playlist=playlist, extractor=extractor)
         artist = info.get('artist') or info.get('uploader') or info.get('creator') or ''
         artist = artist[:120] if isinstance(artist, str) else ''
-        return dict(title=info.title, artist=artist, duration=self.info_duration(info),
+        return annotate_preview(dict(title=info.title, artist=artist, duration=self.info_duration(info),
                     thumbnail=public_url(info.thumbnail_url),
                     url=public_url(info.webpage_url or info.get_playable_url()),
                     allowed=not reason, reason=reason,
-                    warning="" if self.info_duration(info) else _web_text('m0409'))
+                    warning="" if self.info_duration(info) else _web_text('m0409')))

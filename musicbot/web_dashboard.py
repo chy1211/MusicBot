@@ -304,6 +304,7 @@ class Dashboard(
             self.app.router.add_get("/" + path, self.pwa_asset)
         self.app.router.add_get("/favicon.svg", self.favicon)
         self.app.router.add_get("/assets/{name}", self.hashed_asset)
+        self.app.router.add_get("/icons/{name}", self.icon_asset)
         self.app.router.add_get("/favicon.ico", self.favicon)
         self.app.router.add_get("/auth/session", self.auth_session)
         self.app.router.add_get("/auth/login", self.auth_login)
@@ -352,7 +353,7 @@ class Dashboard(
         "/dashboard.css", "/dashboard.js", "/library.js", "/admin.js",
         "/permissions.js", "/popular.js", "/favicon.svg", "/favicon.ico",
         "/manifest.webmanifest", "/sw.js", "/pwa.js", "/offline.html", "/offline.css", "/offline.js",
-        "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/auth/session", "/assets/{name}",
+        "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/auth/session", "/assets/{name}", "/icons/{name}",
     })
     OPERATION_ROUTES = {
         "/auth/login": "login", "/auth/callback": "callback",

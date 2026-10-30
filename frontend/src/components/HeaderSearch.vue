@@ -42,6 +42,17 @@ function outside(event:PointerEvent){
 import {onMounted,onBeforeUnmount} from 'vue'
 onMounted(()=>{document.addEventListener('keydown',key);document.addEventListener('pointerdown',outside)})
 onBeforeUnmount(()=>{document.removeEventListener('keydown',key);document.removeEventListener('pointerdown',outside)})
+function versionLabel(value?:string):string {
+ switch(value){
+  case 'official_audio':return t('search.version.official_audio')
+  case 'mv':return t('search.version.mv')
+  case 'live':return t('search.version.live')
+  case 'cover':return t('search.version.cover')
+  case 'remix':return t('search.version.remix')
+  case 'topic':return t('search.version.topic')
+  default:return ''
+ }
+}
 </script>
 <template><div class="header-search">
   <form class="header-search-form" role="search" @submit.prevent="search">
@@ -53,7 +64,7 @@ onBeforeUnmount(()=>{document.removeEventListener('keydown',key);document.remove
    <div class="header-search-title"><strong>{{t('m0252')}}</strong><button type="button" class="subtle" :aria-label="t('m0253')" @click="open=false">×</button></div>
    <ul><li v-for="song in requests.results" :key="song.preview_id" class="header-result">
     <img v-if="safeURL(song.thumbnail)" :src="safeURL(song.thumbnail)" alt="" loading="lazy" referrerpolicy="no-referrer">
-    <div class="header-result-copy"><strong>{{song.title}}</strong><small v-if="song.artist">{{song.artist}}</small><small>{{song.duration?duration(song.duration):t('m0085')}}</small><small v-if="song.reason">{{song.reason}}</small></div>
+    <div class="header-result-copy"><strong>{{song.title}}</strong><small v-if="song.artist">{{song.artist}}</small><small v-if="song.source">{{song.source}}</small><small v-if="versionLabel(song.version)">{{t('search.titleTagged')}}{{versionLabel(song.version)}}</small><small>{{song.duration?duration(song.duration):t('m0085')}}</small><small v-if="song.reason">{{song.reason}}</small></div>
     <button type="button" :disabled="!usable||!song.allowed||song.pending||dashboard.busy" :aria-label="song.kind==='playlist'?t('m0252'):t('m0612')+' '+song.title" @click="add(song)">{{song.kind==='playlist'?t('m0252'):'＋'}}</button>
    </li></ul>
   </div>
