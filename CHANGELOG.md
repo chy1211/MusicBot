@@ -7,6 +7,9 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
+- 首首歌未命中分析快取時使用即時音量正規化，避免等待全曲掃描；後續分析結果以音檔指紋快取。修正管理頁分區切換、概況更新與跳過提示，整合聽眾與點播者，改善觸控橫放及更新按鈕位置。
+  Start an uncached first track with one-pass normalization and cache later measurements by file identity. Fix admin section navigation, health refresh and skip messages, integrate listeners and requester details, and improve touch landscape and update controls.
+
 - 管理頁分組顯示設定與即時音訊健康；切換伺服器清除舊設定與草稿，載入失敗或未變更時停用儲存，自動播放清單優先顯示已有曲目資料。
   Group administration settings and live audio health, clear stale settings and drafts on guild changes, disable saves for unloaded or unchanged settings, and enrich autoplaylists from existing metadata.
 

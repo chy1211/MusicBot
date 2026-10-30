@@ -570,7 +570,9 @@ class Config:
             getter="getboolean",
             comment=_Dd(
                 "Tries to use ffmpeg to get volume normalizing options for use in playback.\n"
-                "This option can cause delay between playing songs, as the whole track must be processed."
+                "The first uncached track uses immediate one-pass normalization.\n"
+                "Following tracks can use complete-file analysis while another song plays.\n"
+                "Measurements for unchanged files are cached to reduce replay delay."
             ),
         )
         self.round_robin_queue: bool = self.register.init_option(

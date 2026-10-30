@@ -379,7 +379,9 @@ class DashboardMutationRoutes:
                 preview["status"] = "done"
             message = _web_text("m0451", p0=summary["added"], p1=summary["skipped"]) if summary and "added" in summary else _web_text("m0462")
             if action == "skip":
-                message = _web_text("message.skip")
+                from ..web_dashboard_guild_settings import vote_skip_enabled
+                message = _web_text("message.skip" if vote_skip_enabled(self.bot, guild)
+                                    else "message.skip.instant")
             elif action == "repeat":
                 message = _web_text("m0117") + _web_text({"off":"m0118","song":"m0115","all":"m0119"}[data["mode"]])
             if response is not None and (not summary or action == "remove"):

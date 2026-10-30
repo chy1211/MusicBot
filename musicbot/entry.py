@@ -20,6 +20,7 @@ from .exceptions import ExtractionError, InvalidDataError, MusicbotException
 from .i18n import _X
 from .spotify import Spotify
 from .loudness import LOUDNORM_TARGET, measured_loudnorm_filter
+from .loudnorm_cache import lookup_loudnorm, store_loudnorm, loudnorm_fingerprint
 
 if TYPE_CHECKING:
     from .downloader import Downloader
@@ -215,38 +216,61 @@ class BasePlaylistEntry(Serializable):
             return f"-af {filters}"
         return ""
 
-    async def get_mean_volume(self, input_file: str) -> None:
-        """Measure a complete file to configure two-pass loudness normalization."""
-        # Failed re-analysis must fall back to one-pass, not stale measurements.
+    def should_wait_for_loudness(self) -> bool:
+        """Only pre-analyze when a track from this playlist is already audible.
+
+        The first requested track must not be blocked by a complete-file scan.
+        Callers without a player context retain complete-file analysis.
+        """
+        bot = getattr(getattr(self, "playlist", None), "bot", None)
+        players = getattr(bot, "players", None)
+        if not isinstance(players, dict):
+            return True
+        return any(
+            getattr(player, "playlist", None) is self.playlist
+            and (getattr(player, "is_playing", False) or getattr(player, "is_paused", False))
+            for player in players.values()
+        )
+
+    async def get_mean_volume(self, input_file: str, *, allow_analysis: bool = True) -> str:
+        """Re-use measured loudnorm or fall back to immediate one-pass playback."""
         self.remove_audio_filter("loudnorm")
+        started = time.monotonic()
+        cached = await asyncio.to_thread(lookup_loudnorm, input_file)
+        if cached:
+            self.set_audio_filter("loudnorm", cached)
+            log.info("Loudness setup: cached measurements (%.3fs)", time.monotonic()-started)
+            return "cached"
+        if not allow_analysis:
+            log.info("Loudness setup: first-track one-pass, scan deferred (%.3fs)", time.monotonic()-started)
+            return "one_pass"
         ffmpeg_bin = shutil.which("ffmpeg")
         if not ffmpeg_bin:
             log.error("Could not locate ffmpeg on your path!")
-            return
+            return "one_pass"
+        fingerprint = await asyncio.to_thread(loudnorm_fingerprint, input_file)
         ffmpeg_cmd = [
-            ffmpeg_bin,
-            "-nostdin",
-            "-hide_banner",
-            "-nostats",
-            "-i",
-            input_file,
-            "-vn",
-            "-sn",
-            "-dn",
-            "-af",
+            ffmpeg_bin, "-nostdin", "-hide_banner", "-nostats",
+            "-i", input_file, "-vn", "-sn", "-dn", "-af",
             f"loudnorm={LOUDNORM_TARGET}:linear=true:print_format=json",
-            "-f",
-            "null",
-            os.devnull,
+            "-f", "null", os.devnull,
         ]
         try:
             raw = await run_command(ffmpeg_cmd, check=True)
             opts = measured_loudnorm_filter(raw.decode("utf-8"))
         except (ValueError, UnicodeError, OSError) as exc:
-            # Caller uses one-pass loudnorm when the measurements are unusable.
-            log.warning("Could not measure loudness for %s: %s", input_file, exc)
-            return
+            log.warning("Loudness analysis failed (%s); using one-pass", type(exc).__name__)
+            return "one_pass"
+        if fingerprint is not None and await asyncio.to_thread(loudnorm_fingerprint, input_file) != fingerprint:
+            log.warning("Loudness input changed during analysis; using one-pass")
+            return "one_pass"
         self.set_audio_filter("loudnorm", opts)
+        saved = bool(fingerprint) and await asyncio.to_thread(
+            store_loudnorm, input_file, opts, expected_fingerprint=fingerprint)
+
+        log.info("Loudness setup: full measurement in %.3fs (cached=%s)",
+                 time.monotonic()-started, saved)
+        return "measured"
 
 
 async def run_command(command: List[str], *, check: bool = False) -> bytes:
@@ -599,7 +623,7 @@ class URLPlaylistEntry(BasePlaylistEntry):
 
             if self.playlist.bot.config.use_experimental_equalization:
                 try:
-                    await self.get_mean_volume(self.filename)
+                    await self.get_mean_volume(self.filename, allow_analysis=self.should_wait_for_loudness())
 
                 # Unfortunate evil that we abide for now...
                 except Exception:  # pylint: disable=broad-exception-caught
@@ -1240,7 +1264,7 @@ class LocalFilePlaylistEntry(BasePlaylistEntry):
 
             if self.playlist.bot.config.use_experimental_equalization:
                 try:
-                    await self.get_mean_volume(self.filename)
+                    await self.get_mean_volume(self.filename, allow_analysis=self.should_wait_for_loudness())
 
                 # Unfortunate evil that we abide for now...
                 except Exception:  # pylint: disable=broad-exception-caught

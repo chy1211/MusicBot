@@ -164,7 +164,8 @@ class VoteSkipTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.dashboard.vote_skip_store.path(1).exists())
 
     async def test_enabled_web_votes_deduplicate_threshold_and_reply(self):
-        await self.call(BASE + "skip", {})
+        first = await self.call(BASE + "skip", {})
+        self.assertEqual(first["message"], "已送出跳過請求；投票進度請看 Discord。")
         await self.call(BASE + "skip", {})
         self.assertEqual(self.bot.player.skip_state.skippers, {43})
         self.assertIsNotNone(self.bot.player.current_entry)
@@ -194,6 +195,7 @@ class VoteSkipTests(unittest.IsolatedAsyncioTestCase):
     async def test_disabled_web_immediate_without_votes_or_threshold_reply(self):
         await self.disable()
         result = await self.call(BASE + "skip", {})
+        self.assertEqual(result["message"], "已送出跳過請求。")
         self.assertIsNone(self.bot.player.current_entry)
         self.assertFalse(self.bot.player.skip_state.skippers)
         text = self.bot.safe_send_message.await_args.args[1].content

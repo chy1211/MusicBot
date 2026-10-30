@@ -25,7 +25,7 @@ export function useAdmin() {
  const lyricsEnabled = ref(true), lyricsStatus = ref('')
  const emptyQueue = ref<EmptyQueueSettings | null>(null), emptyQueueStatus = ref('')
  const apl = ref<AplPage | null>(null), aplPage = ref(1), aplQuery = ref('')
- const maintenance = ref<Maintenance | null>(null), maintenanceLoading = ref(false)
+ const maintenance = ref<Maintenance | null>(null), maintenanceLoading = ref(false), maintenanceUpdatedAt = ref(0)
  const voteSkip = ref(true), voteSkipLoading = ref(false), voteSkipStatus = ref('')
  let epoch = 0, aplSequence = 0
  const path = (id:string,suffix:string) => `/api/guilds/${encodeURIComponent(id)}/admin/${suffix}`
@@ -34,9 +34,9 @@ export function useAdmin() {
  function handleError(e:unknown){if(e instanceof APIError&&e.status===401){owner.value=false;notify.value=null;emptyQueue.value=null;apl.value=null;maintenance.value=null;error.value=t('admin.error.unauthorized')}else error.value=message(e)}
  async function loadAll() {
   const id=guild.value, token=++epoch
-  if(!id||id!==dashboard.guildId||!dashboard.authenticated){owner.value=false;loading.value=false;notify.value=null;emptyQueue.value=null;apl.value=null;maintenance.value=null;lyricsLoaded.value=false;voteSkipLoaded.value=false;return}
+  if(!id||id!==dashboard.guildId||!dashboard.authenticated){owner.value=false;loading.value=false;notify.value=null;emptyQueue.value=null;apl.value=null;maintenance.value=null;maintenanceUpdatedAt.value=0;lyricsLoaded.value=false;voteSkipLoaded.value=false;return}
   // Do not expose the previous guild's settings while a new guild loads.
-  owner.value=false;notify.value=null;emptyQueue.value=null;apl.value=null;maintenance.value=null
+  owner.value=false;notify.value=null;emptyQueue.value=null;apl.value=null;maintenance.value=null;maintenanceUpdatedAt.value=0
   lyricsLoaded.value=false;voteSkipLoaded.value=false
   aplPage.value=1;aplQuery.value='';maintenanceLoading.value=false;voteSkipLoading.value=false
   notifyStatus.value='';lyricsStatus.value='';emptyQueueStatus.value='';voteSkipStatus.value=''
@@ -61,11 +61,11 @@ export function useAdmin() {
  async function loadApl(token=epoch,id=guild.value){if(!id)return;const sequence=++aplSequence;const q=new URLSearchParams({page:String(aplPage.value),q:aplQuery.value});try{const v=await request<AplPage>(path(id,`autoplaylist?${q}`));if(!Array.isArray(v.tracks))throw new Error(t('admin.error.generic'));if(current(token,id)&&sequence===aplSequence)apl.value=v}catch(e){if(current(token,id)&&sequence===aplSequence){apl.value=null;handleError(e)}throw e}}
  async function changeApl(data:Record<string,unknown>,method='POST'){const id=guild.value,token=epoch;if(!id||!canManage.value||saving.value)return;beginSave();error.value='';try{if(!apl.value)await loadApl(token,id);if(!current(token,id))return;const revision=apl.value?.revision;await request(path(id,'autoplaylist'),{method,body:{...data,revision}});if(!current(token,id))return;await loadApl(token,id);if(current(token,id))notice(t('admin.playlist.saved'))}catch(e){if(current(token,id))handleError(e)}finally{endSave()}}
  async function removeApl(track:AplTrack){if(!window.confirm(t('admin.playlist.removeConfirm')))return;await changeApl({index:track.index},'DELETE')}
- async function loadMaintenance(token=epoch,id=guild.value){if(!id)return;maintenanceLoading.value=true;try{const v=await request<Maintenance>(path(id,'maintenance'));if(current(token,id))maintenance.value=v}catch(e){if(current(token,id)){maintenance.value=null;handleError(e)}throw e}finally{if(current(token,id))maintenanceLoading.value=false}}
+ async function loadMaintenance(token=epoch,id=guild.value){if(!id||maintenanceLoading.value)return;maintenanceLoading.value=true;try{const v=await request<Maintenance>(path(id,'maintenance'));if(current(token,id)){maintenance.value=v;maintenanceUpdatedAt.value=Date.now()}}catch(e){if(current(token,id)){maintenance.value=null;maintenanceUpdatedAt.value=0;handleError(e)}throw e}finally{if(current(token,id))maintenanceLoading.value=false}}
  async function loadVoteSkip(token=epoch,id=guild.value){if(!id)return;voteSkipLoading.value=true;try{const v=await request<{enabled:boolean}>(path(id,'vote-skip'));if(typeof v.enabled!=='boolean')throw new Error(t('admin.error.generic'));if(current(token,id)){voteSkip.value=v.enabled;voteSkipLoaded.value=true;voteSkipStatus.value=''}}catch(e){if(current(token,id)){voteSkipLoaded.value=false;voteSkipStatus.value=message(e)}throw e}finally{if(current(token,id))voteSkipLoading.value=false}}
  async function saveVoteSkip(enabled:boolean){const id=guild.value,token=epoch;if(!id||!canManage.value||!voteSkipLoaded.value||saving.value)return;beginSave();voteSkipStatus.value='';try{const v=await request<{enabled:boolean}>(path(id,'vote-skip'),{method:'POST',body:{enabled}});if(!current(token,id))return;voteSkip.value=v.enabled;voteSkipStatus.value=t('admin.voteSkip.saved')}catch(e){if(current(token,id))voteSkipStatus.value=message(e)}finally{endSave()}}
  function page(delta:number){aplPage.value=Math.max(1,aplPage.value+delta);void loadApl().catch(()=>{})}
  watch([guild,()=>dashboard.authenticated,()=>dashboard.snapshot?.guild_id],()=>void loadAll(),{immediate:true})
  onBeforeUnmount(()=>{epoch++})
- return {owner,canManage,loading,saving,error,notify,notifyStatus,lyricsEnabled,lyricsLoaded,lyricsStatus,emptyQueue,emptyQueueStatus,apl,aplPage,aplQuery,maintenance,maintenanceLoading,voteSkip,voteSkipLoaded,voteSkipLoading,voteSkipStatus,loadAll,loadMaintenance,saveNotify,saveLyrics,saveEmptyQueue,loadApl,page,removeApl,saveVoteSkip}
+ return {owner,canManage,loading,saving,error,notify,notifyStatus,lyricsEnabled,lyricsLoaded,lyricsStatus,emptyQueue,emptyQueueStatus,apl,aplPage,aplQuery,maintenance,maintenanceLoading,maintenanceUpdatedAt,voteSkip,voteSkipLoaded,voteSkipLoading,voteSkipStatus,loadAll,loadMaintenance,saveNotify,saveLyrics,saveEmptyQueue,loadApl,page,removeApl,saveVoteSkip}
 }

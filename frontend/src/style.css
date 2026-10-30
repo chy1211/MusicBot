@@ -329,3 +329,54 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
  .language-preference{position:relative;top:auto;right:auto;margin:8px max(16px,var(--safe-right)) 8px max(16px,var(--safe-left))}
  .sidebar .brand{max-width:100%;margin-right:0}
 }
+
+/* Dashboard R8: listener chips, admin expand actions, refresh access and short landscape. */
+.stage-copy{flex:1;min-width:0}
+.stage-request{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+.stage-request>.listener{font-size:12px}
+.stage-audience{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.stage-audience h3{font-size:13px;font-weight:700;margin:0}
+.stage-audience #listeners-status{margin:4px 0 0}
+.stage-audience .listeners-list{margin-top:8px;gap:6px}
+.stage-audience .listener{font-size:12px;padding:4px 9px}
+.admin-jump-links button{padding:8px 12px;min-height:44px;border:1px solid var(--line);border-radius:12px;color:inherit;background:var(--raised);font:inherit;cursor:pointer}
+.admin-jump-links button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.admin-group{scroll-margin-top:24px}
+#admin-health-updated{font-variant-numeric:tabular-nums}
+@media(max-width:760px){
+ /* The update prompt must not be trapped under the top safe-area or browser chrome. */
+ .sidebar:has(#pwa-refresh:not([hidden])){z-index:120}
+ .sidebar #pwa-refresh:not([hidden]){position:fixed;top:calc(var(--safe-top) + 70px);left:max(16px,var(--safe-left));right:max(16px,var(--safe-right));width:auto;max-width:none;min-height:48px;z-index:130;background:var(--opaque);border:2px solid var(--green);box-shadow:0 8px 20px #0006}
+ .listening-stage{align-items:flex-start}
+ .stage-request{gap:5px}
+ .stage-audience{margin-top:12px}
+ .stage-audience .listeners-list{gap:5px}
+}
+/* A short, rotated touchscreen must not use the wide desktop sidebar and tall dock. */
+@media(orientation:landscape) and (max-height:560px) and (pointer:coarse){
+ :root{--bar:100px}
+ #app{padding-top:0}
+ .language-preference{position:relative;top:auto;right:auto;margin:calc(var(--safe-top) + 4px) max(12px,var(--safe-right)) 2px;justify-content:flex-end;z-index:30}
+ .sidebar{position:relative;inset:auto;top:auto;left:auto;bottom:auto;width:auto;margin:0 12px;padding:4px 0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 12px;background:transparent!important;border:0;border-radius:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;overflow:visible}
+ .sidebar .brand,.sidebar>.badge,.sidebar .desktop-shortcuts{display:none}
+ .sidebar>label{display:none}
+ .sidebar>#guild{grid-column:1;grid-row:1;max-width:280px;min-width:0}
+ .sidebar .page-tabs,.sidebar .page-tabs.nav-compact{position:static;inset:auto;left:auto;right:auto;bottom:auto;grid-column:2;grid-row:1;display:grid;grid-template-columns:repeat(var(--tabs,4),minmax(0,1fr));gap:3px;width:100%;height:48px;min-height:48px;margin:0;padding:3px;z-index:auto;border-radius:24px}
+ .sidebar .page-tabs button,.sidebar .page-tabs.nav-compact button{height:42px;min-height:42px;text-align:center;padding:4px}
+ .sidebar .auth,.sidebar .auth[open]{grid-column:1/-1;grid-row:4}
+ .sidebar:has(#pwa-refresh:not([hidden])){z-index:120}
+ .sidebar #pwa-refresh:not([hidden]){position:fixed;top:calc(var(--safe-top) + 56px);left:max(14px,var(--safe-left));right:max(14px,var(--safe-right));z-index:130;min-height:48px}
+ main{margin:0;max-width:none;padding:8px max(12px,var(--safe-right)) calc(var(--dock-player-height,110px) + 28px + var(--safe-bottom)) max(12px,var(--safe-left))}
+ .page-heading{margin:0 0 8px}.page-heading h1{font-size:22px}
+ .listening-stage{gap:14px;padding:16px;align-items:flex-start}
+ .stage-art{width:96px;flex-shrink:0}
+ .stage-copy h2{font-size:clamp(18px,3vw,25px)}
+ .playback-bar{position:fixed;inset:auto max(10px,var(--safe-right)) calc(var(--safe-bottom) + 8px) max(10px,var(--safe-left));left:max(10px,var(--safe-left));right:max(10px,var(--safe-right));bottom:calc(var(--safe-bottom) + 8px);height:auto;min-height:96px;max-height:calc(100dvh - 30px);padding:8px 12px;display:grid;grid-template-columns:minmax(120px,1fr) minmax(220px,1.35fr) minmax(100px,.7fr);grid-template-rows:auto;column-gap:10px;row-gap:4px;border-radius:18px;overflow:visible}
+ .playback-bar .bar-track,.playback-bar .bar-center,.playback-bar .bar-right{grid-row:auto;grid-column:auto;min-width:0}
+ .playback-bar .bar-right{display:flex;align-items:center;justify-content:flex-end}
+ .playback-bar .transport{flex-wrap:nowrap;gap:4px}
+ .playback-bar .transport button{padding-inline:8px;min-width:42px}
+ .playback-bar .progress-row{margin-top:2px}
+ .playback-bar .volume-row input{max-width:84px}
+ .playback-bar .bar-track small{display:none}
+}

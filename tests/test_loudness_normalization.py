@@ -83,6 +83,7 @@ def load_source_method(path, class_name, method_name, namespace):
 @lru_cache(maxsize=1)
 def entry_runtime():
     from musicbot import loudness
+    from musicbot import loudnorm_cache
 
     ns = dict(
         List=List,
@@ -92,6 +93,10 @@ def entry_runtime():
         log=FakeLog(),
         LOUDNORM_TARGET=loudness.LOUDNORM_TARGET,
         measured_loudnorm_filter=loudness.measured_loudnorm_filter,
+        lookup_loudnorm=lambda *_: None,
+        loudnorm_fingerprint=lambda *_: None,
+        store_loudnorm=lambda *_: True,
+        time=__import__("time"),
     )
     tree = ast.parse((ROOT / "musicbot/entry.py").read_text(encoding="utf-8"))
     run_command = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "run_command")
@@ -111,7 +116,7 @@ def entry_runtime():
         def aoptions(self):
             return self.get_audio_filters()
 
-    for name in ("set_audio_filter", "remove_audio_filter", "has_audio_filter", "get_audio_filters", "get_mean_volume"):
+    for name in ("set_audio_filter", "remove_audio_filter", "has_audio_filter", "get_audio_filters", "should_wait_for_loudness", "get_mean_volume"):
         setattr(Entry, name, load_source_method("musicbot/entry.py", "BasePlaylistEntry", name, ns))
 
     class URLPlaylistEntry(Entry):

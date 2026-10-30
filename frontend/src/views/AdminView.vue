@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import PermissionsEditor from '../components/PermissionsEditor.vue'
 import { useAdmin } from '../composables/useAdmin'
 import { usePermissions } from '../composables/usePermissions'
@@ -8,6 +9,23 @@ import { safeURL } from '../composables/useTrack'
 import { SW_VERSION } from '../version'
 import { controllerVersion } from '../composables/usePwa'
 const a=useAdmin(), p=usePermissions(a.canManage, () => { a.owner.value=false })
+const route = useRoute()
+// The admin screen remains mounted while another dashboard route is shown.
+// Poll only for the visible, authorized guild, and never overlap requests.
+let healthTimer: ReturnType<typeof setInterval> | undefined
+function refreshHealth() {
+ if (route.path !== '/admin' || document.hidden || !a.canManage.value || a.maintenanceLoading.value) return
+ void a.loadMaintenance().catch(() => {})
+}
+onMounted(() => { healthTimer = setInterval(refreshHealth, 10000); document.addEventListener('visibilitychange', refreshHealth) })
+onBeforeUnmount(() => { if (healthTimer) clearInterval(healthTimer); document.removeEventListener('visibilitychange', refreshHealth) })
+watch(() => route.path, path => { if (path === '/admin') refreshHealth() })
+function toggleAdminGroup(id:string) {
+ const el = document.getElementById(id)
+ if (!(el instanceof HTMLDetailsElement)) return
+ el.open = !el.open
+ if (el.open) void nextTick(() => el.scrollIntoView({block:'start',behavior:'smooth'}))
+}
 const notifyChannel=ref(''), emptyMode=ref<'autoplaylist'|'radio'|'off'>('autoplaylist'), radioMin=ref(0), radioMax=ref(0)
 const query=ref('')
 const permissionDialog=ref<HTMLDialogElement|null>(null)
@@ -66,8 +84,8 @@ function saveVoteButton(){void a.saveVoteSkip(voteDraft.value)}
 <p v-if="a.loading.value" role="status" aria-live="polite">{{ t('admin.loading') }}</p>
 <div v-if="a.error.value" ref="adminErrorRef" class="maintenance-warning" role="alert" tabindex="-1">{{ a.error.value }} <button type="button" @click="a.loadAll()">{{ t('admin.retry') }}</button></div>
 <template v-if="a.canManage.value">
-<div class="admin-health-summary" role="status"><strong>{{ t('admin.batch.overview') }}</strong><span>{{ t('admin.batch.audio') }}: {{ audioStateLabel }}</span><span v-if="a.maintenance.value?.audio?.capacity_ms">{{ t('admin.batch.underruns') }}: {{ a.maintenance.value?.audio?.underrun_frames??0 }}</span><span v-if="a.maintenance.value?.audio?.capacity_ms">{{ t('admin.batch.buffer') }}: {{ a.maintenance.value?.audio?.buffered_ms??0 }} ms</span></div>
-<nav class="admin-jump-links" :aria-label="t('admin.batch.sections')"><a href="#admin-playback-group">{{ t('admin.batch.playback') }}</a><a href="#admin-apl-group">{{ t('admin.playlist.heading') }}</a><a href="#admin-permissions-group">{{ t('admin.permissions.heading') }}</a><a href="#admin-maintenance-group">{{ t('admin.maintenance.heading') }}</a></nav>
+<div class="admin-health-summary" role="status" aria-live="off"><strong>{{ t('admin.batch.overview') }}</strong><span>{{ t('admin.batch.audio') }}: {{ audioStateLabel }}</span><span v-if="a.maintenance.value?.audio?.capacity_ms">{{ t('admin.batch.underruns') }}: {{ a.maintenance.value?.audio?.underrun_frames??0 }}</span><span v-if="a.maintenance.value?.audio?.capacity_ms">{{ t('admin.batch.buffer') }}: {{ a.maintenance.value?.audio?.buffered_ms??0 }} ms</span><span v-if="a.maintenanceUpdatedAt.value" id="admin-health-updated">{{ t('admin.batch.lastUpdated') }}：{{ new Date(a.maintenanceUpdatedAt.value).toLocaleTimeString(undefined,{hour12:false}) }}</span></div>
+<nav class="admin-jump-links" :aria-label="t('admin.batch.sections')"><button type="button" aria-controls="admin-playback-group" @click="toggleAdminGroup('admin-playback-group')">{{ t('admin.batch.playback') }}</button><button type="button" aria-controls="admin-apl-group" @click="toggleAdminGroup('admin-apl-group')">{{ t('admin.playlist.heading') }}</button><button type="button" aria-controls="admin-permissions-group" @click="toggleAdminGroup('admin-permissions-group')">{{ t('admin.permissions.heading') }}</button><button type="button" aria-controls="admin-maintenance-group" @click="toggleAdminGroup('admin-maintenance-group')">{{ t('admin.maintenance.heading') }}</button></nav>
 <details id="admin-maintenance-group" class="admin-group"><summary>{{ t('admin.maintenance.heading') }}</summary>
 <section aria-labelledby="maintenance-heading"><h3 id="maintenance-heading">{{ t('admin.maintenance.heading') }}</h3><p id="maintenance-status" role="status" aria-live="polite">{{ a.maintenanceLoading.value?t('admin.loading'):'' }}</p><dl id="maintenance-details" class="maintenance-details"><template v-if="details.length"><template v-for="row in details" :key="row.label"><dt>{{ row.label }}</dt><dd :class="{'maintenance-warning':row.warning}">{{ row.value }}</dd></template></template><dd v-else class="hint">{{ t('admin.empty') }}</dd></dl></section></details>
 <details id="admin-playback-group" class="admin-group" open><summary>{{ t('admin.batch.playback') }}</summary>
