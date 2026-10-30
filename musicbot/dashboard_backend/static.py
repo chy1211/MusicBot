@@ -96,7 +96,7 @@ class DashboardStaticRoutes:
     async def icon_asset(self, request):
         name = request.match_info.get("name", "")
         if name not in {
-            "history-add.svg", "history-heart.svg", "transport-play.svg",
+            "history-add.svg", "history-heart.svg", "history-heart-filled.svg", "transport-play.svg",
             "transport-pause.svg", "transport-skip.svg", "transport-repeat.svg",
         }:
             raise web.HTTPNotFound()

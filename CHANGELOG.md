@@ -5,6 +5,16 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-31
++
++### 新增 / Added
++
++- 搜尋播放清單可匯入既有或新個人歌單，使用一次性預覽與持久化交易，保留順序、去重與200首限制；頁尾操作說明左側保留原文，右側顯示v1.1.0。
++  Import selected search-playlist tracks into an existing or new personal playlist using one-time previews and durable transactions; show the release version at the right of the identity note.
++- 任一個人歌單的儲存狀態以實心愛心顯示；改善加入提示、桌面音波、手機資訊卡與空佇列控制。新增可選GC實際時序與有界來源事件，尚未觀測實際socket送包。
++  Reflect membership in any personal playlist, refine responsive controls and add optional bounded source/GC timelines without claiming socket-send or listener measurements.
++
++
 ### 修正 / Fixed
 
 - 新增可選的來源讀取節奏診斷，獨立統計短間隔並在停止及換來源時保留摘要；不改音訊節奏，尚不量測封包送出或收聽端。改善歌詞快取優先查詢、對時信心與桌面清單布局。

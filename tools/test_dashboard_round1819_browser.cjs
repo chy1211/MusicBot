@@ -77,7 +77,7 @@ test('history icons have visible masks and accessible 44px targets across themes
   for(let index=0;index<2;index++){
    const button=buttons.nth(index),metrics=await button.evaluate(el=>{const r=el.getBoundingClientRect(),p=getComputedStyle(el,'::before');return{width:r.width,height:r.height,mask:p.maskImage||p.webkitMaskImage,color:p.backgroundColor,name:el.getAttribute('aria-label')||el.textContent};});
    assert.ok(metrics.width>=44&&metrics.height>=44,JSON.stringify(metrics));
-   assert.match(metrics.mask,/history-(add|heart)\.svg/);assert.ok(metrics.name.trim());assert.notEqual(metrics.color,'rgba(0, 0, 0, 0)');
+   assert.match(metrics.mask,/history-(add|heart(?:-filled)?)\.svg/);assert.ok(metrics.name.trim());assert.notEqual(metrics.color,'rgba(0, 0, 0, 0)');
   }
   await page.locator('.card.history').screenshot({path:shots+`/r21-icons-${width}-${theme}.png`});
  }
@@ -110,7 +110,7 @@ test('real service-worker installation precaches every icon without caching API 
   const icons=await Promise.all(['history-add','history-heart','transport-play','transport-pause','transport-skip','transport-repeat'].map(async name=>(await cache.match('/icons/'+name+'.svg'))?.status));
   return {names,icons,privateKeys:keys.map(key=>new URL(key.url).pathname).filter(path=>/^\/(api|auth|events)(\/|$)/.test(path))};
  });
- assert.deepEqual(state.names,['musicbot-dashboard-r22']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
+ assert.deepEqual(state.names,['musicbot-dashboard-v1.1.0']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
 });
 
 test('r22 portrait card and history retain compact controls at narrow phone widths',async t=>{
@@ -126,5 +126,50 @@ test('r22 portrait card and history retain compact controls at narrow phone widt
   for(const row of metrics.buttons){assert.ok(row.height<=48);assert.ok(row.buttons.every(w=>w>=44));}
   await page.screenshot({path:shots+`/r22-portrait-${width}.png`,fullPage:true});
  }
+ assert.deepEqual(errors,[]);
+});
+
+test('v1.1.0 shares the identity note row with text left and version right',async t=>{
+ const {page,errors}=await open(t);
+ for(const width of [1440,390,320]){
+  await page.setViewportSize({width,height:900});
+  const footer=page.locator('#identity-note');await footer.scrollIntoViewIfNeeded();
+  const m=await footer.evaluate(el=>{const a=el.querySelector('.identity-note-copy').getBoundingClientRect(),b=el.querySelector('#app-version').getBoundingClientRect(),r=el.getBoundingClientRect();return {text:el.querySelector('#app-version').textContent,left:a.left-r.left,right:r.right-b.right,overlap:a.right>b.left+1,top:Math.abs(a.top-b.top)};});
+  assert.equal(m.text,'v1.1.0');assert.ok(m.left<2&&m.right<2&&!m.overlap&&m.top<5,JSON.stringify({width,...m}));
+  await footer.screenshot({path:shots+`/v110-footer-${width}.png`});
+ }
+ assert.deepEqual(errors,[]);
+});
+test('search playlist imports selection into personal library without enqueueing',async t=>{
+ const {page,calls,errors}=await open(t);
+ for(const mode of ['existing','new']){
+ await page.locator('#header-query').fill('https://soundcloud.com/demo/playlist');await page.locator('#header-query').press('Enter');
+ await page.locator('.header-result>button').first().click();await page.locator('.header-playlist-modal').waitFor({state:'visible'});
+ await page.locator('#r23-target option').first().waitFor({state:'attached'});
+ if(mode==='new'){await page.locator('input[type=radio][value=new]').check();await page.locator('#r23-name').fill('Synthetic import');}
+ const button=page.locator('.import-submit');await page.waitForFunction(()=>!document.querySelector('.import-submit')?.disabled);
+ await button.click();await page.locator('.header-playlist-modal').waitFor({state:'hidden'});
+ assert.ok(calls.some(c=>c.method==='POST'&&c.url.endsWith('/api/library/import')));
+ assert.equal(calls.filter(c=>c.method==='POST'&&/\/play$/.test(c.url)).length,0);
+ await page.locator('#library-panel').waitFor();assert.deepEqual(errors,[]);
+ }
+});
+
+test('saved hearts reflect any personal playlist rather than only Favorites',async t=>{
+ const {page,errors}=await open(t);
+ const url=await page.locator('#history-list .history-info a').first().getAttribute('href');
+ let saved=true;
+ await page.route('**/api/library',async route=>{
+  if(route.request().method()!=='GET')return route.continue();
+  const response=await route.fetch(),value=await response.json();
+  value.playlists=value.playlists.map(p=>({...p,tracks:[]}));
+  value.playlists.push({id:'synthetic-saved-list',name:'Synthetic saved',tracks:saved?[{title:'Saved',url,duration:120}]:[]});
+  await route.fulfill({response,json:value});
+ });
+ await page.reload();await page.waitForFunction(()=>document.querySelector('#history-list .library-save')?.getAttribute('aria-pressed')==='true');
+ assert.match(await page.locator('#history-list .library-save').first().evaluate(el=>getComputedStyle(el,'::before').maskImage),/history-heart-filled\.svg/);
+ assert.equal((await page.request.get(base+'/icons/history-heart-filled.svg')).status(),200);
+ await page.locator('.card.history').screenshot({path:shots+'/v110-saved-heart.png'});
+ saved=false;await page.reload();await page.waitForFunction(()=>document.querySelector('#history-list .library-save')?.getAttribute('aria-pressed')==='false');
  assert.deepEqual(errors,[]);
 });

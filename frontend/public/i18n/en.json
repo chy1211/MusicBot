@@ -1,4 +1,12 @@
 {
+  "r23.import": "Import to playlist",
+  "r23.destination": "Destination playlist",
+  "r23.existing": "Add to existing playlist",
+  "r23.new": "Create new playlist",
+  "r23.name": "New playlist name",
+  "r23.importFailed": "Import failed. Please try again.",
+  "r23.stale": "Your playlists changed. Search again before importing.",
+  "r23.importResult": "Added {p0} tracks; skipped {p1}.",
   "search.titleTagged": "Title tag: ",
   "search.version.official_audio": "Official Audio (unverified)",
   "search.version.mv": "MV (unverified)",

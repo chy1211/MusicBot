@@ -13,6 +13,10 @@ Its import order preserves the existing cascade; file names describe their purpo
 | dashboard-controls.css | Playlist dialog, compact queue, avatars and inline transport icons |
 | navigation.css | Sidebar/bottom tabs and landscape player controls |
 | notifications.css | Desktop/tablet notification position above the measured dock |
+| compact-playlist.css | Desktop compact history and scrollable queue |
+| history-actions-icons.css | Accessible recent-history icon actions |
+| mobile-refinements.css | Portrait information card and compact list controls |
+| playlist-import-controls.css | Import destination selection, saved state, feedback and release version row |
 
 Keep component rules in their owning file. Add new files by feature, rather than
 patch or round number, and import them here in the intended cascade order.

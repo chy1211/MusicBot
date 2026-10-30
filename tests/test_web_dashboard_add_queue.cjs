@@ -99,7 +99,7 @@ function buttons(a,history=[track]){
  const context={
   dashboard:{...a.dashboard,history},historyQueue:a.queue,usable:!a.dashboard.busy,requests:{loading:false},
   t:key=>key,safeURL:value=>value,songLinkURL:value=>value,duration:()=>"",playedTime:()=>"",
-  library:{busy:{value:false},openSave:()=>{}}
+  library:{busy:{value:false},openSave:()=>{},isSaved:()=>false}
  };
  return nodes(render(context,[])).filter(node=>node.type==="button"&&node.props?.["aria-label"]?.startsWith("m0612 "));
 }

@@ -214,7 +214,7 @@ class DashboardResolveRoutes:
             if extraction is not None:
                 self.previews[token]["extraction"] = extraction
                 item.extraction = None
-            if item.get("source_url") or item.get("saveable"):
+            if item.get("source_url") or item.get("saveable") or item.get("kind") == "playlist":
                 value = await self.playlist_store.transact(owner.id)
                 item["save_revision"] = value["revision"]
                 self.import_previews[token] = {

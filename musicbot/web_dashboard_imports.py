@@ -441,7 +441,13 @@ class DashboardImports:
         uid = self.library_identity(request)
         data = await self.payload(request)
         pid = request.match_info.get("playlist_id")
-        allowed = {"preview_id", "revision"} if pid is not None else {"preview_id", "revision", "name"}
+        target_id = data.get("target_playlist_id") if pid is None else None
+        if pid is None and "target_playlist_id" in data:
+            if not isinstance(target_id, str) or not target_id:
+                fail(400, _web_text('m0527'))
+            allowed = {"preview_id", "revision", "target_playlist_id"}
+        else:
+            allowed = {"preview_id", "revision"} if pid is not None else {"preview_id", "revision", "name"}
         if set(data) not in (allowed, allowed | {"selected_items"}) or (pid is not None and "selected_items" in data):
             fail(400, _web_text('m0527'))
         token = data.get("preview_id")
@@ -475,7 +481,21 @@ class DashboardImports:
                         or len(set(selected)) != len(selected)):
                     fail(400, _web_text('m0531'))
                 tracks = [t for i, t in available.items() if i in selected]
+            stats = {"added": 0, "skipped": 0}
             def change(value):
+                if pid is None and target_id is not None:
+                    from .web_dashboard_media import media_url
+                    from .web_dashboard_import_batch import append_preview_tracks
+                    target = next((p for p in value["playlists"] if p["id"] == target_id), None)
+                    if target is None:
+                        fail(404, _web_text('m0521'))
+                    if target.get("source_url"):
+                        fail(400, _web_text('m0527'))
+                    try:
+                        stats.update(append_preview_tracks(target, tracks, make_track=song, identity=media_url))
+                    except ValueError:
+                        fail(400, _web_text('m0531'))
+                    return
                 if pid is None:
                     if len(value["playlists"]) >= 21:
                         fail(400, _web_text('m0524'))
@@ -485,6 +505,8 @@ class DashboardImports:
                     target = next((p for p in value["playlists"] if p["id"] == pid), None)
                     if target is None:
                         fail(404, _web_text('m0521'))
+                if pid is None:
+                    stats.update(added=len(tracks), skipped=0)
                 target.update(tracks=[song(t) for t in tracks])
                 if pending["source_url"]:
                     target.update(source_url=pending["source_url"], source_type=pending["source_type"])
@@ -494,4 +516,5 @@ class DashboardImports:
                 authorize=authorize)
             self.import_previews.pop(token, None)
         return web.json_response(dict(result, owner=uid == self.bot.config.owner_id,
+            added=stats["added"], skipped=stats["skipped"],
             message=_web_text('m0532') if pid else _web_text('m0533')))

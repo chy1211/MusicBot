@@ -1,0 +1,101 @@
+/* R23, loaded after the preceding responsive styles. */
+/* Empty queues must not shrink the segmented tabs into a thin indicator. */
+#play-view > .queue .queue-filters {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  min-height: 52px;
+  height: 52px;
+  box-sizing: border-box;
+  align-items: stretch;
+  max-width: 100%;
+  overflow: hidden;
+}
+#play-view > .queue .queue-filters > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 64px;
+  min-height: 44px;
+  height: 44px;
+  white-space: nowrap;
+}
+/* Desktop stage-wave reuses the original 12 bars and keyframes. */
+@media (min-width: 1001px) {
+  #play-view > .listening-stage .stage-copy {
+    grid-template-columns: 44px minmax(130px, .85fr) minmax(0, 1.8fr);
+    row-gap: 12px;
+    align-items: center;
+  }
+  #play-view > .listening-stage .stage-copy > .eyebrow {
+    grid-row: 1; grid-column: 1/-1;
+  }
+  #play-view > .listening-stage .stage-copy > #stage-title {
+    grid-row: 2; grid-column: 2/-1;
+    min-width: 0; margin: 0;
+    overflow-wrap: anywhere;
+  }
+  #play-view > .listening-stage .stage-copy > .stage-wave {
+    display: flex;
+    grid-row: 2; grid-column: 1;
+    min-width: 0; width: 38px;
+    margin: 0;
+    align-items: center;
+  }
+  #play-view > .listening-stage .stage-copy > .stage-request {
+    grid-row: 3; grid-column: 1/3;
+  }
+  #play-view > .listening-stage .stage-copy > .stage-audience {
+    grid-row: 3; grid-column: 3;
+  }
+}
+/* The existing shared notice-blink animation, never an extra spinner. */
+#popular-panel .popular-add[aria-busy="true"]::before {
+  content: none !important;
+  display: none !important;
+}
+#popular-panel .popular-add[aria-busy="true"],
+.header-search-popover .header-result > button[aria-busy="true"],
+.header-playlist-modal .playlist-modal-footer .primary[aria-busy="true"],
+.header-playlist-import .import-submit[aria-busy="true"] {
+  animation: notice-blink 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  #popular-panel .popular-add[aria-busy="true"],
+  .header-search-popover .header-result > button[aria-busy="true"],
+  .header-playlist-modal .playlist-modal-footer .primary[aria-busy="true"],
+.header-playlist-import .import-submit[aria-busy="true"] {
+    animation: none;
+  }
+}
+/* A filled heart indicates membership in *any* of the user's playlists. */
+#play-view #history-list .history-actions > button.library-save[aria-pressed="true"]::before {
+  -webkit-mask-image: url('/icons/history-heart-filled.svg');
+  mask-image: url('/icons/history-heart-filled.svg');
+}
+#popular-panel .save-to-library[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+/* Destination selection in the search playlist modal. */
+.header-playlist-import {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.header-playlist-import label { font-weight: 600; }
+.header-playlist-import select,
+.header-playlist-import input { width: 100%; min-width: 0; }
+.header-playlist-import .import-mode {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+}
+.header-playlist-import .import-mode label { display: inline-flex; gap: 6px; align-items: center; }
+.header-playlist-import .import-mode input { width: auto; }
+.header-playlist-import .import-submit { width: 100%; }
+.header-playlist-import .reason { margin: 0; overflow-wrap: anywhere; }
+
+#identity-note {display:flex;align-items:baseline;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;}
+#identity-note .identity-note-copy {min-width:0;text-align:left;overflow-wrap:anywhere;}
+#identity-note #app-version {margin-left:auto;flex:0 0 auto;white-space:nowrap;}

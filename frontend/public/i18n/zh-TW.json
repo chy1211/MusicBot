@@ -1,4 +1,12 @@
 {
+  "r23.import": "匯入歌單",
+  "r23.destination": "選擇目的歌單",
+  "r23.existing": "加入現有歌單",
+  "r23.new": "建立新歌單",
+  "r23.name": "新歌單名稱",
+  "r23.importFailed": "匯入失敗，請重試。",
+  "r23.stale": "個人歌單已更新，請重新搜尋後再匯入。",
+  "r23.importResult": "已新增 {p0} 首，略過 {p1} 首。",
   "search.titleTagged": "標題標示：",
   "search.version.official_audio": "官方音源（未驗證）",
   "search.version.mv": "MV（未驗證）",

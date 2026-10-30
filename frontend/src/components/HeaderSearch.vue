@@ -65,9 +65,9 @@ function versionLabel(value?:string):string {
    <ul><li v-for="song in requests.results" :key="song.preview_id" class="header-result">
     <img v-if="safeURL(song.thumbnail)" :src="safeURL(song.thumbnail)" alt="" loading="lazy" referrerpolicy="no-referrer">
     <div class="header-result-copy"><strong>{{song.title}}</strong><small v-if="song.artist">{{song.artist}}</small><small v-if="song.source">{{song.source}}</small><small v-if="versionLabel(song.version)">{{t('search.titleTagged')}}{{versionLabel(song.version)}}</small><small>{{song.duration?duration(song.duration):t('m0085')}}</small><small v-if="song.reason">{{song.reason}}</small></div>
-    <button type="button" :disabled="!usable||!song.allowed||song.pending||dashboard.busy" :aria-label="song.kind==='playlist'?t('m0252'):t('m0612')+' '+song.title" @click="add(song)">{{song.kind==='playlist'?t('m0252'):'＋'}}</button>
+    <button type="button" :disabled="!usable||!song.allowed||song.pending||dashboard.busy" :aria-label="song.kind==='playlist'?t('m0252'):t('m0612')+' '+song.title" :aria-busy="song.pending" @click="add(song)">{{song.kind==='playlist'?t('m0252'):'＋'}}</button>
    </li></ul>
   </div>
   <p v-if="requests.error" class="reason" role="alert">{{requests.error}}</p>
-  <PlaylistPreviewModal v-if="playlist" :song="playlist" @close="dismissPlaylist" @done="finishPlaylist"/>
+  <PlaylistPreviewModal v-if="playlist" :song="playlist" @close="dismissPlaylist" @done="finishPlaylist" @imported="dismissPlaylist"/>
  </div></template>

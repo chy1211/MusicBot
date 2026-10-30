@@ -3,6 +3,7 @@ import {defineAsyncComponent,onMounted,onBeforeUnmount,watch,nextTick} from 'vue
 import {useRoute,useRouter} from 'vue-router'
 import {dashboard} from '../store'
 import {t} from '../composables/useLocale'
+import {APP_VERSION} from '../version'
 import {useLibrary} from '../composables/useLibrary'
 import Sidebar from '../components/Sidebar.vue'
 import PageHeader from '../components/PageHeader.vue'
@@ -20,4 +21,4 @@ function navigate(event:Event){const page=(event as CustomEvent<string>).detail;
 watch(()=>route.path,async()=>{await nextTick();window.scrollTo({top:0,behavior:'instant'});document.querySelector<HTMLElement>('main h2')?.focus({preventScroll:true})})
 onMounted(()=>window.addEventListener('musicbot:navigate',navigate));onBeforeUnmount(()=>window.removeEventListener('musicbot:navigate',navigate))
 </script>
-<template><div id="dashboard" :hidden="!dashboard.authenticated"><a class="skip-link" href="#main-content">{{ t('m0231') }}</a><Sidebar/><main id="main-content" tabindex="-1"><PageHeader/><PlayView v-if="dashboard.authenticated&&['/','/play'].includes(route.path)"/><PopularView v-if="dashboard.authenticated&&route.path==='/popular'"/><LibraryView v-if="dashboard.authenticated&&(route.path==='/library'||library.saveDialogOpen.value)"/><AdminView v-if="dashboard.authenticated&&route.path==='/admin'"/><footer id="identity-note">{{ t(dashboard.authMode==='discord'?'m0046':'m0047') }}</footer></main><Dialogs/><LyricsPanel/><PlaybackBar/><MobileLandscapePlayer/></div></template>
+<template><div id="dashboard" :hidden="!dashboard.authenticated"><a class="skip-link" href="#main-content">{{ t('m0231') }}</a><Sidebar/><main id="main-content" tabindex="-1"><PageHeader/><PlayView v-if="dashboard.authenticated&&['/','/play'].includes(route.path)"/><PopularView v-if="dashboard.authenticated&&route.path==='/popular'"/><LibraryView v-if="dashboard.authenticated&&(route.path==='/library'||library.saveDialogOpen.value)"/><AdminView v-if="dashboard.authenticated&&route.path==='/admin'"/><footer id="identity-note"><span class="identity-note-copy">{{ t(dashboard.authMode==='discord'?'m0046':'m0047') }}</span><span id="app-version">{{APP_VERSION}}</span></footer></main><Dialogs/><LyricsPanel/><PlaybackBar/><MobileLandscapePlayer/></div></template>
