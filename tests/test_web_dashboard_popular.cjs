@@ -15,7 +15,7 @@ function runtime(handler=async()=>({tracks:[song]})){
  return{popular:c.usePopular(),dashboard,requests,commands,notices,changed:()=>changed()};
 }
 test("popular lists rank, count and duration through member API",async()=>{
- const a=runtime();await a.popular.load();assert.equal(a.requests[0].path,"/api/guilds/1/popular?period=7");
+ const a=runtime();await a.popular.load();assert.equal(a.requests[0].path,"/api/guilds/1/popular?period=180");
  assert.deepEqual({...a.popular.tracks.value[0]},song);assert.equal(a.popular.loading.value,false);
 });
 test("popular add resolves and confirms queue in one click",async()=>{

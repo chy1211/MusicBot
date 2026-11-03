@@ -28,7 +28,7 @@ test('search restores without provider calls and modal preserves failed submissi
  await page.locator('#header-query').fill('https://soundcloud.com/demo/playlist');await page.locator('#header-query').press('Enter');await page.locator('.header-result>button').first().click();
  await page.locator('dialog[open]').waitFor();assert.ok(await page.locator('dialog input[type=checkbox]').count()>1);
  await page.route('**/api/guilds/*/play',r=>r.fulfill({status:403,contentType:'application/json',body:JSON.stringify({error:'fixture denied'})}));
- await page.locator('dialog footer .primary').click();await page.locator('dialog [role=alert]').waitFor();assert.equal(await page.locator('dialog[open]').count(),1);
+ await page.locator('dialog footer .primary:not(.import-submit)').click();await page.locator('dialog [role=alert]').waitFor();assert.equal(await page.locator('dialog[open]').count(),1);
  await page.keyboard.press('Escape');await page.waitForFunction(()=>document.activeElement?.id==='header-query');
  await page.locator('#header-query').fill('changed');assert.equal(await page.locator('.header-result').count(),0);assert.deepEqual(errors,[]);
 });

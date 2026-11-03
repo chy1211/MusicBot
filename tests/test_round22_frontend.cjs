@@ -35,7 +35,7 @@ test('header controls are in flow, and history buttons cannot wrap',()=>{
 test('popular actions keep event handlers and aria labels using inline vector icons',()=>{
   const view=read('frontend/src/views/PopularView.vue');
   assert.match(view,/@click="popular\.add\(song\)"/);
-  assert.match(view,/@click="library\.openSave\(song\)"/);
+  assert.match(view,/@click="library\.toggleFavorite\(song\)"/);
   assert.match(view,/:aria-label="t\('m0132'\) \+ song.title"/);
   assert.match(view,/<svg viewBox="0 0 24 24" aria-hidden="true">/);
 });

@@ -29,14 +29,16 @@ test('initial play loads no admin/popular data and route entry initializes each 
  await page.locator('#nav-play').click();await page.locator('#play-view').waitFor();
  assert.deepEqual(errors,[]);
 });
-test('save-to-playlist works from play before visiting the lazy library route',async t=>{
+test('favorite toggle works from play before visiting the lazy library route',async t=>{
  const {page,calls,errors}=await open(t);
  assert.equal(await page.locator('#library-panel').count(),0);
- await page.locator('.history .library-save').first().click();
- const dialog=page.locator('#library-save-dialog');await dialog.waitFor({state:'visible'});
- assert.ok(['','#/','#/play'].includes(new URL(page.url()).hash),page.url());
- await page.locator('#library-save-confirm').click();await dialog.waitFor({state:'hidden'});
+ const button=page.locator('.history .library-save').first();
+ const before=await button.getAttribute('aria-pressed');
+ await button.click();
+ await page.waitForFunction(previous=>document.querySelector('.history .library-save')?.getAttribute('aria-pressed')!==previous,before);
  assert.ok(calls.some(c=>c.method==='POST'&&c.url.includes('/api/library/')&&c.url.endsWith('/tracks')));
+ assert.equal(await page.locator('#library-save-dialog').isVisible(),false);
+ assert.ok(['','#/','#/play'].includes(new URL(page.url()).hash),page.url());
  assert.deepEqual(errors,[]);
 });
 test('library import shortcut returns to the visible header search',async t=>{
@@ -82,8 +84,11 @@ test('history icons have visible masks and accessible 44px targets across themes
   await page.locator('.card.history').screenshot({path:shots+`/r21-icons-${width}-${theme}.png`});
  }
  const response=await page.request.get(base+'/icons/history-heart.svg');assert.equal(response.status(),200);
- await page.locator('#history-list .library-save').first().focus();await page.keyboard.press('Enter');
- await page.locator('#library-save-dialog').waitFor({state:'visible'});
+ const heart=page.locator('#history-list .library-save').first();
+ const before=await heart.getAttribute('aria-pressed');
+ await heart.focus();await page.keyboard.press('Enter');
+ await page.waitForFunction(previous=>document.querySelector('#history-list .library-save')?.getAttribute('aria-pressed')!==previous,before);
+ assert.equal(await page.locator('#library-save-dialog').isVisible(),false);
  assert.deepEqual(errors,[]);
 });
 test('manual search displays source and unverified version labels without input-triggered requests',async t=>{
@@ -110,7 +115,7 @@ test('real service-worker installation precaches every icon without caching API 
   const icons=await Promise.all(['history-add','history-heart','transport-play','transport-pause','transport-skip','transport-repeat'].map(async name=>(await cache.match('/icons/'+name+'.svg'))?.status));
   return {names,icons,privateKeys:keys.map(key=>new URL(key.url).pathname).filter(path=>/^\/(api|auth|events)(\/|$)/.test(path))};
  });
- assert.deepEqual(state.names,['musicbot-dashboard-v1.1.0']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
+ assert.deepEqual(state.names,['musicbot-dashboard-v1.1.1']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
 });
 
 test('r22 portrait card and history retain compact controls at narrow phone widths',async t=>{
@@ -129,14 +134,14 @@ test('r22 portrait card and history retain compact controls at narrow phone widt
  assert.deepEqual(errors,[]);
 });
 
-test('v1.1.0 shares the identity note row with text left and version right',async t=>{
+test('v1.1.1 shares the identity note row with text left and version right',async t=>{
  const {page,errors}=await open(t);
  for(const width of [1440,390,320]){
   await page.setViewportSize({width,height:900});
   const footer=page.locator('#identity-note');await footer.scrollIntoViewIfNeeded();
   const m=await footer.evaluate(el=>{const a=el.querySelector('.identity-note-copy').getBoundingClientRect(),b=el.querySelector('#app-version').getBoundingClientRect(),r=el.getBoundingClientRect();return {text:el.querySelector('#app-version').textContent,left:a.left-r.left,right:r.right-b.right,overlap:a.right>b.left+1,top:Math.abs(a.top-b.top)};});
-  assert.equal(m.text,'v1.1.0');assert.ok(m.left<2&&m.right<2&&!m.overlap&&m.top<5,JSON.stringify({width,...m}));
-  await footer.screenshot({path:shots+`/v110-footer-${width}.png`});
+  assert.equal(m.text,'v1.1.1');assert.ok(m.left<2&&m.right<2&&!m.overlap&&m.top<5,JSON.stringify({width,...m}));
+  await footer.screenshot({path:shots+`/v111-footer-${width}.png`});
  }
  assert.deepEqual(errors,[]);
 });
@@ -155,21 +160,29 @@ test('search playlist imports selection into personal library without enqueueing
  }
 });
 
-test('saved hearts reflect any personal playlist rather than only Favorites',async t=>{
+test('history heart reflects Favorites membership while retaining other playlists',async t=>{
  const {page,errors}=await open(t);
  const url=await page.locator('#history-list .history-info a').first().getAttribute('href');
- let saved=true;
+ let favorite=false;
  await page.route('**/api/library',async route=>{
   if(route.request().method()!=='GET')return route.continue();
   const response=await route.fetch(),value=await response.json();
-  value.playlists=value.playlists.map(p=>({...p,tracks:[]}));
-  value.playlists.push({id:'synthetic-saved-list',name:'Synthetic saved',tracks:saved?[{title:'Saved',url,duration:120}]:[]});
+  const track={title:'Saved',url,duration:120};
+  value.playlists=value.playlists.map(p=>({...p,tracks:p.id==='favorites'&&favorite?[track]:[]}));
+  value.playlists.push({id:'synthetic-saved-list',name:'Synthetic saved',tracks:[track]});
   await route.fulfill({response,json:value});
  });
- await page.reload();await page.waitForFunction(()=>document.querySelector('#history-list .library-save')?.getAttribute('aria-pressed')==='true');
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#history-list .library-save')?.getAttribute('aria-pressed')==='false');
+ assert.match(await page.locator('#history-list .library-save').first().evaluate(el=>getComputedStyle(el,'::before').maskImage),/history-heart\.svg/);
+ favorite=true;
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#history-list .library-save')?.getAttribute('aria-pressed')==='true');
  assert.match(await page.locator('#history-list .library-save').first().evaluate(el=>getComputedStyle(el,'::before').maskImage),/history-heart-filled\.svg/);
  assert.equal((await page.request.get(base+'/icons/history-heart-filled.svg')).status(),200);
- await page.locator('.card.history').screenshot({path:shots+'/v110-saved-heart.png'});
- saved=false;await page.reload();await page.waitForFunction(()=>document.querySelector('#history-list .library-save')?.getAttribute('aria-pressed')==='false');
+ await page.locator('.card.history').screenshot({path:shots+'/v111-favorites-heart.png'});
+ favorite=false;
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#history-list .library-save')?.getAttribute('aria-pressed')==='false');
  assert.deepEqual(errors,[]);
 });

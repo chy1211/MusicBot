@@ -220,8 +220,9 @@ class PopularityTests(unittest.IsolatedAsyncioTestCase):
         rows = await self.store.top(self.guild, "all")
         self.assertEqual(len(rows), 20)
         self.assertEqual([row["title"] for row in rows], [f"Track {i:02}" for i in range(20)])
+        self.assertEqual(await self.store.top(self.guild, "180"), rows)
         with self.assertRaises(ValueError):
-            await self.store.top(self.guild, "180")
+            await self.store.top(self.guild, "365")
 
     async def test_invalid_url_skipped_and_titles_bounded(self):
         self.assertFalse(await self.store.record(self.guild, self.entry(url="file:///private/song")))

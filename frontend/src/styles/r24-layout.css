@@ -1,0 +1,118 @@
+/* R24: the desktop listening card retains its existing layout.
+   Its 44px wave column now fits 12 bars: 12 * 2px + 11 * 1px = 35px. */
+@media (min-width: 1001px) {
+  #play-view > .listening-stage .stage-copy > .stage-wave {
+    width: 38px;
+    gap: 1px;
+    justify-content: flex-start;
+  }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i {
+    width: 2px;
+    flex: 0 0 2px;
+  }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(1) { height: 10px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(2) { height: 17px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(3) { height: 24px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(4) { height: 12px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(5) { height: 21px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(6) { height: 9px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(7) { height: 27px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(8) { height: 15px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(9) { height: 23px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(10) { height: 11px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(11) { height: 20px; }
+  #play-view > .listening-stage .stage-copy > .stage-wave > i:nth-child(12) { height: 16px; }
+}
+
+/* The dialog itself must never scroll over the action footer. */
+.header-playlist-modal[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, calc(100vw - 32px));
+  max-height: min(760px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 32px));
+  overflow: hidden;
+  padding: 22px;
+  gap: 12px;
+}
+.header-playlist-modal:not([open]) { display: none; }
+.header-playlist-modal .playlist-modal-heading { flex: 0 0 auto; }
+.header-playlist-modal .playlist-modal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
+  gap: 18px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.header-playlist-modal .playlist-modal-body:not(:has(.playlist-modal-import-panel)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.header-playlist-modal .playlist-modal-song-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.header-playlist-modal .playlist-modal-tools { flex: 0 0 auto; margin-top: 0; }
+.header-playlist-modal .playlist-modal-entries {
+  min-height: 0;
+  max-height: none;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.header-playlist-modal .playlist-modal-import-panel {
+  border-left: 1px solid var(--line);
+  padding-left: 18px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.header-playlist-modal .header-playlist-import {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.header-playlist-modal .playlist-modal-footer {
+  flex: 0 0 auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.header-playlist-modal .playlist-modal-footer .subtle { margin-right: auto; }
+.header-playlist-modal .playlist-modal-footer .import-submit { width: auto; }
+.header-playlist-modal .playlist-modal-footer button { min-height: 44px; }
+.header-playlist-modal .playlist-modal-footer .import-submit[aria-busy="true"] {
+  animation: notice-blink 1.2s ease-in-out infinite;
+}
+@media (max-width: 800px) {
+  .header-playlist-modal[open] { padding: 14px; gap: 8px; }
+  .header-playlist-modal .playlist-modal-body {
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .header-playlist-modal .playlist-modal-body:not(:has(.playlist-modal-import-panel)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.header-playlist-modal .playlist-modal-song-panel { display: block; }
+  .header-playlist-modal .playlist-modal-entries {
+    max-height: none;
+    overflow: visible;
+  }
+  .header-playlist-modal .playlist-modal-import-panel {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    margin-top: 14px;
+    padding: 14px 0 0;
+    overflow: visible;
+  }
+  .header-playlist-modal .playlist-modal-footer { gap: 8px; }
+  .header-playlist-modal .playlist-modal-footer button { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .header-playlist-modal .playlist-modal-footer .import-submit[aria-busy="true"] { animation: none; }
+}

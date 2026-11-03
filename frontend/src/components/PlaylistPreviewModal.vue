@@ -58,7 +58,9 @@ async function addSelected(){
     <button type="button" class="subtle" :aria-label="t('m0253')" @click="emit('close')">×</button></header>
   <p v-if="activeSong.reason||activeSong.warning" class="hint">{{activeSong.reason||activeSong.warning}}</p>
   <p v-if="dashboard.toastError" role="alert">{{dashboard.toast}}</p>
-  <div class="playlist-modal-tools">
+  <div class="playlist-modal-body">
+   <div class="playlist-modal-song-panel">
+    <div class="playlist-modal-tools">
    <button type="button" :disabled="!activeSong.allowed||submitting" @click="selectPreview(activeSong,true)">{{t('m0093')}}</button>
    <button type="button" :disabled="submitting" @click="selectPreview(activeSong,false)">{{t('m0094')}}</button>
    <span>{{t('m0087')}}{{activeSong.selected.length}}{{t('m0033')}}</span>
@@ -72,7 +74,9 @@ async function addSelected(){
     </label>
    </li>
   </ol>
-  <div v-if="activeSong.kind==='playlist' && activeSong.save_revision" class="header-playlist-import">
+   </div>
+   <aside v-if="activeSong.kind==='playlist' && activeSong.save_revision" class="playlist-modal-import-panel">
+    <div class="header-playlist-import">
    <strong>{{t('r23.import')}}</strong>
    <div class="import-mode" role="group" :aria-label="t('r23.destination')">
     <label><input v-model="importMode" type="radio" value="existing" :disabled="importing">{{t('r23.existing')}}</label>
@@ -89,11 +93,13 @@ async function addSelected(){
     <input id="r23-name" v-model="newName" maxlength="60" :disabled="importing" autocomplete="off">
    </template>
    <p v-if="importError" class="reason" role="alert">{{importError}}</p>
-   <button type="button" class="primary import-submit" :disabled="!usable || importing || submitting || library.loading.value || library.busy.value || !activeSong.selected.length || !activeSong.allowed || (importMode==='new'?!newName.trim():!eligibleTargets.some(item=>item.id===targetId))" :aria-busy="importing" @click="importSelection">{{importing?t('m0121'):t('r23.import')}}</button>
+  </div>
+   </aside>
   </div>
   <footer class="playlist-modal-footer">
    <button type="button" class="subtle" @click="emit('close')">{{t('m0253')}}</button>
    <button type="button" class="primary" :disabled="!usable||!activeSong.allowed||!activeSong.selected.length||submitting||importing||activeSong.pending||dashboard.busy" :aria-busy="submitting" @click="addSelected">{{t('m0088')}}{{activeSong.selected.length}}{{t('m0089')}}</button>
+   <button v-if="activeSong.kind==='playlist' && activeSong.save_revision" type="button" class="primary import-submit" :disabled="!usable || importing || submitting || library.loading.value || library.busy.value || !activeSong.selected.length || !activeSong.allowed || (importMode==='new'?!newName.trim():!eligibleTargets.some(item=>item.id===targetId))" :aria-busy="importing" @click="importSelection">{{importing?t('m0121'):t('r23.import')}}</button>
   </footer>
  </dialog>
 </template>

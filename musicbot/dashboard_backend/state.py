@@ -92,8 +92,8 @@ class DashboardStateRoutes:
     async def popular(self, request):
         from ..web_dashboard import APIError, _web_text
         guild, member = self.guild_owner(request)
-        period = request.query.get("period", "7")
-        if period not in ("7", "30", "all"):
+        period = request.query.get("period", "180")
+        if period not in ("7", "30", "180", "all"):
             raise APIError(400, _web_text('m0390'))
         try:
             tracks = await self.popularity_store.top(guild, period)

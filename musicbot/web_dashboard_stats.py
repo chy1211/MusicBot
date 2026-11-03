@@ -225,14 +225,14 @@ class PopularityStore:
             self._start()
         return True
 
-    async def top(self, guild, period="7"):
-        if period not in ("7", "30", "all"):
+    async def top(self, guild, period="180"):
+        if period not in ("7", "30", "180", "all"):
             raise ValueError("invalid period")
         gid = self.guild_id(guild)
         async with self.locks[gid]:
             document = await self._load(gid)
             self._prune(gid, document)
-            cutoff = self.clock() - dt.timedelta(days={"7": 6, "30": 29, "all": 179}[period])
+            cutoff = self.clock() - dt.timedelta(days={"7": 6, "30": 29, "180": 179, "all": 179}[period])
             rows = []
             for track in document["tracks"].values():
                 count = sum(count for day, count in track["days"].items() if dt.date.fromisoformat(day) >= cutoff)

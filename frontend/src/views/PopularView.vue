@@ -29,7 +29,7 @@ const statusText = computed(() => {
       <div><h2 id="popular-heading">{{ t('m0233') }}</h2></div>
       <button id="popular-refresh" type="button" class="subtle" :disabled="popular.loading.value || !popular.hasGuild.value" :aria-busy="popular.loading.value" @click="popular.load()">{{ t('m0269') }}</button>
     </header>
-    <div class="popular-toolbar"><label for="popular-period">{{ t('m0271') }}</label><select id="popular-period" :value="popular.period.value" @change="popular.setPeriod(($event.target as HTMLSelectElement).value)"><option value="7">{{ t('m0272') }}</option><option value="30">{{ t('m0273') }}</option><option value="all">{{ t('m0274') }}</option></select></div>
+    <div class="popular-toolbar"><label for="popular-period">{{ t('m0271') }}</label><select id="popular-period" :value="popular.period.value" @change="popular.setPeriod(($event.target as HTMLSelectElement).value)"><option value="7">{{ t('m0272') }}</option><option value="30">{{ t('m0273') }}</option><option value="180">{{ t('r24.days180') }}</option><option value="all">{{ t('m0274') }}</option></select></div>
     <p id="popular-status" class="hint popular-status" :class="{ 'popular-error': popular.error.value }" role="status" aria-live="polite" :aria-busy="popular.loading.value">{{ statusText }}</p>
     <ol id="popular-list" class="history-list popular-list" :aria-busy="popular.loading.value">
       <li v-if="popular.loading.value" v-for="n in 5" :key="n" class="popular-skeleton" aria-hidden="true"></li>
@@ -38,7 +38,7 @@ const statusText = computed(() => {
         <div class="history-info"><p><a v-if="popular.safeUrl(song.url)" :href="popular.safeUrl(song.url)" target="_blank" rel="noopener noreferrer">{{ song.title }}</a><span v-else>{{ song.title }}</span></p><small>{{ song.count }} {{ t('m0220').replace(/\s*·\s*$/, '') }}<template v-if="song.duration"> · {{ library.formatDuration(song.duration) }}</template></small></div>
         <div class="history-actions">
           <button type="button" class="primary popular-add" :disabled="popular.adding.value !== null || dashboard.busy || !song.url" :aria-label="t('m0132') + song.title" :title="t('m0612')" :aria-busy="popular.adding.value === song.url" @click="popular.add(song)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></button>
-          <button type="button" class="subtle save-to-library" :aria-pressed="library.isSaved(song)" :disabled="!song.url" :aria-label="t('m0198') + ' ' + song.title" :title="t('m0198')" @click="library.openSave(song)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" /></svg></button>
+          <button type="button" class="subtle save-to-library" :aria-pressed="library.isFavorite(song)" :disabled="!song.url||library.busy.value||!dashboard.authenticated" :aria-label="t(library.isFavorite(song)?'m0200':'m0201') + ' ' + song.title" :title="t(library.isFavorite(song)?'m0200':'m0201')" @click="library.toggleFavorite(song)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" /></svg></button>
         </div>
       </li>
     </ol>

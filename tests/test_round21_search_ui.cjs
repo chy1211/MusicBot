@@ -10,7 +10,7 @@ test('history buttons keep existing click handlers but use SVG masks', () => {
   const css = read('frontend/src/styles/history-actions-icons.css');
   const index = read('frontend/src/styles/index.css');
   assert.match(view, /@click="historyQueue\.add\(song\)"/);
-  assert.match(view, /@click="library\.openSave\(song\)"/);
+  assert.match(view, /@click="library\.toggleFavorite\(song\)"/);
   assert.match(css, /history-add\.svg/);
   assert.match(css, /history-heart\.svg/);
   assert.match(css, /44px/);

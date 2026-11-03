@@ -8,9 +8,9 @@ import type { LibraryTrack } from './useLibrary'
 
 interface PopularTrack extends LibraryTrack { count: number }
 interface PopularPayload { tracks?: PopularTrack[] }
-type Period = '7' | '30' | 'all'
-const validPeriods: readonly Period[] = ['7', '30', 'all']
-const period = ref<Period>('7')
+type Period = '7' | '30' | '180' | 'all'
+const validPeriods: readonly Period[] = ['7', '30', '180', 'all']
+const period = ref<Period>('180')
 const tracks = ref<PopularTrack[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -59,6 +59,7 @@ function cancelLoad() {
 }
 // Requests start only while PopularView is mounted. Invalidate old responses on a guild/session change.
 watch(() => [dashboard.guildId, dashboard.authenticated, dashboard.connected, dashboard.epoch], () => {
+  if (!dashboard.authenticated) period.value = '180'
   ++requestEpoch; tracks.value = []; empty.value = false; error.value = ''; loading.value = false
 }, { flush: 'sync' })
 const hasGuild = computed(() => Boolean(dashboard.guildId && dashboard.authenticated && dashboard.connected))

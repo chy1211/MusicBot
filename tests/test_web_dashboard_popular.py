@@ -40,8 +40,8 @@ class PopularAPITests(unittest.IsolatedAsyncioTestCase):
         self.bot.serialize_queue.assert_awaited_once_with(self.bot.guild)
 
     async def test_period_validation_and_membership_guard(self):
-        await self.call(BASE+"popular?period=180",method="GET",status=400)
-        for period in ("7","30","all"):
+        await self.call(BASE+"popular?period=365",method="GET",status=400)
+        for period in ("7","30","180","all"):
             self.assertEqual((await self.call(BASE+"popular?period="+period,method="GET"))["period"],period)
         self.bot.guild.get_member=lambda uid:None
         await self.call(BASE+"popular",method="GET",status=403)

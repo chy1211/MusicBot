@@ -5,6 +5,20 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-03
+
+### 改善 / Improved
+
+- 桌面版「正在播放」將現有 12 根音波收納至原有欄位，不改封面、歌名與聽眾排版。
+  Fit the existing 12 waveform bars into their desktop column without changing the artwork, title or listeners layout.
+- 搜尋歌單預覽改為可捲動曲目清單與固定操作列；可匯入時並排顯示目的歌單，手機版維持單一內容捲動區。
+  Keep playlist preview actions visible while scrolling tracks, with a destination panel on desktop and one scrolling body on compact devices.
+- 「最近播過」與「熱門歌曲」的愛心可直接加入或移出收藏歌曲，其他個人歌單不受影響。
+  Toggle Favorites directly from recently played and popular tracks, leaving other personal playlists unchanged.
+- 熱門歌曲預設顯示最近 180 天（含今天），保留 7 天、30 天與全部選項；現有資料保留期間為 180 天，因此「全部」目前同樣涵蓋 180 天。
+  Default popularity to the past 180 inclusive calendar days, keeping 7-day, 30-day and all options; existing retention also limits all to 180 days.
+
+
 ## [1.1.0] - 2026-10-31
 +
 +### 新增 / Added

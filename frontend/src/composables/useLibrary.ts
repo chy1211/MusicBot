@@ -159,7 +159,7 @@ function isFavorite(track?: LibraryTrack): boolean {
   const candidate = track ?? dashboard.snapshot?.current
   if (!candidate?.url) return false
   const key = songIdentity(candidate.url)
-  return Boolean(key && playlists.value[0]?.tracks.some(item => songIdentity(item.url) === key))
+  return Boolean(key && playlists.value.find(list => list.id === 'favorites')?.tracks.some(item => songIdentity(item.url) === key))
 }
 async function toggleFavorite(track?: LibraryTrack): Promise<void> {
   const candidate = track ?? dashboard.snapshot?.current
@@ -167,12 +167,14 @@ async function toggleFavorite(track?: LibraryTrack): Promise<void> {
   const url = safeMediaUrl(candidate.url)
   if (!url) return
   const key = songIdentity(url)
-  const saved = playlists.value[0]?.tracks.some(item => songIdentity(item.url) === key) ?? false
-  if (saved) await mutate('favorites', { action: 'remove_url', url })
-  else await mutate('favorites', { track: {
+  const saved = playlists.value.find(list => list.id === 'favorites')?.tracks.some(item => songIdentity(item.url) === key) ?? false
+  let ok: boolean
+  if (saved) ok = await mutate('favorites', { action: 'remove_url', url })
+  else ok = await mutate('favorites', { track: {
     title: candidate.title, url, duration: candidate.duration ?? null,
     ...(trackThumbnail(candidate) ? { thumbnail: trackThumbnail(candidate) } : {}),
   } }, 'POST', '/tracks')
+  if (!ok && loadError.value) notice(loadError.value, true)
 }
 async function savePreview(track: LibraryTrack, selectedItems: Iterable<string>, name: string, targetPlaylistId = ''): Promise<boolean> {
   if (!track.preview_id || !track.save_revision || busy.value) return false
