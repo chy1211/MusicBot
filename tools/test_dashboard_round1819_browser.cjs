@@ -115,7 +115,7 @@ test('real service-worker installation precaches every icon without caching API 
   const icons=await Promise.all(['history-add','history-heart','transport-play','transport-pause','transport-skip','transport-repeat'].map(async name=>(await cache.match('/icons/'+name+'.svg'))?.status));
   return {names,icons,privateKeys:keys.map(key=>new URL(key.url).pathname).filter(path=>/^\/(api|auth|events)(\/|$)/.test(path))};
  });
- assert.deepEqual(state.names,['musicbot-dashboard-v1.1.1']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
+ assert.deepEqual(state.names,['musicbot-dashboard-v1.1.1-r25']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
 });
 
 test('r22 portrait card and history retain compact controls at narrow phone widths',async t=>{

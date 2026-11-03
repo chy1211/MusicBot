@@ -35,7 +35,12 @@
   gap: 12px;
 }
 .header-playlist-modal:not([open]) { display: none; }
-.header-playlist-modal .playlist-modal-heading { flex: 0 0 auto; }
+.header-playlist-modal .playlist-modal-heading { flex: 0 0 auto; align-items: flex-start; }
+.header-playlist-modal .playlist-modal-heading-copy { flex: 1 1 auto; min-width: 0; }
+.header-playlist-modal .playlist-modal-heading-copy small { display: block; }
+.header-playlist-modal .playlist-modal-heading h2 { margin: 5px 0 0; line-height: 1.25; }
+.header-playlist-modal .playlist-modal-heading .hint { margin: 4px 0 0; }
+.header-playlist-modal .playlist-modal-heading > button { flex: 0 0 auto; }
 .header-playlist-modal .playlist-modal-body {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);

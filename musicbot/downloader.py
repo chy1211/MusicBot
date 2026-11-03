@@ -770,8 +770,16 @@ class Downloader:
                 {"extractor": data.get("extractor", "__unknown__")},
             )
             entry_info = copy.deepcopy(data["entries"][0])
-            for key in entry_info:
-                data[key] = entry_info[key]
+            # A search result may omit _type for a normal video. Mark that
+            # single video explicitly; keep nested/playlist results intact so
+            # dashboard confirmations cannot mistake them for a track.
+            if (isinstance(entry_info, dict)
+                    and entry_info.get("_type") in (None, "", "video", "url")
+                    and not entry_info.get("entries")):
+                for key in entry_info:
+                    data[key] = entry_info[key]
+                if not entry_info.get("_type"):
+                    data["_type"] = "video"
 
         return data
 

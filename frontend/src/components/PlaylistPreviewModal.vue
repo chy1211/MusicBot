@@ -54,8 +54,14 @@ async function addSelected(){
 </script>
 <template>
  <dialog ref="dialog" class="header-playlist-modal" :aria-label="activeSong.title" @close="emit('close')" @cancel.prevent="emit('close')">
-  <header class="playlist-modal-heading"><div><small>{{t('m0081')}}</small><h2>{{activeSong.title}}</h2><p class="hint">{{activeSong.checked_count??activeSong.entries?.length??0}} / {{activeSong.count??activeSong.entries?.length??0}}</p></div>
-    <button type="button" class="subtle" :aria-label="t('m0253')" @click="emit('close')">×</button></header>
+  <header class="playlist-modal-heading">
+   <div class="playlist-modal-heading-copy">
+    <small>{{t('m0081')}}{{activeSong.count??activeSong.entries?.length??0}}{{t('m0033')}}</small>
+    <h2>{{activeSong.title}}</h2>
+    <p v-if="(activeSong.checked_count??activeSong.entries?.length??0)<(activeSong.count??activeSong.entries?.length??0)" class="hint">{{activeSong.checked_count??activeSong.entries?.length??0}} / {{activeSong.count??activeSong.entries?.length??0}}</p>
+   </div>
+   <button type="button" class="subtle" :aria-label="t('m0253')" @click="emit('close')">×</button>
+  </header>
   <p v-if="activeSong.reason||activeSong.warning" class="hint">{{activeSong.reason||activeSong.warning}}</p>
   <p v-if="dashboard.toastError" role="alert">{{dashboard.toast}}</p>
   <div class="playlist-modal-body">

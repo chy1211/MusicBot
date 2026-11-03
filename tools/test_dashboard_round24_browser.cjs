@@ -47,8 +47,13 @@ test('playlist modal has visible footer and a single scroll region on desktop an
   const m=await page.evaluate(()=>{
    const dialog=document.querySelector('.header-playlist-modal'),entries=dialog.querySelector('.playlist-modal-entries');
    const body=dialog.querySelector('.playlist-modal-body'),footer=dialog.querySelector('.playlist-modal-footer');
+   const heading=dialog.querySelector('.playlist-modal-heading'),caption=heading.querySelector('small');
+   const title=heading.querySelector('h2'),close=heading.querySelector('button');
    const d=dialog.getBoundingClientRect(),f=footer.getBoundingClientRect();
+   const a=caption.getBoundingClientRect(),h=title.getBoundingClientRect(),b=close.getBoundingClientRect();
    return {bounds:[d.left,d.right,d.top,d.bottom],footer:[f.top,f.bottom],
+    caption:caption.textContent,headingGap:h.top-a.bottom,closeAboveTitle:b.top<=h.top,
+    titleBeforeClose:h.right<=b.left+1,headingOverflow:heading.scrollWidth>heading.clientWidth+1,
     entriesCount:entries.children.length,entriesOverflow:getComputedStyle(entries).overflowY,
     bodyOverflow:getComputedStyle(body).overflowY,entriesScrollable:entries.scrollHeight>entries.clientHeight+20,
     bodyScrollable:body.scrollHeight>body.clientHeight+20,
@@ -57,6 +62,11 @@ test('playlist modal has visible footer and a single scroll region on desktop an
     overflow:document.documentElement.scrollWidth>innerWidth+1};
   });
   assert.ok(m.entriesCount>10,JSON.stringify(m));
+  assert.match(m.caption,/播放清單.*共\s*\d+\s*首/);
+  assert.ok(m.headingGap>=-1&&m.headingGap<=12,JSON.stringify({width,...m}));
+  assert.equal(m.closeAboveTitle,true,JSON.stringify({width,...m}));
+  assert.equal(m.titleBeforeClose,true,JSON.stringify({width,...m}));
+  assert.equal(m.headingOverflow,false,JSON.stringify({width,...m}));
   assert.equal(m.importButtonCount,1);assert.equal(m.scrollableDialog,false,JSON.stringify({width,...m}));
   assert.ok(m.bounds[0]>=-1 && m.bounds[1]<=width+1 && m.bounds[2]>=-1 && m.bounds[3]<=height+1,JSON.stringify({width,...m}));
   assert.ok(m.footer[0]>=0 && m.footer[1]<=height+1,JSON.stringify({width,...m}));
