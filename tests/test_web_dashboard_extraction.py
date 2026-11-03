@@ -408,6 +408,36 @@ class WorkerRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('usenetrc', payload['options'])
 
 
+class NativeSearchPlaybackMetadataTests(unittest.IsolatedAsyncioTestCase):
+    async def test_single_youtube_play_search_resolves_video_metadata(self):
+        from types import SimpleNamespace as NS
+        from unittest.mock import AsyncMock
+        from musicbot.downloader import Downloader
+        from musicbot.web_dashboard_extraction import WEB_POOL
+
+        clients = NS(options={"extract_flat": "in_playlist", "noplaylist": True},
+                     snapshot=lambda refresh: (NS(cookiejar=[]), NS(cookiejar=[])))
+        pool = NS(run=AsyncMock(return_value={"title": "Found"}))
+        token = WEB_POOL.set(pool)
+        try:
+            downloader = NS(_cookie_clients=clients)
+            for subject, fully_resolved in (
+                ("ytsearch:Artist Song", True),
+                ("ytsearch5:Artist Song", False),
+                ("https://www.youtube.com/watch?v=abcdefghijk", False),
+            ):
+                with self.subTest(subject=subject):
+                    await Downloader._dashboard_extract(
+                        downloader, subject, {"download": False, "process": True})
+                    payload = pool.run.call_args.args[0]
+                    self.assertEqual(payload["options"]["extract_flat"] is False,
+                                     fully_resolved)
+                    self.assertEqual(payload["options"]["noplaylist"], True)
+                    self.assertEqual(payload["kwargs"]["process"], True)
+        finally:
+            WEB_POOL.reset(token)
+
+
 class PlaybackContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_background_media_download_does_not_inherit_web_parse_deadline(self):
         from types import SimpleNamespace

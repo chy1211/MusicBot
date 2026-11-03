@@ -20,6 +20,8 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ### 修正 / Fixed
 
+- 修正 Spotify 歌單批量點播時的網頁 yt-dlp 單曲搜尋：對 `ytsearch:` 單筆播放搜尋關閉 `extract_flat`，取得完整 YouTube 影片來源與可播放網址後再執行來源、長度與單曲結構驗證；多結果搜尋與真正歌單仍使用快速扁平解析。
+  Fully resolve a single `ytsearch:` video before checking its source, duration and playable URL during Spotify batch queueing. Retain efficient flat extraction for multi-result searches and playlists.
 - 修正 Spotify 單曲搜尋回傳的單項播放清單包裝：改由唯一 YouTube 子影片驗證並正規化，允許不同的搜尋包裝欄位，同時阻擋真正的播放清單、巢狀結果與影片 ID 不符的網址；增補九首歌單與安全性回歸測試。
   Accept a validated single YouTube video inside a search-result wrapper even when wrapper metadata differs, while rejecting actual playlists, nested results and mismatched video IDs; add nine-track and security regressions.
 - 修正 Spotify 歌單批量加入佇列：直接使用經伺服器端預覽確認的曲名執行單曲搜尋，避免重複 Spotify API 查詢及搜尋前綴疊加；每首仍重新檢查來源權限、黑名單與播放限制。失敗摘要只記錄原因類別，不記錄歌名、網址或使用者資訊。
