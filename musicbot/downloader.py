@@ -1185,5 +1185,66 @@ class YtdlpResponseDict(YUserDict):
 
     @property
     def playlist_count(self) -> int:
+        """returns the playlist_count value if it exists, or 0"""
+        c = self.data.get("playlist_count", 0)
+        if isinstance(c, int):
+            return c
+        return 0
 
-[Showing lines 1-1187 of 1251 (50.0KB limit). Use offset=1188 to continue.]
+    @property
+    def duration(self) -> float:
+        """returns duration in seconds if available, or 0"""
+        try:
+            return float(self.data.get("duration", 0))
+        except (ValueError, TypeError):
+            log.noise(  # type: ignore[attr-defined]
+                "Warning, duration error for: %(url)s",
+                {"url": self.original_url},
+                exc_info=True,
+            )
+            return 0.0
+
+    @property
+    def duration_td(self) -> datetime.timedelta:
+        """
+        Returns duration as a datetime.timedelta object.
+        May contain 0 seconds duration.
+        """
+        t = self.duration or 0
+        return datetime.timedelta(seconds=t)
+
+    @property
+    def is_live(self) -> bool:
+        """return is_live key status or False if not found."""
+        # Can be true, false, or None if state is unknown.
+        # Here we assume unknown is not live.
+        live = self.data.get("is_live", False)
+        if isinstance(live, bool):
+            return live
+        return False
+
+    @property
+    def is_stream(self) -> bool:
+        """indicate if this response is a streaming resource."""
+        if self.is_live:
+            return True
+
+        # So live_status can be one of:
+        # None (=unknown), 'is_live', 'is_upcoming', 'was_live', 'not_live',
+        # or 'post_live' (was live, but VOD is not yet processed)
+        # We may want to add is_upcoming, and post_live to this check but I have not been able to test it.
+        if self.data.get("live_status", "") == "is_live":
+            return True
+
+        # Warning: questionable methods from here on.
+        if self.extractor.startswith("generic"):
+            # check against known streaming service headers.
+            if self.http_header("ICY-NAME") or self.http_header("ICY-URL"):
+                return True
+
+            # hacky not good way to last ditch it.
+            # url = self.url.lower()
+            # if "live" in url or "stream" in url:
+            #    return True
+
+        return False
