@@ -5,48 +5,47 @@
 [![Image](https://img.shields.io/badge/ghcr.io-chy1211%2Fmusicbot-blue)](https://github.com/chy1211/MusicBot/pkgs/container/musicbot)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-點語言標題展開或收合 · Click a language to expand or collapse
+點擊下方語言展開或收合 · Click a language to expand or collapse
 
 <details open>
 <summary><h2>繁體中文</h2></summary>
 
-經典的 [Just-Some-Bots MusicBot](https://github.com/Just-Some-Bots/MusicBot)，加上一個網頁控制台，讓 Discord 伺服器裡的每個人都能用瀏覽器或手機點歌。用 Docker 幾分鐘就能裝好。
+這是一個基於經典 [Just-Some-Bots MusicBot](https://github.com/Just-Some-Bots/MusicBot) 改造的專案。我們為它加上了現代化的**網頁控制台**，讓 Discord 伺服器裡的每個人都能直接用電腦瀏覽器或手機輕鬆點歌。透過 Docker，只需要幾分鐘就能快速架設完成。
 
-成員用自己的 Discord 帳號登入，就能查歌、排隊、拖曳排序、控制播放，不用打指令。機器人在 Discord 裡的用法完全不變，網頁也沿用同一套權限群組與限制。
+伺服器成員只要用自己的 Discord 帳號登入網頁，就能找歌、排歌、拖曳調整順序或控制播放，**再也不用背一堆文字指令**。同時，機器人在 Discord 裡的傳統指令玩法也完全保留，網頁端更直接沿用了原本的權限群組與限制設定，無痛接軌。
 
 ![桌機畫面](docs/images/dashboard-desktop.png)
 
-## 功能
+## 特色功能
 
-**一起聽**
-- 正在播放列：拖進度、暫停、跳過、重複、音量，所有人畫面即時同步
-- 貼連結或打歌名，先預覽再加入佇列，或插到下一首
-- 佇列可拖曳排序、搜尋、洗牌，刪錯了可以復原
-- 有人從網頁點歌時，在音樂頻道發 Discord 通知
+**多人同步一起聽**
+- **即時播放控制列**：拉動進度條、暫停、切歌、循環播放、調整音量，所有人的畫面都會即時同步。
+- **直覺點歌**：貼上網址或輸入歌名，可以先預覽再加入待播清單，或是直接「插播」到下一首。
+- **清單管理**：待播清單支援拖曳排序、搜尋、隨機打亂；手滑刪錯歌也能一鍵復原。
+- **點歌通知**：有人從網頁點歌時，機器人會在 Discord 的音樂頻道發送通知，大家都能看到是誰點的歌。
 
-**歌單與探索**
-- 匯入公開的 Spotify、YouTube／YouTube Music 歌單與合輯，可勾選要加哪幾首
-- 每位成員都有自己的歌單與收藏
-- 伺服器熱門點播、最近播放，以及佇列播完時自動接歌的電台模式；成員點的歌一律排在電台選的歌前面
+**歌單與音樂探索**
+- **匯入外部歌單**：支援匯入公開的 Spotify、YouTube／YouTube Music 歌單與合輯，還能自己勾選要加入哪幾首。
+- **個人化收藏**：每位成員都擁有自己獨立的私房歌單與最愛收藏。
+- **電台模式與排行榜**：提供伺服器熱門點播、最近播放紀錄，以及待播清單播完後「自動接歌」的電台模式（成員主動點的歌，優先度永遠高於電台推薦）。
 
-**歌詞**
-- 同步歌詞，每個人預設關閉，來源為 [LRCLIB](https://lrclib.net)
-- MV 前奏較長時會自動對時，所有成員都能手動微調或一鍵對時
+**動態歌詞**
+- **即時同步歌詞**：串接 [LRCLIB](https://lrclib.net) 歌詞庫，個人可自由開關（預設關閉）。
+- **時間軸校正**：遇到 MV 前奏太長導致歌詞對不上時，系統會嘗試自動校正；任何人也都能手動微調或一鍵對時。
 
-**手機與多人使用**
-- 可加到手機主畫面當 App 用（PWA），版面為單手操作設計
-- 淺色與深色主題，一鍵切換並記住你的選擇
-- 英文與繁體中文介面，每個人可自己切換
-- 登入可保持 30 天，登入狀態存在伺服器端，可一鍵登出所有裝置
-- 擁有者專用頁面：權限、自動播放清單、唯讀維護狀態
-- 每個伺服器可分別設定：要不要投票跳過（關閉時有跳過權限的人按一次就跳）、網頁點歌通知的備用頻道
-- 更新 YouTube cookie 時不用重開機器人，不會斷歌
+**手機優化與系統管理**
+- **類 App 體驗**：支援 PWA，可「加入主畫面」當作手機 App 使用，介面專為單手操作優化。
+- **外觀與語系**：支援深色／淺色主題、繁體中文／英文介面，每個人都能自由切換並自動記憶偏好。
+- **安全登入機制**：登入狀態保留 30 天並儲存於伺服器端，支援一鍵登出所有裝置。
+- **伺服器獨立設定**：可針對不同伺服器個別設定「是否需要投票切歌」（關閉時，有權限的人按一下就直接切歌）以及網頁點歌通知的備用頻道。
+- **管理員後台**：擁有者專屬頁面，可管理權限、自動播放清單，並檢視系統維護狀態。
+- **熱更新支援**：更新 YouTube Cookie 時不需重啟機器人，音樂播放不中斷。
 
 ![手機畫面](docs/images/dashboard-mobile.png)
 
 ## 快速安裝（Docker）
 
-需要一台 Linux 機器（amd64 或 arm64，包含 64 位元樹莓派），裝好 Docker 與 Compose v2.20 以上；或使用 Docker Desktop。
+你需要一台 Linux 主機（支援 amd64 或 arm64 架構，包含 64 位元樹莓派），並預先裝好 Docker 與 Compose v2.20 以上版本；或者也可以直接使用 Docker Desktop。
 
 ```sh
 mkdir musicbot && cd musicbot
@@ -54,70 +53,68 @@ curl -fsSLO https://raw.githubusercontent.com/chy1211/MusicBot/dev/docker-compos
 curl -fsSL https://raw.githubusercontent.com/chy1211/MusicBot/dev/.env.example -o .env
 ```
 
-到 [Discord 開發者入口](https://discord.com/developers/applications) 取得五個值，填進 `.env`：
+請前往 [Discord Developer Portal (開發者後台)](https://discord.com/developers/applications) 取得以下五個參數，並填入 `.env` 檔案中：
 
-| 變數 | 在哪裡找 |
+| 環境變數 | 取得方式與說明 |
 | --- | --- |
-| `DISCORD_BOT_TOKEN` | 你的應用程式 > **Bot** > Reset Token，同時開啟 **Server Members** 與 **Message Content** 兩個 intent |
-| `DISCORD_CLIENT_ID`／`DISCORD_CLIENT_SECRET` | 你的應用程式 > **OAuth2** |
-| `OWNER_ID` | 你自己的 Discord 使用者 ID：開啟開發者模式 > 右鍵自己的頭像 > 複製使用者 ID |
-| `DASHBOARD_PUBLIC_URL` | 本機試用填 `http://localhost:8080`，正式使用填你的 HTTPS 網域；並在 **OAuth2 > Redirects** 加入 `<這個網址>/auth/callback` |
+| `DISCORD_BOT_TOKEN` | 進入你的應用程式 > **Bot** > 點擊 Reset Token。請務必同時開啟 **Server Members** 與 **Message Content** 這兩個 Intent 權限。 |
+| `DISCORD_CLIENT_ID`／`DISCORD_CLIENT_SECRET` | 進入你的應用程式 > **OAuth2** 頁面即可找到。 |
+| `OWNER_ID` | 你自己的 Discord 使用者 ID（在 Discord 設定開啟「開發者模式」> 對自己的頭像按右鍵 > 複製使用者 ID）。 |
+| `DASHBOARD_PUBLIC_URL` | 本機測試可填 `http://localhost:8080`，正式上線請填寫你的 HTTPS 網址；同時記得到後台的 **OAuth2 > Redirects** 新增 `<你的網址>/auth/callback`。 |
 
-想讓介面預設中文、時間用台灣時區，可以再加上：
+如果想讓介面預設為繁體中文，且時間顯示為台灣時區，可以在 `.env` 加上：
 
 ```sh
 DEFAULT_LANGUAGE=zh-TW
 TIME_ZONE=Asia/Taipei
 ```
 
-然後啟動：
+接著啟動服務：
 
 ```sh
 docker compose up -d
 ```
 
-打開控制台網址，用 Discord 登入，進入語音頻道後執行 `/summon`。控制台網址是 HTTPS 時，機器人進語音也會在聊天室貼出網址。
+打開瀏覽器進入控制台網址，用 Discord 帳號登入。接著進到語音頻道輸入 `/summon` 把機器人叫進來就可以開始用了！（如果你的控制台網址是 HTTPS，機器人進語音頻道時也會貼心地在聊天室附上點歌網址）。
 
-完整說明在 **[docs/install.zh-TW.md](docs/install.zh-TW.md)**，包含邀請機器人、用內建的 Caddy 設定 HTTPS、cookie 與疑難排解。
+更完整的架設教學請參考 **[docs/install.zh-TW.md](docs/install.zh-TW.md)**，裡面有邀請機器人、使用內建 Caddy 設定 HTTPS、掛載 Cookie 以及常見問題排解的詳細說明。
 
-### 更新
+### 更新方式
 
 ```sh
 docker compose pull && docker compose up -d
 ```
 
-設定、歌單與登入狀態存在掛載的 `config/`、`data/` 資料夾，更新後都會保留。映像每週會用最新的 yt-dlp 重新建置。
+所有的設定檔、歌單與登入狀態都會保存在掛載出來的 `config/` 與 `data/` 資料夾中，更新後資料不會消失。此外，我們的 Docker 映像檔（Image）每週都會自動打包最新版的 yt-dlp。
 
 ## 注意事項
 
-- **YouTube 機器人檢查**：Compose 內含 [bgutil PO token 服務](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)，能幫忙通過 YouTube 的檢查，但無法保證每次成功。如果出現「Sign in to confirm you're not a bot」，請看安裝說明的 cookie 章節。
-- **安全性**：控制台預設只聽 `127.0.0.1`。要分享給別人用之前，請放在 HTTPS 後面（可選用內建的 Caddy）。`.env`、`config/`、`data/` 都不要外流。
-- **網頁點歌只接受特定網站**：YouTube、YouTube Music、Spotify、SoundCloud、Bandcamp 等 yt-dlp 有專屬支援的服務，以及關鍵字搜尋。一般網站、直接的音檔網址、IP 與內網位址都會被拒絕；每次解析有時間與流量上限（`web_dashboard.ini` 的 `ResolveTimeoutSeconds` 等設定）。
-- **Discord 指令維持原版行為**：`!play <網址>` 仍可讓機器人去抓任意網址，包括它所在網路裡的位址。如果機器人會給不熟的人用，請到 `config/permissions.ini` 把該群組 `Extractors` 裡的 `generic` 拿掉（會擋下播放，但機器人可能仍會先連一次該網址），或只讓信任的人有點歌權限。
-- **Discord 指令**與原版 MusicBot 相同，另外加上斜線指令，見[原版指令列表](https://just-some-bots.github.io/MusicBot/using/commands/)與 [`config/example_options.ini`](config/example_options.ini)。
-- **不想用 Docker？** 也可以照原版 MusicBot 的方式執行（Python 3.10–3.13、ffmpeg、Deno），再到 `config/web_dashboard.ini` 開啟控制台，見 [docs/web-dashboard.md](docs/web-dashboard.md)。
+- **YouTube 防機器人驗證**：Docker Compose 內建了 [bgutil PO token 服務](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)，能協助繞過 YouTube 的阻擋，但無法保證 100% 成功。若遇到「Sign in to confirm you're not a bot」錯誤，請參考安裝說明中的 Cookie 設定章節。
+- **連線安全性**：網頁控制台預設僅監聽本機的 `127.0.0.1`。如果要公開分享給其他人使用，請務必掛上 HTTPS（可使用內建的 Caddy 反向代理）。請妥善保管 `.env`、`config/` 與 `data/` 資料夾，切勿外流。
+- **網頁端點歌限制**：為了安全起見，網頁端只接受特定平台的網址（如 YouTube、YouTube Music、Spotify、SoundCloud、Bandcamp 等 yt-dlp 原生支援的服務）以及關鍵字搜尋。一般網頁、直連音檔網址、純 IP 或內網位址都會被系統擋下；每次解析也有時間與流量上限（可於 `web_dashboard.ini` 的 `ResolveTimeoutSeconds` 等參數調整）。
+- **Discord 指令安全性**：文字指令 `!play <網址>` 維持了原版行為，這代表它允許機器人去抓取任意網址（包含主機所在的內網位址）。如果你的機器人會開放給不認識的人使用，建議到 `config/permissions.ini` 將該群組 `Extractors` 裡的 `generic` 移除，或是只把指令點歌權限交給信任的成員。
+- **傳統指令支援**：Discord 內的指令與原版 MusicBot 完全相同，並額外支援了斜線指令（Slash Commands），詳情請見[原版指令列表](https://just-some-bots.github.io/MusicBot/using/commands/)與 [`config/example_options.ini`](config/example_options.ini)。
+- **不想用 Docker 嗎？** 你也可以照原版的方式在本地環境直接執行（需安裝 Python 3.10–3.13、ffmpeg、Deno），再到 `config/web_dashboard.ini` 手動開啟控制台功能，詳見 [docs/web-dashboard.md](docs/web-dashboard.md)。
 
-## 專案狀態
+## 專案現況
 
-版本變更請見 [CHANGELOG](CHANGELOG.md)。
+詳細的版本更新紀錄請見 [CHANGELOG](CHANGELOG.md)。
 
-這是**非官方**的個人 fork，和 Just-Some-Bots 沒有關係，由一個人在空閒時維護，盡力而為，不保證回應時間。
+這是一個**非官方**的個人分支專案（Fork），與 Just-Some-Bots 官方無關。目前由我利用業餘時間獨立維護，雖然會盡力處理問題，但無法保證即時回覆，還請多多包涵。
 
-原版目前更新得很慢（`dev` 分支最後一次更新是 2026 年 3 月，`master` 自 2024 年 11 月起沒有再變動）。這個 fork 以原版 `dev` 為基礎，另外補上：
+由於原版專案目前的更新步調較慢（`dev` 分支最後更新於 2026 年 3 月，`master` 自 2024 年 11 月起便未再變動），這個 Fork 以原版的 `dev` 分支為基底，額外補上了以下內容：
 
-- Python 3.12 與 Deno：新版 yt-dlp 需要它們才能正常播放 YouTube
-- 斜線指令
-- 網頁控制台、Docker 打包與繁體中文翻譯
-
-能通用的修正會送回原版（[#2481](https://github.com/Just-Some-Bots/MusicBot/pull/2481)、[#2482](https://github.com/Just-Some-Bots/MusicBot/pull/2482)、[#2483](https://github.com/Just-Some-Bots/MusicBot/pull/2483)）。如果原版恢復活躍，這個 fork 會跟著同步。
+- 升級 Python 3.12 與導入 Deno 環境（新版 yt-dlp 需要它們才能正常解析 YouTube）
+- 支援 Discord 斜線指令（Slash Commands）
+- 全新的網頁控制台、Docker 一鍵部署配置，以及完整的繁體中文在地化
 
 ## 致謝與授權
 
-本專案 fork 自 [Just-Some-Bots/MusicBot](https://github.com/Just-Some-Bots/MusicBot)，Discord 機器人本體出自原作者，感謝原作者與所有貢獻者。網頁控制台、Docker 打包與翻譯是這個 fork 新增的。
+本專案 Fork 自 [Just-Some-Bots/MusicBot](https://github.com/Just-Some-Bots/MusicBot)，機器人核心功能皆出自原作者，非常感謝原作者與所有開源貢獻者的付出。網頁控制台、Docker 部署架構與繁中翻譯則是由本分支額外開發新增。
 
-授權與原版相同，採 [MIT 授權](LICENSE)。
+本專案沿用原版的 [MIT 授權條款](LICENSE)。
 
-歡迎開 issue 或送 pull request。
+如果使用上遇到任何 Bug，或是有新功能的點子，都非常歡迎開 Issue 討論或直接發 Pull Request！
 
 </details>
 
