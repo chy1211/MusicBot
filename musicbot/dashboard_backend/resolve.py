@@ -206,6 +206,7 @@ class DashboardResolveRoutes:
                 "allowed": item["allowed"], "expires": now + self.PREVIEW_TTL,
                 "retain_until": now + 3600, "original_query": query, "action": action,
                 "status": "ready", "kind": item["kind"],
+                "source_type": item.get("source_type", ""),
                 "count": item.get("count", 1),
                 "entries": [dict(child) for child in item.get("entries", [])],
                 "extraction_reason": getattr(item, "extraction_reason", "not-single-url"),

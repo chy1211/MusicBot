@@ -18,6 +18,10 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 - 熱門歌曲預設顯示最近 180 天（含今天），保留 7 天、30 天與全部選項；現有資料保留期間為 180 天，因此「全部」目前同樣涵蓋 180 天。
   Default popularity to the past 180 inclusive calendar days, keeping 7-day, 30-day and all options; existing retention also limits all to 180 days.
 
+### 修正 / Fixed
+
+- 修正 Spotify 歌單批量加入佇列：直接使用經伺服器端預覽確認的曲名執行單曲搜尋，避免重複 Spotify API 查詢及搜尋前綴疊加；每首仍重新檢查來源權限、黑名單與播放限制。失敗摘要只記錄原因類別，不記錄歌名、網址或使用者資訊。
+  Fix Spotify playlist batch queueing by searching with server-previewed song metadata through the native play command, without duplicate Spotify API lookups or search prefixes. Recheck permissions and restrictions on every track; diagnostic summaries contain only failure categories.
 
 ## [1.1.0] - 2026-10-31
 +

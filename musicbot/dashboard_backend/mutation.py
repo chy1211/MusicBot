@@ -17,11 +17,20 @@ class DashboardMutationRoutes:
                   if item["item_id"] in data["selected_items"]]
         preview["status"], preview["selection"] = "submitted", data["selected_items"]
         results = []
+        failure_counts = {}
         first_response = None
         deadline = time.monotonic() + self.BATCH_TIMEOUT
         for item in chosen:
             error = ""
+            failure_kind = "other"
             success = False
+            spotify_selected = preview.get("source_type") == "spotify"
+            # These track titles came from the server-side Spotify playlist
+            # preview. Search directly instead of calling Spotify /tracks/{id}
+            # again for every selected item.
+            # cmd_play itself prefixes plain-text searches with the configured
+            # search provider; passing a prefixed query would prefix it twice.
+            playback_query = item["title"] if spotify_selected else item["url"]
             def validate(info):
                 # Called inside _cmd_play AFTER extraction and before queue mutation.
                 candidate = info
@@ -50,6 +59,11 @@ class DashboardMutationRoutes:
                 current_guild, member = self.guild_owner(request)
                 perms = self.bot.permissions.for_user(member)
                 self.command_permission(member, perms, "play", item["url"])
+                if spotify_selected:
+                    try:
+                        perms.can_use_extractor("spotify:musicbot")
+                    except exceptions.MusicbotException:
+                        raise APIError(403, _web_text('m0405')) from None
                 if self.discord_auth:
                     self.voice_permission(current_guild, member, perms, "play")
                 why = self.playlist_restriction(perms, preview["count"])
@@ -75,6 +89,11 @@ class DashboardMutationRoutes:
                 if reason:
                     raise APIError(403, reason)
                 self.addition_checks(player, owner, permissions)
+                if spotify_selected:
+                    try:
+                        permissions.can_use_extractor("spotify:musicbot")
+                    except exceptions.MusicbotException:
+                        raise APIError(403, _web_text('m0405')) from None
                 self.bot._do_song_blocklist_check(preview["url"])
                 self.bot._do_song_blocklist_check(item["url"])
                 remaining = deadline - time.monotonic()
@@ -85,7 +104,7 @@ class DashboardMutationRoutes:
                     response = await self.run_resolution(guild, self.bot.cmd_play(
                         message=None, player=player, channel=channel, guild=guild,
                         author=owner, permissions=permissions, leftover_args=[],
-                        song_url=item["url"]), owner=owner, priority="add", request=request,
+                        song_url=playback_query), owner=owner, priority="add", request=request,
                         timeout=min(self.SONG_TIMEOUT, remaining))
                 finally:
                     CONFIRMED_ENTRY_CHECK.reset(token)
@@ -100,20 +119,33 @@ class DashboardMutationRoutes:
                 if exc.status == 401:
                     raise
                 error = str(exc)
+                failure_kind = ("single_video_shape" if error == _web_text('m0438')
+                                else "extractor_denied" if error == _web_text('m0405')
+                                else "invalid_playable_url" if error == _web_text('m0408')
+                                else f"api_{exc.status}")
             except exceptions.MusicbotException as exc:
                 error = denial_text(exc.message % exc.fmt_args)
+                failure_kind = type(exc).__name__
             except asyncio.TimeoutError:
                 error = _web_text('m0440')
+                failure_kind = "timeout"
             except Exception as exc:
                 log.warning("Dashboard selected play failed (%s)", type(exc).__name__)
                 error = _web_text('m0441')
+                failure_kind = type(exc).__name__
             # The command records the actual enqueue before preparing its response.
             # Other Discord/web requests cannot be mistaken for this selection.
             added = success or check.enqueued
+            if not added:
+                failure_counts[failure_kind] = failure_counts.get(failure_kind, 0) + 1
             results.append({"item_id": item["item_id"], "title": item["title"],
                             "added": bool(added), "reason": error})
         added = sum(item["added"] for item in results)
         summary = {"added": added, "skipped": len(results) - added, "results": results}
+        if summary["skipped"]:
+            # Classification only: no personal identifiers, titles, URLs or query text.
+            log.info("Dashboard batch result: selected=%d added=%d failures=%s",
+                     len(chosen), added, failure_counts)
         preview["summary"], preview["status"] = summary, "done"
         if added and first_response is not None:
             from ..bot import build_play_response
