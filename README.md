@@ -14,7 +14,11 @@
 
 伺服器成員只要用自己的 Discord 帳號登入網頁，就能找歌、排歌、拖曳調整順序或控制播放，**再也不用背一堆文字指令**。同時，機器人在 Discord 裡的傳統指令玩法也完全保留，網頁端更直接沿用了原本的權限群組與限制設定，無痛接軌。
 
-![桌機畫面](docs/images/dashboard-desktop.png)
+![桌機畫面：播放介面與待播佇列](docs/images/dashboard-desktop.png)
+
+![桌機畫面：搜尋歌曲與選擇結果](docs/images/dashboard-desktop-search.png)
+
+![桌機畫面：匯入個人歌單](docs/images/dashboard-desktop-playlist.png)
 
 ## 特色功能
 
@@ -125,7 +129,11 @@ The classic [Just-Some-Bots MusicBot](https://github.com/Just-Some-Bots/MusicBot
 
 Members sign in with their Discord account, then search, queue, reorder and control playback without typing commands. The bot still works exactly as before in Discord, and the dashboard follows the same permission groups and limits.
 
-![Dashboard on desktop](docs/images/dashboard-desktop.png)
+![Dashboard on desktop: player and queue](docs/images/dashboard-desktop.png)
+
+![Dashboard search and song selection](docs/images/dashboard-desktop-search.png)
+
+![Dashboard playlist import dialog](docs/images/dashboard-desktop-playlist.png)
 
 ## Features
 
