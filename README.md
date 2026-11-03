@@ -45,7 +45,11 @@
 - **管理員後台**：擁有者專屬頁面，可管理權限、自動播放清單，並檢視系統維護狀態。
 - **熱更新支援**：更新 YouTube Cookie 時不需重啟機器人，音樂播放不中斷。
 
-![手機畫面](docs/images/dashboard-mobile.png)
+![手機畫面：播放與控制介面](docs/images/dashboard-mobile-overview.jpg)
+
+![手機畫面：搜尋歌曲與選擇結果](docs/images/dashboard-mobile-search.jpg)
+
+![手機畫面：播放清單預覽與批量加入](docs/images/dashboard-mobile-playlist.jpg)
 
 ## 快速安裝（Docker）
 
@@ -161,7 +165,11 @@ Members sign in with their Discord account, then search, queue, reorder and cont
 - Per-server settings: turn vote-to-skip off (anyone with skip permission skips instantly) and pick a fallback channel for web request notifications
 - YouTube cookies reload without restarting the bot, so music keeps playing
 
-![Dashboard on a phone](docs/images/dashboard-mobile.png)
+![Dashboard on a phone: playback and controls](docs/images/dashboard-mobile-overview.jpg)
+
+![Dashboard on a phone: search and song selection](docs/images/dashboard-mobile-search.jpg)
+
+![Dashboard on a phone: playlist preview and batch queueing](docs/images/dashboard-mobile-playlist.jpg)
 
 ## Quick start (Docker)
 
