@@ -1,6 +1,8 @@
 """Queue mutation routes and web command responses."""
 from __future__ import annotations
 
+from urllib.parse import parse_qs
+
 
 class DashboardMutationRoutes:
 
@@ -35,25 +37,51 @@ class DashboardMutationRoutes:
                 # Called inside _cmd_play AFTER extraction and before queue mutation.
                 candidate = info
                 if info.has_entries:
-                    # Native Spotify processing searches for one matching video.
-                    # Downloader merges that video into the parent but retains
-                    # the one-child search entries. Accept only its already
-                    # flattened video shape; genuine/nested playlists still fail.
+                    # yt-dlp may retain the single search hit inside either a
+                    # flattened video or a youtube:search playlist wrapper.
+                    # Validate the child itself, then give native cmd_play a
+                    # real video instead of the wrapper's search metadata.
                     source = urlsplit(item["url"])
                     parts = source.path.strip("/").split("/")
                     children = info.get_entries_objects()
-                    spotify_single = (
-                        source.hostname == "open.spotify.com" and len(parts) == 2
-                        and parts[0] == "track" and info.ytdl_type in ("video", "url", "")
-                        and len(children) == 1 and not children[0].has_entries
-                        and children[0].extractor == info.extractor
-                        and info.extractor == "youtube"
-                        and info.video_id == children[0].video_id
-                        and info.webpage_url == children[0].webpage_url
+                    child = children[0] if len(children) == 1 else None
+                    page = urlsplit(child.webpage_url) if child else None
+                    source_track = (
+                        source.scheme == "https"
+                        and source.hostname == "open.spotify.com"
+                        and len(parts) == 2 and parts[0] == "track"
                     )
-                    if not spotify_single:
+                    outer_ok = (
+                        (info.extractor == "youtube"
+                         and info.ytdl_type in ("video", "url", ""))
+                        or (info.extractor == "youtube:search"
+                            and info.ytdl_type == "playlist")
+                    )
+                    child_ok = bool(
+                        child and not child.has_entries
+                        and child.ytdl_type in ("video", "url", "")
+                        and child.extractor == "youtube"
+                    )
+                    page_ok = bool(
+                        child and page and page.scheme == "https"
+                        and page.hostname in ("youtube.com", "www.youtube.com",
+                                              "m.youtube.com", "music.youtube.com")
+                        and page.path == "/watch" and len(child.video_id) == 11
+                        and parse_qs(page.query).get("v") == [child.video_id]
+                    )
+                    if not (source_track and outer_ok and child_ok and page_ok):
+                        log.info(
+                            "Dashboard Spotify single-video rejected: source_track=%s outer_ok=%s "
+                            "children=%d child_ok=%s page_ok=%s",
+                            source_track, outer_ok, len(children), child_ok, page_ok)
                         raise APIError(403, _web_text('m0438'))
-                    candidate = children[0]
+                    # Child metadata is the single playable video; the parent
+                    # can carry a search-query ID, URL, or playlist _type.
+                    info.data.update(child.data)
+                    info.data["_type"] = "video"
+                    info.data.pop("entries", None)
+                    info.data.pop("playlist_count", None)
+                    candidate = info
                 if self.discord_auth:
                     self.authenticate(request)
                 current_guild, member = self.guild_owner(request)

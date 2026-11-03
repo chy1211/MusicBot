@@ -41,6 +41,61 @@ class SpotifyBatchSelectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["skipped"], 0, result)
         self.assertEqual(len(self.bot.player.playlist.entries), 6)
 
+    async def test_spotify_batch_accepts_unflattened_single_youtube_search_result(self):
+        self.spotify_provider([imports.spotify(i) for i in range(1, 10)])
+        response = await self.call(BASE + "resolve", {"query": imports.SPOTIFY})
+        preview = response["results"][0]
+        # yt-dlp can return a one-child search playlist without flattening it.
+        # The playlist's own ID and URL are search metadata, not the video.
+        raw = {
+            "_type": "playlist", "extractor": "youtube:search",
+            "playlist_count": 0, "id": "Artist - Song",
+            "webpage_url": "ytsearch:Artist - Song",
+            "entries": [{"extractor": "youtube", "id": "abcdefghijk",
+                         "title": "Found", "duration": 90,
+                         "url": "https://media.example.test/audio",
+                         "webpage_url": "https://www.youtube.com/watch?v=abcdefghijk"}],
+        }
+        await SpotifyNativeSelectionTests.set_real_spotify_extraction(self, raw=raw)
+        result = await self.call(BASE + "play", {
+            "query": preview["url"], "preview_id": preview["preview_id"],
+            "selected_items": [item["item_id"] for item in preview["entries"]],
+        })
+        self.assertEqual(result["added"], 9, result)
+        self.assertEqual(result["skipped"], 0, result)
+        self.assertEqual(len(self.bot.player.playlist.entries), 12)
+        self.assertEqual(self.bot.player.playlist.entries[-1].title, "Found")
+
+    async def test_spotify_batch_rejects_unplayable_or_nested_search_children(self):
+        for bad_child in (
+            {"extractor": "youtube", "id": "abcdefghijk",
+             "title": "Found", "duration": 90, "url": "https://media.example.test/audio",
+             "webpage_url": "https://www.youtube.com/watch?v=not_the_id"},
+            {"extractor": "youtube:playlist", "id": "abcdefghijk",
+             "title": "Found", "duration": 90, "url": "https://media.example.test/audio",
+             "webpage_url": "https://www.youtube.com/watch?v=abcdefghijk"},
+            {"extractor": "youtube", "id": "abcdefghijk", "_type": "playlist",
+             "entries": [{"id": "another", "extractor": "youtube"}],
+             "title": "Found", "duration": 90, "url": "https://media.example.test/audio",
+             "webpage_url": "https://www.youtube.com/watch?v=abcdefghijk"},
+        ):
+            with self.subTest(bad_child=bad_child.get("extractor"),
+                              page=bad_child.get("webpage_url"),
+                              nested=bool(bad_child.get("entries"))):
+                self.spotify_provider([imports.spotify(1)])
+                response = await self.call(BASE + "resolve", {"query": imports.SPOTIFY})
+                preview = response["results"][0]
+                raw = {"_type": "playlist", "extractor": "youtube:search",
+                       "playlist_count": 0, "id": "Artist - Song",
+                       "entries": [bad_child]}
+                await SpotifyNativeSelectionTests.set_real_spotify_extraction(self, raw=raw)
+                result = await self.call(BASE + "play", {
+                    "query": preview["url"], "preview_id": preview["preview_id"],
+                    "selected_items": [preview["entries"][0]["item_id"]],
+                })
+                self.assertEqual(result["added"], 0, result)
+                self.assertEqual(result["skipped"], 1, result)
+
     async def test_spotify_batch_uses_previewed_metadata_without_requerying_each_track(self):
         self.spotify_provider([imports.spotify(i) for i in range(1, 10)])
         response = await self.call(BASE + "resolve", {"query": imports.SPOTIFY})
