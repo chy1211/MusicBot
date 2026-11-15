@@ -58,9 +58,10 @@ class DashboardLyricsRoutes:
         title, artist = entry.title, info.get("artist") or info.get("creator") or ""
         track_key = hashlib.sha256(str((entry.url, entry.title, entry.duration)).encode()).hexdigest()
         key = video_id(entry.url)
-        # Check the verified, per-video persistent cache before remote Spotify.
-        # A manual query still bypasses this video cache as before.
-        value = await self.lyrics_store.get(key) if key and not query else None
+        # A guild's manually selected recording has priority over the shared
+        # automatic cache; explicit searches must still reach the provider.
+        selected = await self.lyrics_store.selected(guild, key) if key and not query else None
+        value = selected or (await self.lyrics_store.get(key) if key and not query else None)
         if value is None:
             if not query:
                 # Cap auxiliary metadata lookup so slow Spotify cannot starve LRCLIB.
@@ -86,20 +87,42 @@ class DashboardLyricsRoutes:
             raise APIError(403, _web_text('m0376'))
         if token != self.track_token(self.bot.get_player_in(guild)):
             raise APIError(409, _web_text('m0379'))
+        if query and key and value.get("status") in ("synced", "plain", "instrumental"):
+            # Save the validated user choice after the session and track are rechecked.
+            async with self.lyrics_offset_locks[(guild.id, key)]:
+                if self.discord_auth:
+                    self.authenticate(request)
+                self.guild_owner(request)
+                if not await self.lyrics_store.enabled(guild):
+                    raise APIError(403, _web_text('m0376'))
+                if token != self.track_token(self.bot.get_player_in(guild)):
+                    raise APIError(409, _web_text('m0379'))
+                previous = await self.lyrics_store.selected(guild, key) or await self.lyrics_store.get(key)
+                if (not previous or previous.get("lrclib_record_id") != value.get("lrclib_record_id")
+                        or previous.get("metadata_fingerprint") != value.get("metadata_fingerprint")):
+                    await self.lyrics_store.set_manual(guild, key, None)
+                await self.lyrics_store.set_selected(guild, key, value)
+            value = dict(value, manual_selection=True)
         offset = {}
         if key and value.get("status") == "synced":
-            await self.lyrics_alignment.request(self.bot, entry, value)
+            # A manual selection may be a different recording; never reuse the
+            # automatically measured offset of the original video for it.
+            if not value.get("manual_selection"):
+                await self.lyrics_alignment.request(self.bot, entry, value)
             offset = await self.lyric_offset_value(guild, key)
         return web.json_response(dict(value, track_key=track_key, video_id=key,
             track_token=token, **offset))
 
     async def lyric_offset_value(self, guild, key):
         from ..web_dashboard import UNCERTAIN
-        automatic = await self.lyrics_store.get(key, "analysis") or dict(UNCERTAIN)
-        manual = await self.lyrics_store.manual(guild, key)
+        selected = await self.lyrics_store.selected(guild, key)
+        recording = selected or await self.lyrics_store.get(key)
+        record_id = recording.get("lrclib_record_id") if recording else None
+        automatic = dict(UNCERTAIN) if selected else (await self.lyrics_store.get(key, "analysis") or dict(UNCERTAIN))
+        manual = await self.lyrics_store.manual(guild, key, record_id)
         return {"offset": manual if manual is not None else automatic.get("offset", 0),
                 "offset_source": "manual" if manual is not None else automatic.get("source", "uncertain"),
-                "analysis_pending": key in self.lyrics_alignment.tasks}
+                "analysis_pending": False if selected else key in self.lyrics_alignment.tasks}
 
     async def lyrics_offset(self, request):
         from ..web_dashboard import APIError, _web_text, video_id
@@ -144,7 +167,7 @@ class DashboardLyricsRoutes:
                         raise APIError(400, _web_text('m0384'))
                     value = (await self.lyric_offset_value(guild,key))["offset"] + delta
                 elif action == "sync":
-                    lyrics = await self.lyrics_store.get(key)
+                    lyrics = await self.lyrics_store.selected(guild, key) or await self.lyrics_store.get(key)
                     lines = [line for line in lyrics.get("lines",[]) if str(line.get("text","")).strip()] if lyrics else []
                     position = data["position"]
                     if (not lines or type(position) not in (int,float) or not math.isfinite(position)
@@ -153,7 +176,9 @@ class DashboardLyricsRoutes:
                     value = position - lines[0]["time"]
                 if action != "reset" and (type(value) not in (int,float) or not math.isfinite(value) or not -30 <= value <= 60):
                     raise APIError(400, _web_text('m0386'))
-                await self.lyrics_store.set_manual(guild,key,round(value,2) if value is not None else None)
+                recording = await self.lyrics_store.selected(guild, key) or await self.lyrics_store.get(key)
+                record_id = recording.get("lrclib_record_id") if recording else None
+                await self.lyrics_store.set_manual(guild,key,round(value,2) if value is not None else None,record_id)
                 self.record_activity(guild, getattr(member,"display_name",None) or member.name,
                     "lyrics_offset","web",_web_text('m0387') + (_web_text('m0388') if value is None else _web_text('m0389', p0=format(value, '+.1f'))),_web_text('m0024'))
         if self.discord_auth: self.authenticate(request)

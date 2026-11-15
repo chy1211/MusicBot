@@ -24,6 +24,7 @@ class LyricsStore:
     MAX_FILE = 1024 * 1024
     PRUNE_INTERVAL = 60.0
     PRUNE_EVERY_WRITES = 16
+    SELECTED_LIMIT_PER_GUILD = 200
     def __init__(self, root):
         self.root = Path(root)
         self.lock = asyncio.Lock()
@@ -136,18 +137,49 @@ class LyricsStore:
             await asyncio.to_thread(atomic_write, self.root / "settings" / (self.guild_id(guild)+".json"), {"enabled": enabled})
             self.allowed[int(self.guild_id(guild))] = enabled
 
+    def selected_path(self, guild, key):
+        if not VIDEO.fullmatch(key):
+            raise ValueError()
+        return self.root / "selected" / self.guild_id(guild) / (key + ".json")
+
+    async def selected(self, guild, key):
+        row = await asyncio.to_thread(self.read, self.selected_path(guild, key))
+        if (row and type(row.get("expires")) in (int, float)
+                and row["expires"] > time.time() and isinstance(row.get("value"), dict)
+                and row["value"].get("status") in ("synced", "plain", "instrumental")):
+            return row["value"]
+        return None
+
+    def _write_selected(self, path, value):
+        atomic_write(path, {"expires": time.time() + 7 * 86400,
+                            "value": dict(value, manual_selection=True)})
+        files = sorted(path.parent.glob("*.json"), key=lambda f: f.stat().st_mtime_ns, reverse=True)
+        for stale in files[self.SELECTED_LIMIT_PER_GUILD:]:
+            stale.unlink()
+
+    async def set_selected(self, guild, key, value):
+        if not isinstance(value, dict) or value.get("status") not in ("synced", "plain", "instrumental"):
+            raise ValueError("Only a valid lyrics result can be selected")
+        async with self.lock:
+            await asyncio.to_thread(self._write_selected, self.selected_path(guild, key), value)
+
     def offset_path(self, guild, key):
         if not VIDEO.fullmatch(key):
             raise ValueError()
         return self.root / "offsets" / self.guild_id(guild) / (key+".json")
 
-    async def manual(self, guild, key):
+    async def manual(self, guild, key, record_id=None):
         row = await asyncio.to_thread(self.read, self.offset_path(guild, key))
+        if row and row.get("record_id") != record_id:
+            return None
         value = row.get("offset") if row else None
         return float(value) if type(value) in (int, float) and math.isfinite(value) and -30 <= value <= 60 else None
 
-    async def set_manual(self, guild, key, value):
+    async def set_manual(self, guild, key, value, record_id=None):
         if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or not -30 <= value <= 60):
             raise ValueError()
+        if record_id is not None and (type(record_id) is not int or not 0 < record_id < 2**63):
+            raise ValueError()
         async with self.lock:
-            await asyncio.to_thread(atomic_write, self.offset_path(guild, key), {"offset": value})
+            await asyncio.to_thread(atomic_write, self.offset_path(guild, key),
+                                    {"offset": value, "record_id": record_id})

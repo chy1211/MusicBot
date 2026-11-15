@@ -5,6 +5,25 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-16
+
+### 改善 / Improved
+
+- 歌詞查詢可正確辨識 `【歌手】歌名` 及含日文、英文等多語系的曲名，並避免將 THE FIRST TAKE、Nightcore、Karaoke 等特殊錄音版本誤配成一般版本。
+  Improve lyrics matching for bracketed artist prefixes and multilingual titles, while distinguishing live, nightcore, karaoke and other alternate editions.
+- 在不同 Discord 伺服器與歌曲間分開保存手動選用的 LRCLIB 歌詞版本與偏移量；切換歌詞版本時重設前一版本的時間校正，不會互相影響。
+  Persist manually selected LRCLIB lyric editions and timing offsets per Discord guild and track, resetting stale offsets when editions change.
+- 補充音訊對齊失敗及低信心的診斷原因，保留既有匹配門檻，避免把沒有實證的時間偏移當成已成功對齊。
+  Expose diagnostic reasons for failed or low-confidence lyric alignment without weakening matching thresholds.
+
+### 修正 / Fixed
+
+- 將 Discord 語音端對端加密相依套件 `davey` 固定在實機驗證有聲的 `0.1.7`，避免浮動相依套件更新至 `0.2.0` 時發生播放端送包、聽眾卻無聲的相容性問題；保留 `discord.py 2.7.1`。
+  Pin the Discord DAVE encryption dependency to verified `davey 0.1.7` for compatibility with `discord.py 2.7.1`, avoiding a silent-audio regression from a floating dependency upgrade.
+- 修正桌機歌詞時間校正選單位置，讓下拉選單顯示於按鈕正下方；手機版排列不變。
+  Place the desktop lyric timing menu directly below its button without changing the mobile layout.
+
+
 ## [1.2.0] - 2026-11-15
 
 ### 新增 / Added

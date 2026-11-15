@@ -17,7 +17,7 @@ USER_AGENT = "MusicBot-WebDashboard/12 (+https://github.com/Just-Some-Bots/Music
 LRCLIB_ROOT = "https://lrclib.net/api"
 _NOISE = re.compile(r"(?:official|music\s*video|\bmv\b|\bm/v\b|lyrics?|audio|\bhd\b|\bhq\b|\b4k\b|完整版|官方|字幕)", re.I)
 _COVER = re.compile(r"(?<![a-z])cover(?:ed)?(?:\s+by)?(?![a-z])|翻唱", re.I)
-_VERSION = re.compile(r"remix|remaster|live|acoustic|instrumental|sped\s*up|slowed", re.I)
+_VERSION = re.compile(r"remix|remaster|live|acoustic|instrumental|sped\s*up|slowed|the\s+first\s+take|unplugged|nightcore|karaoke", re.I)
 _BRACKETS = re.compile(r"[《〈『「【]([^》〉』」】]+)[》〉』」】]")
 
 
@@ -49,6 +49,14 @@ def _titles(value):
     value = value.strip()
     if _VERSION.search(value) or re.search(r"[（(\[]", value):
         return [value]
+    # "Bunny Girl / バニーガール" is a bilingual alias, not one long title.
+    # Require separated scripts and spaces so AC/DC and regular slashes remain intact.
+    if re.search(r"\s+/\s+", value):
+        halves = re.split(r"\s+/\s+", value, maxsplit=1)
+        if (len(halves) == 2 and all(halves)
+                and bool(re.search(r"[A-Za-z]", halves[0])) != bool(re.search(r"[A-Za-z]", halves[1]))
+                and any(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", part) for part in halves)):
+            return list(dict.fromkeys(halves + [value]))[:3]
     parts = re.split(r"(?<=[\u3040-\u30ff\u3400-\u9fff。！？])\s+(?=[A-Za-z])", value, maxsplit=1)
     return list(dict.fromkeys(parts + [value]))[:3]
 
@@ -68,9 +76,14 @@ def metadata(title, artist=""):
     bracket = _BRACKETS.search(title)
     if bracket and not _NOISE.fullmatch(bracket[1].strip()):
         prefix = re.sub(r"\b(?:MV|M/V)\b", "", title[:bracket.start()], flags=re.I).strip(" -－–—|｜:：")
-        if prefix:
-            inferred = prefix
-        title = bracket[1].strip()
+        suffix = title[bracket.end():].strip(" -－–—|｜:：")
+        if bracket.start() == 0 and suffix and not re.search(r"(?:原創|新曲|特別|完整版|高音質|中字|字幕)", bracket[1]):
+            # Leading 【artist】 followed by a real title: bracket is an artist.
+            inferred, title = bracket[1].strip(), suffix
+        else:
+            if prefix:
+                inferred = prefix
+            title = bracket[1].strip()
     else:
         # Separators need whitespace for ASCII '-' and '/', so meaningful
         # hyphens and titles such as AC/DC are preserved.

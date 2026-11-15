@@ -1,5 +1,6 @@
 pynacl
 discord.py [voice] == 2.7.1
+davey == 0.1.7
 #discord.py [voice] @ git+https://github.com/Rapptz/discord.py
 pip
 yt-dlp[default]>=2026.08.19

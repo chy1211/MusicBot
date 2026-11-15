@@ -167,21 +167,34 @@ def _worker(pipe, source, details, cache_file, directory):
                 try:mv=download(details["url"],90)
                 except Exception:pass
             value=dict(UNCERTAIN)
+            reason="mv_audio_unavailable" if not mv else "reference_audio_unavailable"
             if mv:
                 if reference:
-                    try:value=correlate(envelope(pcm(mv,90)),envelope(pcm(reference,60))) or value
-                    except Exception:pass
+                    try:
+                        matched=correlate(envelope(pcm(mv,90)),envelope(pcm(reference,60)))
+                        if matched:
+                            value=matched
+                            reason="waveform_matched"
+                        else:
+                            reason="waveform_low_confidence"
+                    except Exception:
+                        reason="waveform_decode_failed"
                 if value["source"]=="uncertain":
                     try:
                         offset=silence(mv)
-                        if offset is not None:value={"offset":round(offset,2),"source":"silence","confidence":1.0}
-                    except Exception:pass
+                        if offset is not None:
+                            value={"offset":round(offset,2),"source":"silence","confidence":1.0}
+                            reason="intro_silence_detected"
+                    except Exception:
+                        if reason=="reference_audio_unavailable":
+                            reason="silence_scan_failed"
+            value["diagnostic_reason"]=reason
             value["download_bytes"]=sum(path.stat().st_size for path in Path(directory).glob("*") if path.is_file())
             children=resource.getrusage(resource.RUSAGE_CHILDREN)
             value["cpu_seconds"]=round(time.process_time()-started + children.ru_utime+children.ru_stime-children_start.ru_utime-children_start.ru_stime,4)
             pipe.send(value)
     except BaseException:
-        try:pipe.send(dict(UNCERTAIN))
+        try:pipe.send(dict(UNCERTAIN, diagnostic_reason="worker_failed"))
         except Exception:pass
     finally:
         pipe.close()
@@ -201,7 +214,8 @@ class AlignmentService:
             # Migrate the old duration-only guess without retaining its former
             # confidence=1.0 / seven-day lifetime after this upgrade.
             if cached.get("source") == "duration":
-                cached = dict(cached, source="duration_assumed", confidence=0.25)
+                cached = dict(cached, source="duration_assumed", confidence=0.25,
+                              diagnostic_reason="duration_close_no_audio_check")
                 await self.store.put(key, cached, 3600, "analysis")
             return dict(cached,pending=False)
         duration=lyrics.get("duration")
@@ -209,7 +223,8 @@ class AlignmentService:
             return dict(UNCERTAIN,pending=False)
         if type(entry.duration) in (int,float) and abs(entry.duration-duration)<=2:
             # Similar duration is a zero-offset guess, NOT verified audio alignment.
-            value={"offset":0.0,"source":"duration_assumed","confidence":0.25}
+            value={"offset":0.0,"source":"duration_assumed","confidence":0.25,
+                   "diagnostic_reason":"duration_close_no_audio_check"}
             await self.store.put(key,value,3600,"analysis")
             return dict(value,pending=False)
         if key not in self.tasks and len(self.tasks)<4:
@@ -233,6 +248,7 @@ class AlignmentService:
                 value=await asyncio.wait_for(self.run_worker(downloader,details,cache_file),self.TIMEOUT)
             except (Exception,asyncio.CancelledError) as exc:
                 if isinstance(exc,asyncio.CancelledError):raise
+                value["diagnostic_reason"]="worker_timeout" if isinstance(exc,asyncio.TimeoutError) else "worker_failed"
             # Do not retain uncertain results for a full week.
             ttl = 7*86400 if value.get("source") in ("matched", "silence") and value.get("confidence",0)>=0.8 else 900
             try:await self.store.put(key,value,ttl,"analysis")
