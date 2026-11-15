@@ -609,6 +609,11 @@ class Config:
                 "Allow MusicBot to automatically unpause when play commands are used."
             ),
         )
+        self.playback_clock_realign: bool = self.register.init_option(
+            section="Playback", option="PlaybackClockRealign", dest="playback_clock_realign",
+            default=ConfigDefaults.playback_clock_realign, getter="getboolean",
+            comment=_Dd("Avoid sending catch-up frames after a playback stall."),
+        )
         self.use_opus_audio: bool = self.register.init_option(
             section="Playback",
             option="UseOpusAudio",
@@ -1580,6 +1585,7 @@ class ConfigDefaults:
     enable_queue_history_global: bool = False
     enable_queue_history_guilds: bool = False
     auto_unpause_on_play: bool = False
+    playback_clock_realign: bool = False
     ytdlp_proxy: str = ""
     ytdlp_user_agent: str = ""
     ytdlp_source_address: str = "*"

@@ -13,6 +13,7 @@ import pathlib
 import time
 from collections import UserDict
 from concurrent.futures import ThreadPoolExecutor
+from threading import BoundedSemaphore
 from pprint import pformat
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -26,6 +27,7 @@ from yt_dlp.utils import DownloadError  # type: ignore[import-untyped]
 from yt_dlp.utils import UnsupportedError
 
 from .constants import DEFAULT_MAX_INFO_REQUEST_TIMEOUT
+from .native_ytdlp_process import run_native_ytdlp
 from .exceptions import ExtractionError, MusicbotException
 from .i18n import _L
 from .spotify import Spotify
@@ -180,6 +182,7 @@ class Downloader:
         """
         self.bot: MusicBot = bot
         self.download_folder: pathlib.Path = bot.config.audio_cache_path
+        self._native_isolation_gate = BoundedSemaphore(1)
         # NOTE: this executor may not be good for long-running downloads...
         self.thread_pool = ThreadPoolExecutor(
             max_workers=bot.config.downloader_threads_max,
@@ -291,6 +294,10 @@ class Downloader:
         # Runs in the executor: filesystem I/O/client construction never blocks
         # the event loop during ordinary extraction or download.
         client = self._cookie_clients.snapshot(refresh=True)[int(safe)]
+        if (os.name == "posix" and not web_only and method in ("extract_info", "process_ie_result")
+                and os.environ.get("MUSICBOT_NATIVE_YTDLP_ISOLATION") == "1"):
+            with self._native_isolation_gate:
+                return run_native_ytdlp(client, safe, method, *args, **kwargs)
         if web_only:
             with DashboardYoutubeDL(client.params) as isolated:
                 isolated.cookiejar = copy.deepcopy(client.cookiejar)

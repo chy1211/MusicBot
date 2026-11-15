@@ -308,6 +308,7 @@ class Dashboard(
         self.app.router.add_get("/favicon.ico", self.favicon)
         self.app.router.add_get("/auth/session", self.auth_session)
         self.app.router.add_get("/auth/login", self.auth_login)
+        self.app.router.add_post("/auth/login", self.auth_login)
         self.app.router.add_get("/auth/callback", self.auth_callback)
         self.app.router.add_post("/auth/logout", self.auth_logout)
         self.app.router.add_post("/auth/logout-all", self.auth_logout)

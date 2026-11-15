@@ -20,7 +20,7 @@ test('manual header search makes no request while typing; add and first-row remo
  const {page,errors,calls}=await open(t);
  await page.locator('#header-query').fill('sunset');
  await page.waitForTimeout(250);assert.equal(calls.filter(r=>r.url.endsWith('/resolve')).length,0);
- assert.equal(await page.locator('#queue>li:visible').count(),3);
+ assert.equal(await page.locator('#queue>li:visible').count(),4);
  await page.locator('#header-query').press('Enter');
  await page.locator('.header-result').first().waitFor();
  assert.equal(calls.filter(r=>r.url.endsWith('/resolve')).length,1);

@@ -75,6 +75,8 @@ from .logs import muffle_discord_console_log, mute_discord_console_log
 from .opus_loader import load_opus_lib
 from .permissions import PermissionGroup, Permissions, PermissionsDefaults
 from .player import MusicPlayer
+from .voice_recovery import (voice_recovery_policy, preserve_voice_queue,
+                             start_voice_recovery)
 from .playlist import Playlist
 from .spotify import Spotify
 from .web_dashboard_activity import begin_text, finish as finish_activity
@@ -871,13 +873,15 @@ class MusicBot(commands.Bot):
 
         return client
 
-    async def disconnect_voice_client(self, guild: discord.Guild) -> None:
+    async def disconnect_voice_client(self, guild: discord.Guild, *, manual: bool = True) -> None:
         """
         Check for a MusicPlayer in the given `guild` and close it's VoiceClient
         gracefully then remove the MusicPlayer instance and reset any timers on
         the guild for player/channel inactivity.
         """
 
+        if manual:
+            voice_recovery_policy(self).manual_leave(guild.id)
         if guild.id in self.players:
             log.info("Disconnecting a MusicPlayer in guild:  %s", guild)
             player = self.players.pop(guild.id)
@@ -1011,6 +1015,10 @@ class MusicBot(commands.Bot):
             If MusicBot is not permitted to join the given `channel`.
         """
         guild = channel.guild
+        policy = getattr(self, '_voice_recovery_policy', None)
+        if (create and policy is not None
+                and guild.id in policy.pending_restore):
+            deserialize = True
 
         log.voicedebug(  # type: ignore[attr-defined]
             "Getting a MusicPlayer for guild:  %(guild)s  In Channel:  %(channel)s  Create: %(create)s  Deserialize:  %(serial)s",
@@ -1033,7 +1041,15 @@ class MusicBot(commands.Bot):
                         {"guild_id": guild.id, "number": len(player.playlist)},
                     )
                     # Since deserializing only happens when the bot starts, I should never need to reconnect
-                    return self._init_player(player, guild=guild)
+                    initialized = self._init_player(player, guild=guild)
+                    if policy and not policy.has_running_job(guild.id):
+                        policy.restored(guild.id)
+                    return initialized
+            if policy and guild.id in policy.pending_restore:
+                await voice_client.disconnect()
+                raise exceptions.CommandError(
+                    "Saved voice queue could not be restored; snapshot preserved."
+                )
 
             if guild.id not in self.players:
                 if not create:
@@ -1053,6 +1069,8 @@ class MusicBot(commands.Bot):
                         "Something is wrong, we didn't get the VoiceClient."
                     )
 
+        if policy and guild.id in policy.pending_restore and not policy.has_running_job(guild.id):
+            policy.restored(guild.id)
         return self.players[guild.id]
 
     def _init_player(
@@ -8988,6 +9006,7 @@ class MusicBot(commands.Bot):
     async def on_disconnect(self) -> None:
         """Event called by discord.py any time bot is disconnected, or fails to connect."""
         log.info("MusicBot has become disconnected.")
+        voice_recovery_policy(self).gateway_lost()
 
     async def on_socket_event_type(self, event_type: str) -> None:
         """Event called by discord.py on any socket event."""
@@ -9150,95 +9169,64 @@ class MusicBot(commands.Bot):
                     player.resume()
 
     async def _handle_api_disconnect(self, before: discord.VoiceState) -> bool:
-        """
-        Method called from on_voice_state_update when MusicBot is disconnected from voice.
+        """Keep the current track and queue safe on unexpected voice exits.
+
+        Code 1000 and channel=None are ambiguous and never authorize
+        automatic rejoining. Only recent gateway loss plus 1006 does.
         """
         if not before.channel:
-            log.debug("VoiceState disconnect before.channel is None.")
             return False
 
-        o_guild = self.get_guild(before.channel.guild.id)
-        o_vc: Optional[discord.VoiceClient] = None
-        close_code: Optional[int] = None
-        state: Optional[Any] = None
-        if o_guild is not None and isinstance(
-            o_guild.voice_client, discord.VoiceClient
-        ):
-            o_vc = o_guild.voice_client
-            # borrow this for logging sake.
-            close_code = (
-                o_vc._connection.ws._close_code  # pylint: disable=protected-access
-            )
-            state = o_vc._connection.state  # pylint: disable=protected-access
+        guild = self.get_guild(before.channel.guild.id)
+        if guild is None or guild.id not in self.players:
+            return False
 
-        # These conditions are met when API terminates a voice client.
-        # This could be a user initiated disconnect, but we have no way to tell.
-        # Normally VoiceClients should auto-reconnect. However attempting to wait
-        # by using VoiceClient.wait_until_connected() never seems to resolve.
-        if (
-            o_guild is not None
-            and ((o_vc and not o_vc.is_connected()) or o_vc is None)
-            and o_guild.id in self.players
-        ):
-            log.info(
-                "Disconnected from voice by Discord API in: %(guild)s/%(channel)s (Code: %(code)s) [S:%(state)s]",
-                {
-                    "guild": o_guild.name,
-                    "channel": before.channel.name,
-                    "code": close_code,
-                    "state": state.name.upper() if state else None,
-                },
-            )
-            await self.disconnect_voice_client(o_guild)
+        voice = guild.voice_client if isinstance(
+            guild.voice_client, discord.VoiceClient) else None
+        if voice is not None and voice.is_connected():
+            return False
+        connection = getattr(voice, "_connection", None)
+        ws = getattr(connection, "ws", None)
+        close_code = getattr(ws, "_close_code", None)
+        state = getattr(connection, "state", None)
 
-            # reconnect if the guild is configured to auto-join.
-            if self.server_data[o_guild.id].auto_join_channel is not None:
-                # Look for the last channel we were in.
-                target_channel = self.get_channel(before.channel.id)
-                if not target_channel:
-                    # fall back to the configured channel.
-                    target_channel = self.server_data[o_guild.id].auto_join_channel
-
-                if not isinstance(
-                    target_channel, (discord.VoiceChannel, discord.StageChannel)
-                ):
-                    log.error(
-                        "Cannot use auto-join channel with type: %(type)s  in guild:  %(guild)s",
-                        {"type": type(target_channel), "guild": before.channel.guild},
-                    )
-                    return True
-
-                if not target_channel:
-                    log.error(
-                        "Cannot find the auto-joined channel, was it deleted?  Guild:  %s",
-                        before.channel.guild,
-                    )
-                    return True
-
-                log.info(
-                    "Reconnecting to auto-joined guild on channel:  %s",
-                    target_channel,
-                )
-                try:
-                    r_player = await self.get_player(
-                        target_channel, create=True, deserialize=True
-                    )
-
-                    if r_player.is_stopped:
-                        r_player.play()
-
-                except (TypeError, exceptions.PermissionsError):
-                    log.warning(
-                        "Cannot auto join channel:  %s",
-                        before.channel,
-                        exc_info=True,
-                    )
+        policy = voice_recovery_policy(self)
+        if not policy.begin_handling(guild.id):
             return True
+        try:
+            try:
+                saved = await preserve_voice_queue(self, guild)
+            except Exception as exc:
+                saved = False
+                log.warning("voice queue snapshot failed: guild_id=%s type=%s",
+                            guild.id, type(exc).__name__)
 
-        # TODO: If bot has left a server but still had a client, we should kill it.
-        # if o_guild is None and before.channel.guild.id in self.players:
+            # Explicit user disconnect may have arrived while the disk write
+            # was in flight. Never recreate a retry after that newer action.
+            context = policy.context(guild.id)
+            if context["explicit_manual"]:
+                return True
 
-        return False
+            incident = policy.begin_incident(
+                guild.id, before.channel.id, voice_close_code=close_code,
+                queue_saved=saved,
+            )
+            context.update({
+                "guild_id": guild.id, "channel_id": before.channel.id,
+                "voice_close_code": close_code,
+                "voice_state": getattr(state, "name", None),
+                "queue_saved": saved,
+                "auto_rejoin": bool(incident and incident.auto_allowed),
+            })
+            log.info("voice_disconnect_context %s", json.dumps(context, sort_keys=True))
+            # Snapshot is durable before existing kill() clears the playlist.
+            await self.disconnect_voice_client(guild, manual=False)
+            if (incident is not None and incident.auto_allowed
+                    and not self.network_outage and not self.logout_called):
+                start_voice_recovery(self, policy, incident, log)
+            return True
+        finally:
+            policy.end_handling(guild.id)
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """

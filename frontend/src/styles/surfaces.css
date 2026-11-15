@@ -344,8 +344,9 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
 #admin-health-updated{font-variant-numeric:tabular-nums}
 @media(max-width:760px){
  /* The update prompt must not be trapped under the top safe-area or browser chrome. */
- .sidebar:has(#pwa-refresh:not([hidden])){z-index:120}
- .sidebar #pwa-refresh:not([hidden]){position:fixed;top:calc(var(--safe-top) + 70px);left:max(16px,var(--safe-left));right:max(16px,var(--safe-right));width:auto;max-width:none;min-height:48px;z-index:130;background:var(--opaque);border:2px solid var(--green);box-shadow:0 8px 20px #0006}
+ .sidebar:has(#pwa-refresh:not([hidden]),#island-activate-notice){z-index:120}
+ .sidebar :is(#pwa-refresh:not([hidden]),#island-activate-notice){position:fixed;top:calc(var(--safe-top) + 70px);left:max(16px,var(--safe-left));right:max(16px,var(--safe-right));width:auto;max-width:none;min-height:48px;z-index:130;background:var(--opaque);border:2px solid var(--green);box-shadow:0 8px 20px #0006}
+ .sidebar:has(#pwa-refresh:not([hidden])) #island-activate-notice{top:calc(var(--safe-top) + 126px)}
  .listening-stage{align-items:flex-start}
  .stage-request{gap:5px}
  .stage-audience{margin-top:12px}
@@ -363,8 +364,10 @@ html[data-glass=clear][data-theme=light]{--surface:rgba(255,255,255,.82);--panel
  .sidebar .page-tabs,.sidebar .page-tabs.nav-compact{position:static;inset:auto;left:auto;right:auto;bottom:auto;grid-column:2;grid-row:1;display:grid;grid-template-columns:repeat(var(--tabs,4),minmax(0,1fr));gap:3px;width:100%;height:48px;min-height:48px;margin:0;padding:3px;z-index:auto;border-radius:24px}
  .sidebar .page-tabs button,.sidebar .page-tabs.nav-compact button{height:42px;min-height:42px;text-align:center;padding:4px}
  .sidebar .auth,.sidebar .auth[open]{grid-column:1/-1;grid-row:4}
- .sidebar:has(#pwa-refresh:not([hidden])){z-index:120}
- .sidebar #pwa-refresh:not([hidden]){position:fixed;top:calc(var(--safe-top) + 56px);left:max(14px,var(--safe-left));right:max(14px,var(--safe-right));z-index:130;min-height:48px}
+ .sidebar:has(#pwa-refresh:not([hidden]),#island-activate-notice){z-index:120}
+ .sidebar :is(#pwa-refresh:not([hidden]),#island-activate-notice){position:fixed;top:calc(var(--safe-top) + 56px);left:max(14px,var(--safe-left));right:max(14px,var(--safe-right));z-index:130;min-height:48px}
+ .sidebar #island-activate-notice{width:auto;max-width:none;background:var(--opaque);border:2px solid var(--green);box-shadow:0 8px 20px #0006}
+ .sidebar:has(#pwa-refresh:not([hidden])) #island-activate-notice{top:calc(var(--safe-top) + 112px)}
  main{margin:0;max-width:none;padding:8px max(12px,var(--safe-right)) calc(var(--dock-player-height,110px) + 28px + var(--safe-bottom)) max(12px,var(--safe-left))}
  .page-heading{margin:0 0 8px}.page-heading h1{font-size:22px}
  .listening-stage{gap:14px;padding:16px;align-items:flex-start}

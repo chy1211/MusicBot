@@ -180,7 +180,7 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(query["response_type"], ["code"])
         self.assertEqual(query["client_id"], ["123"])
         self.assertEqual(query["redirect_uri"], [self.origin + "/auth/callback"])
-        cookie = response.cookies[self.dashboard.state_cookie]
+        cookie = response.cookies[self.dashboard.oauth_cookie_name(state)]
         self.assertEqual(cookie.value, state)
         self.assertTrue(cookie["httponly"])
         self.assertEqual(cookie["samesite"], "Lax")
@@ -338,18 +338,46 @@ class DiscordTests(unittest.IsolatedAsyncioTestCase):
             allow_redirects=False)
         self.assertEqual(response.status, 302)
         self.assertTrue(self.dashboard.state_cookie.startswith("__Host-"))
-        cookie = response.cookies[self.dashboard.state_cookie]
+        state = parse_qs(urlsplit(response.headers["Location"]).query)["state"][0]
+        cookie_name = self.dashboard.oauth_cookie_name(state)
+        cookie = response.cookies[cookie_name]
         self.assertTrue(cookie["secure"])
         self.assertTrue(cookie["httponly"])
         self.assertFalse(cookie["domain"])
-        state = parse_qs(urlsplit(response.headers["Location"]).query)["state"][0]
         response = await self.client.get("/auth/callback",
             params={"state": state, "code": "FAKE-CODE"},
             headers={"Host": "music.example.test", "X-Forwarded-Proto": "https",
-                     "Cookie": self.dashboard.state_cookie + "=" + state},
+                     "Cookie": cookie_name + "=" + state},
             allow_redirects=False)
         self.assertEqual(response.status, 302)
         self.assertTrue(response.cookies[self.dashboard.session_cookie]["secure"])
+
+    async def test_same_origin_login_starts_two_independent_flows(self):
+        self.client.session.cookie_jar.clear()
+        forbidden = await self.client.post("/auth/login", headers={"Origin": "https://other.example"})
+        self.assertEqual(forbidden.status, 403)
+        states = []
+        for _ in range(2):
+            response = await self.client.post("/auth/login", headers={"Origin": self.origin})
+            self.assertEqual(response.status, 200)
+            url = urlsplit((await response.json())["authorize_url"])
+            self.assertEqual((url.netloc, url.path), ("discord.com", "/oauth2/authorize"))
+            state = parse_qs(url.query)["state"][0]
+            self.assertIn(self.dashboard.oauth_cookie_name(state), response.cookies)
+            states.append(state)
+        for state in states:
+            self.assertEqual((await self.finish_oauth(state)).status, 302)
+        self.assertEqual((await self.finish_oauth(states[0])).status, 403)
+
+    async def test_lost_cookie_returns_browser_to_retry_without_oauth_exchange(self):
+        _, _, state = await self.begin_oauth()
+        self.client.session.cookie_jar.clear()
+        response = await self.client.get("/auth/callback", params={"state": state, "code": "FAKE-CODE"},
+            headers={"Accept": "text/html"}, allow_redirects=False)
+        self.assertEqual(response.status, 303)
+        self.assertEqual(response.headers["Location"], "/?login=retry")
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertEqual(self.oauth_calls, [])
 
     async def test_guild_list_only_user_memberships(self):
         self.bot.guilds.append(NS(id=2, name="Hidden Guild", unavailable=False,

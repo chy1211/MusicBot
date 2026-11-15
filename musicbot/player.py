@@ -30,6 +30,7 @@ from .constructs import Serializable, Serializer, SkipState
 from .entry import LocalFilePlaylistEntry, StreamPlaylistEntry, URLPlaylistEntry
 from .exceptions import FFmpegError, FFmpegWarning
 from .lib.event_emitter import EventEmitter
+from .playback_clock import play_realigning
 from .loudness import LOUDNORM_TARGET
 from .read_cadence_diagnostics import ReadCadenceDiagnostics
 from .cadence_layered import LayeredReadCadenceDiagnostics
@@ -1007,11 +1008,12 @@ class MusicPlayer(EventEmitter, Serializable):
                         {"source": self._source, "client": self.voice_client},
                     )
                     try:
-                        voice_client.play(
-                            self._source,
-                            after=partial(self._playback_finished, source=prepared_source,
-                                          stderr_future=stderr_future),
-                        )
+                        after = partial(self._playback_finished, source=prepared_source,
+                                        stderr_future=stderr_future)
+                        if getattr(self.bot.config, "playback_clock_realign", False):
+                            play_realigning(voice_client, self._source, after=after)
+                        else:
+                            voice_client.play(self._source, after=after)
                         # A full startup window protects the tiny gap before the
                         # producer is released to replenish the ongoing buffer.
                         prepared_source.start_streaming()

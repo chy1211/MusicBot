@@ -12,7 +12,6 @@ test('header search waits for an explicit form submit',()=>{
 test('exactly the first queue item is the next-track card',()=>{
  const code=read('frontend/src/components/NextTrack.vue'),css=read('frontend/src/styles/dashboard-layout.css');
  assert.match(code,/snapshot\?\.queue\?\.\[0\]/);
- assert.match(css,/#play-view #queue>li\[data-position="1"\]\{display:none\}/);
  assert.match(css,/grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)/);
 });
 test('transport handlers remain in original playback component',()=>{

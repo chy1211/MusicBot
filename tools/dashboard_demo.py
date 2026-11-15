@@ -543,6 +543,8 @@ class DemoDashboard(Dashboard):
         raise response
 
     async def auth_login(self, request):
+        if request.method not in ("GET", "HEAD"):
+            raise web.HTTPMethodNotAllowed(request.method, ["GET", "HEAD"])
         if not self.discord_auth:
             return await super().auth_login(request)
         if self.fake_login:

@@ -5,6 +5,24 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-15
+
+### 新增 / Added
+
+- **iPhone 動態島**可顯示 Discord 目前播放的歌曲。當 Safari 阻擋自動啟動，手機版會在頁首提示「啟用動態島」。已啟用、曾手動關閉，或使用桌機時不會出現提示。
+  **iPhone Dynamic Island** can show the current Discord track. When Safari blocks autoplay, the phone dashboard offers an enable button at the top. The prompt stays hidden when active, explicitly disabled, or on desktop.
+- **語音斷線續播**在開啟 `PersistentQueue` 時會保存目前歌曲、播放進度及待播順序。異常傳輸中斷只在符合條件時有限重連，也可用 `/summon` 手動叫回機器人。
+  **Voice recovery** saves the current track, playback position and queue order when `PersistentQueue` is enabled. Automatic retries are limited to qualifying transport interruptions; `/summon` supports manual recovery.
+- 播放排程和下載解析提供選用模式。可在 `[Playback]` 設 `PlaybackClockRealign = yes` 避免停頓後密集送包，也可在 POSIX 環境設 `MUSICBOT_NATIVE_YTDLP_ISOLATION=1`，把原生 yt-dlp 解析與下載移到獨立行程。兩項預設關閉。
+  Enable `PlaybackClockRealign = yes` to avoid bursts after playback stalls, or set `MUSICBOT_NATIVE_YTDLP_ISOLATION=1` on POSIX to run native yt-dlp extraction and downloads in a separate process. Both are opt-in.
+
+### 修正 / Fixed
+
+- Discord OAuth 每次登入各自保有驗證 Cookie；瀏覽器回呼失效時會回到登入頁讓使用者重試。
+  Each Discord OAuth attempt has its own browser cookie. Failed callback validation returns the browser to the sign-in page.
+- 手機帳號選單顯示在搜尋欄上方。「下一首」卡片保留，待播清單也從第 01 首列起並計入總數。
+  The mobile account menu stays above search. The next-track preview remains visible and the queue lists and counts the first track.
+
 ## [1.1.1] - 2026-11-03
 
 ### 改善 / Improved

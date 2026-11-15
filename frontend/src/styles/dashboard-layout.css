@@ -21,9 +21,10 @@
 #play-view>.next-track-card{grid-column:1;grid-row:2;margin:0;align-self:stretch}
 #play-view>.queue{grid-column:2;grid-row:2;margin:0;min-width:0;align-self:stretch}
 #play-view>.activity,#play-view>.history{grid-column:1/-1}
+#play-view>.dynamic-island{grid-column:1/-1}
 #play-view>.request{display:none;grid-column:1/-1}
 #play-view>.request:has(.playlist-selection){display:block}
-#play-view #queue>li[data-position="1"]{display:none}
+@media(max-width:760px){.page-heading #user-profile:has(.account-actions[open]){position:relative;z-index:25}}
 .next-track-card h2{margin-bottom:14px}.next-track-card h2 small{color:var(--muted);font-size:12px}
 .next-track-row{display:flex;gap:16px;align-items:center;min-width:0}
 .next-track-row>img,.next-track-fallback{width:100px;height:100px;object-fit:cover;border-radius:12px;flex-shrink:0}

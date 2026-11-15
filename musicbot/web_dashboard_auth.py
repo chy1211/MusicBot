@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import math
 import re
 import secrets
@@ -23,12 +24,14 @@ SESSION_KEY = web.RequestKey("session_nonce", str)
 OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 OAUTH_TOKEN_URL = "https://discord.com/api/oauth2/token"
 OAUTH_USER_URL = "https://discord.com/api/v10/users/@me"
+log = logging.getLogger(__name__)
 
 
 class DashboardAuth:
     STATE_TTL = 300
     AUTH_LIMIT = 1024
     OAUTH_TIMEOUT = 10
+    STATES_PER_BROWSER = 4
     SESSION_TTL = 30 * 86400
     SESSION_RENEW_INTERVAL = 86400
     SESSIONS_PER_USER = 10
@@ -83,7 +86,16 @@ class DashboardAuth:
 
     @property
     def state_cookie(self):
-        return ("__Host-" if self.secure_cookie else "") + "musicbot_oauth"
+        return ("__Host-" if self.secure_cookie else "") + "musicbot_oauth_"
+
+    def oauth_cookie_name(self, state):
+        return self.state_cookie + self.session_digest(state)[:24]
+
+    def browser_oauth_states(self, request):
+        return [(name, state) for name, state in request.cookies.items()
+                if name.startswith(self.state_cookie)
+                and re.fullmatch(r"[A-Za-z0-9_-]{43}", state)
+                and name == self.oauth_cookie_name(state)]
 
     @property
     def public_origin(self):
@@ -220,6 +232,9 @@ class DashboardAuth:
     async def auth_login(self, request):
         if not self.discord_auth:
             raise self.auth_error(404, _web_text('m0492'))
+        prepare = request.method == "POST"
+        if prepare and request.headers.get("Origin") != self.public_origin:
+            raise self.auth_error(403, _web_text('m0357'))
         self.prune_auth()
         now = time.monotonic()
         self.login_attempts = [t for t in self.login_attempts if t > now - 60]
@@ -232,9 +247,19 @@ class DashboardAuth:
         location = OAUTH_AUTHORIZE_URL + "?" + urlencode({
             "client_id": self.client_id, "redirect_uri": self.public_origin + "/auth/callback",
             "response_type": "code", "scope": "identify", "state": state})
-        response = web.HTTPFound(location=location)
-        self.set_cookie(response, self.state_cookie, state, self.STATE_TTL)
-        raise response
+        response = web.json_response({"authorize_url": location}) if prepare else web.HTTPFound(location=location)
+        previous = sorted(self.browser_oauth_states(request),
+                          key=lambda item: self.oauth_states.get(item[1], {}).get("expires", 0))
+        live = [(name, token) for name, token in previous if token in self.oauth_states]
+        keep = set(live[-(self.STATES_PER_BROWSER - 1):])
+        for name, token in previous:
+            if (name, token) not in keep:
+                self.oauth_states.pop(token, None)
+                self.clear_cookie(response, name)
+        self.set_cookie(response, self.oauth_cookie_name(state), state, self.STATE_TTL)
+        if not prepare:
+            raise response
+        return response
 
     async def oauth_identity(self, code):
         # A dedicated, short-lived session avoids accidental bot Authorization headers.
@@ -287,11 +312,18 @@ class DashboardAuth:
         if not self.discord_auth:
             raise self.auth_error(404, _web_text('m0492'))
         state = request.query.get("state", "")
-        cookie = request.cookies.get(self.state_cookie, "")
         self.prune_auth()
-        if (not state or len(state) > 128 or not cookie
-                or not hmac.compare_digest(state.encode(), cookie.encode())
-                or state not in self.oauth_states):
+        valid_state = re.fullmatch(r"[A-Za-z0-9_-]{43}", state)
+        cookie_name = self.oauth_cookie_name(state) if valid_state else ""
+        cookie = request.cookies.get(cookie_name, "")
+        reason = ("invalid_state" if not valid_state else
+                  "expired_or_used" if state not in self.oauth_states else
+                  "missing_cookie" if not cookie else
+                  "cookie_mismatch" if not hmac.compare_digest(state.encode(), cookie.encode()) else "")
+        if reason:
+            log.info("Dashboard OAuth rejected: %s", reason)
+            if "text/html" in request.headers.get("Accept", ""):
+                raise web.HTTPSeeOther(location="/?login=retry")
             raise self.auth_error(403, _web_text('m0495'))
         # Consume before any await, including failed exchanges; no replay.
         self.oauth_states.pop(state)
@@ -305,7 +337,7 @@ class DashboardAuth:
         response = web.HTTPFound(location="/")
         self.set_cookie(response, self.session_cookie, self.new_session(user),
                         self.SESSION_TTL)
-        self.clear_cookie(response, self.state_cookie)
+        self.clear_cookie(response, cookie_name)
         request[USER_KEY] = user
         raise response
 
@@ -314,9 +346,9 @@ class DashboardAuth:
             raise self.auth_error(404, _web_text('m0492'))
         self.revoke_session(request, all_devices=request.path == "/auth/logout-all")
         # Invalidate pending login from this browser as well.
-        state = request.cookies.get(self.state_cookie, "")
-        self.oauth_states.pop(state, None)
         response = web.json_response({"message": _web_text('m0052') if request.path == "/auth/logout-all" else _web_text('m0053')})
+        for name, state in self.browser_oauth_states(request):
+            self.oauth_states.pop(state, None)
+            self.clear_cookie(response, name)
         self.clear_cookie(response, self.session_cookie)
-        self.clear_cookie(response, self.state_cookie)
         return response
