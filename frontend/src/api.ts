@@ -26,8 +26,8 @@ export async function request<T>(path:string,options:APIOptions={}):Promise<T>{
    polling.active=controller
    const timeout=setTimeout(()=>controller.abort(),3000)
    try{const response=await fetch(statusPath,{headers,credentials:'same-origin',cache:'no-store',signal:controller.signal});if(response.ok){const value=await response.json();if(!finished&&(value.state==='queued'||value.state==='resolving'))options.onResolutionState?.(value.state)}}catch{/* Status failure must never cancel or delay the original POST. */}
-   finally{clearTimeout(timeout);if(polling.active===controller)polling.active=null;if(!finished)statusTimer=setTimeout(poll,200)}
-  };statusTimer=setTimeout(poll,100)
+   finally{clearTimeout(timeout);if(polling.active===controller)polling.active=null;if(!finished)statusTimer=setTimeout(poll,1000)}
+  };statusTimer=setTimeout(poll,500)
  }
  try{const response=await fetch('/'+path.replace(/^\//,''),{method:options.method||'GET',headers,credentials:'same-origin',cache:'no-store',signal:abort.signal,body:options.body===undefined?undefined:JSON.stringify(options.body)})
  const body=await response.json().catch(()=>({})) as Record<string,unknown>

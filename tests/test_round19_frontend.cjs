@@ -30,7 +30,7 @@ test('resolution polling uses a fresh abort controller per attempt', () => {
   const api = read('frontend/src/api.ts');
   assert.match(api, /const controller=new AbortController\(\)/);
   assert.match(api, /signal:controller\.signal/);
-  assert.match(api, /if\(!finished\)statusTimer=setTimeout\(poll,200\)/);
+  assert.match(api, /if\(!finished\)statusTimer=setTimeout\(poll,1000\)/);
   assert.doesNotMatch(api, /statusAbort/);
 });
 

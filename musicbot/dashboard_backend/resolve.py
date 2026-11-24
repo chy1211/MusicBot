@@ -215,6 +215,23 @@ class DashboardResolveRoutes:
             if extraction is not None:
                 self.previews[token]["extraction"] = extraction
                 item.extraction = None
+            elif (
+                item.get("kind") == "track"
+                and item.get("allowed")
+                and isinstance(item.get("duration"), (int, float))
+                and item["duration"] > 0
+                and str(item.get("url", "")).startswith("https://www.youtube.com/watch?v=")
+            ):
+                self.previews[token]["fast_entry"] = {
+                    "webpage_url": item["url"],
+                    "url": item["url"],
+                    "title": item.get("title") or item["url"],
+                    "duration": item["duration"],
+                    "thumbnail": item.get("thumbnail") or "",
+                    "extractor": "youtube",
+                    "_type": "video",
+                    "__input_subject": item["url"],
+                }
             if item.get("source_url") or item.get("saveable") or item.get("kind") == "playlist":
                 value = await self.playlist_store.transact(owner.id)
                 item["save_revision"] = value["revision"]

@@ -39,6 +39,8 @@ def execute(raw):
 
 
 def main():
+    from .bg_priority import apply_background_priority
+    apply_background_priority()
     output = sys.stdout.buffer
     sys.stdout = sys.stderr
     if '--serve' in sys.argv:

@@ -350,15 +350,48 @@ class DashboardMutationRoutes:
                     if reason:
                         raise APIError(403, reason)
                     return perms
-                check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next))
-                try:
-                    response = await self.run_preview_add(guild, owner, request, preview, query,
-                        getattr(self.bot, "cmd_" + action)(
-                            message=None, player=player, channel=channel, guild=guild,
-                            author=owner, permissions=permissions, leftover_args=[],
-                            song_url=query.strip()))
-                finally:
-                    CONFIRMED_ENTRY_CHECK.reset(check_token)
+                import os as _os
+                fast_entry = (
+                    preview.get("fast_entry")
+                    if (
+                        _os.environ.get("MUSICBOT_FAST_SEARCH_ENQUEUE") == "1"
+                        and preview
+                        and preview.get("kind") == "track"
+                        and preview.get("url") == query.strip()
+                    )
+                    else None
+                )
+                if fast_entry is not None:
+                    from ..downloader import YtdlpResponseDict
+                    from ..web_dashboard_preview import log as _preview_log
+                    fast_info = YtdlpResponseDict(dict(fast_entry))
+                    validate_next(fast_info)
+                    current_player = self.bot.get_player_in(guild) or player
+                    entry, position = await current_player.playlist.add_entry_from_info(
+                        fast_info,
+                        author=owner,
+                        channel=channel,
+                        head=(action == "playnext"),
+                    )
+                    if current_player.is_stopped:
+                        current_player.play()
+                    elif position == 1:
+                        entry.get_ready_future()
+                    _preview_log.info("Dashboard add fast-enqueued search preview: %s", entry.title)
+                    response = Response(
+                        _D("Enqueued **%(title)s** to be played. Position in queue: %(position)s", ssd)
+                        % {"title": entry.title, "position": position}
+                    )
+                else:
+                    check_token = CONFIRMED_ENTRY_CHECK.set(ConfirmedEntryCheck(validate_next))
+                    try:
+                        response = await self.run_preview_add(guild, owner, request, preview, query,
+                            getattr(self.bot, "cmd_" + action)(
+                                message=None, player=player, channel=channel, guild=guild,
+                                author=owner, permissions=permissions, leftover_args=[],
+                                song_url=query.strip()))
+                    finally:
+                        CONFIRMED_ENTRY_CHECK.reset(check_token)
             elif action == "seek":
                 if not player.current_entry:
                     raise APIError(409, _web_text('m0378'))

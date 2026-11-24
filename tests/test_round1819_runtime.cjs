@@ -16,9 +16,9 @@ test('a timed-out resolution poll retries with a new signal and POST completion 
  const api=load('frontend/src/api.ts',{'./store':{dashboard:{authMode:'discord'},expireSession:()=>{}},'./composables/useLocale':{t:x=>x,locale:{value:'en'}}},
   {AbortController,DOMException,fetch,setTimeout,clearTimeout,crypto:require('node:crypto').webcrypto});
  const result=api.request('/api/guilds/1/resolve',{method:'POST',body:{query:'fixture'},onResolutionState:()=>{}});
- await advance(100);assert.equal(polls.length,1);
+ await advance(500);assert.equal(polls.length,1);
  await advance(3000);assert.equal(polls[0].aborted,true);assert.equal(postSignal.aborted,false);
- await advance(200);assert.equal(polls.length,2);assert.notEqual(polls[0],polls[1]);assert.equal(polls[1].aborted,false);
+ await advance(1000);assert.equal(polls.length,2);assert.notEqual(polls[0],polls[1]);assert.equal(polls[1].aborted,false);
  post.resolve({ok:true,json:async()=>({results:[]})});await result;await flush();
  assert.equal(polls[1].aborted,true);assert.equal(timers.size,0);
  await advance(10000);assert.equal(polls.length,2);

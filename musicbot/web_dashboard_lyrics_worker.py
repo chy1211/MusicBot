@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from .web_dashboard_lyrics_alignment import _worker, UNCERTAIN
 
 def main():
+    from .bg_priority import apply_background_priority
+    apply_background_priority()
     sent=False
     class Pipe:
         def send(self,value):

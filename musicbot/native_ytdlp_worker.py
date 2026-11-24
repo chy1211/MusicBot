@@ -43,6 +43,8 @@ def execute(raw: bytes) -> bytes:
 
 
 def main() -> None:
+    from .bg_priority import apply_background_priority
+    apply_background_priority()
     output = sys.stdout.buffer
     sys.stdout = sys.stderr  # Prevent yt-dlp output from corrupting JSON IPC.
     raw = sys.stdin.buffer.read(32 * 1024 * 1024 + 1)
