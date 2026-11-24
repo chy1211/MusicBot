@@ -488,7 +488,10 @@ class Downloader:
     async def extract_public_playlist(self, song_subject: str, limit: int = 201) -> "YtdlpResponseDict":
         """Credential-free flat metadata for dashboard public YouTube imports only."""
         song_subject = check_subject(song_subject)
-        if WEB_EXTRACTION.get():
+        if WEB_EXTRACTION.get() or (
+            os.environ.get("MUSICBOT_NATIVE_YTDLP_ISOLATION") == "1"
+            and hasattr(self, "_dashboard_extract")
+        ):
             data = await self._dashboard_extract(song_subject,
                 {"download": False, "process": False}, public=True, limit=limit)
             data["__input_subject"] = song_subject
