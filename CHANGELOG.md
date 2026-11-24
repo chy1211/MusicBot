@@ -5,6 +5,26 @@ This file records notable changes, following [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-25
+
+### 新增 / Added
+
+- 網頁搜尋選歌支援快速入列（`MUSICBOT_FAST_SEARCH_ENQUEUE=1`）：保留原本的權限與時長檢查，點選合法非直播 YouTube 搜尋結果後立即加入佇列，下載與完整格式擷取改由背景子行程透過既有 `get_ready_future()` 機制銜接播放。
+  Add fast enqueue for validated non-live YouTube search previews (`MUSICBOT_FAST_SEARCH_ENQUEUE=1`), preserving permission and duration checks while deferring full extraction and download to background workers via `get_ready_future()`.
+
+### 改善 / Improved
+
+- 補齊 `extract_public_playlist()` 的子行程隔離：啟用 `MUSICBOT_NATIVE_YTDLP_ISOLATION=1` 時，自動電台與公開播放清單擷取不再回落至主行程執行緒，避免主行程 GIL 爭用與 Gen-2 GC 造成語音卡頓。
+  Route `extract_public_playlist()` through isolated extraction workers when `MUSICBOT_NATIVE_YTDLP_ISOLATION=1` is enabled, keeping radio/mix parsing off the main audio process.
+- 背景工作子行程（原生 `yt-dlp`、網頁擷取池、歌詞對齊）啟動時自動套用較低 CPU（`nice +10`）與閒置 I/O（`ionice -c 3`）優先權，保護語音播放執行緒與 FFmpeg 資源。
+  Lower CPU (`nice +10`) and I/O (`ionice -c 3`) priority in background worker processes (native `yt-dlp`, dashboard extraction pool, and lyrics alignment) to protect voice playback.
+- 機器人首次啟動初始化完成後執行 `gc.collect()` 與 `gc.freeze()`，將啟動載入的常駐模組物件移出 Gen-2 GC 掃描清單，降低播放期間的 GC 暫停時間。
+  Run `gc.collect()` and `gc.freeze()` once after initial startup completes to reduce Gen-2 GC pause duration during voice playback.
+- 將前端 `resolution-status` 狀態輪詢間隔由 200ms（初始 100ms）調整為 1000ms（初始 500ms），減少擷取等待期間的多餘 HTTP 請求。
+  Reduce frontend `resolution-status` polling frequency from 200ms (100ms initial) to 1000ms (500ms initial).
+- 更新 PWA 網頁版本識別碼至 `v1.2.2` 與對應回歸測試。
+  Bump the web dashboard and PWA version identifier to `v1.2.2` and update regression tests.
+
 ## [1.2.1] - 2026-11-16
 
 ### 改善 / Improved

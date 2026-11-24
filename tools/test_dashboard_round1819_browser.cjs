@@ -115,7 +115,7 @@ test('real service-worker installation precaches every icon without caching API 
   const icons=await Promise.all(['history-add','history-heart','transport-play','transport-pause','transport-skip','transport-repeat'].map(async name=>(await cache.match('/icons/'+name+'.svg'))?.status));
   return {names,icons,privateKeys:keys.map(key=>new URL(key.url).pathname).filter(path=>/^\/(api|auth|events)(\/|$)/.test(path))};
  });
- assert.deepEqual(state.names,['musicbot-dashboard-v1.2.1']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
+ assert.deepEqual(state.names,['musicbot-dashboard-v1.2.2']);assert.deepEqual(state.icons,[200,200,200,200,200,200]);assert.deepEqual(state.privateKeys,[]);
 });
 
 test('r22 portrait card and history retain compact controls at narrow phone widths',async t=>{
@@ -134,13 +134,13 @@ test('r22 portrait card and history retain compact controls at narrow phone widt
  assert.deepEqual(errors,[]);
 });
 
-test('v1.2.1 shares the identity note row with text left and version right',async t=>{
+test('v1.2.2 shares the identity note row with text left and version right',async t=>{
  const {page,errors}=await open(t);
  for(const width of [1440,390,320]){
   await page.setViewportSize({width,height:900});
   const footer=page.locator('#identity-note');await footer.scrollIntoViewIfNeeded();
   const m=await footer.evaluate(el=>{const a=el.querySelector('.identity-note-copy').getBoundingClientRect(),b=el.querySelector('#app-version').getBoundingClientRect(),r=el.getBoundingClientRect();return {text:el.querySelector('#app-version').textContent,left:a.left-r.left,right:r.right-b.right,overlap:a.right>b.left+1,top:Math.abs(a.top-b.top)};});
-  assert.equal(m.text,'v1.2.1');assert.ok(m.left<2&&m.right<2&&!m.overlap&&m.top<5,JSON.stringify({width,...m}));
+  assert.equal(m.text,'v1.2.2');assert.ok(m.left<2&&m.right<2&&!m.overlap&&m.top<5,JSON.stringify({width,...m}));
   await footer.screenshot({path:shots+`/v111-footer-${width}.png`});
  }
  assert.deepEqual(errors,[]);

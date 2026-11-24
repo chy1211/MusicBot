@@ -2471,6 +2471,10 @@ class MusicBot(commands.Bot):
         self.on_ready_count += 1
         if self.on_ready_count == 1:
             await self._start_web_dashboard()
+            import gc as _gc
+            if hasattr(_gc, "freeze"):
+                _gc.collect()
+                _gc.freeze()
 
         log.debug("Finish on_ready")
 
